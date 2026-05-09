@@ -1,0 +1,16 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+.vscode/
+.idea/
+coverage/
+*.tsbuildinfo
+
+# Claude Code per-machine settings (project settings.json may still be committed)
+.claude/settings.local.json
+
+# Test-fixture dir created by scripts/setup-test-scenarios.sh
+.test-code-root/
