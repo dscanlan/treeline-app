@@ -89,8 +89,6 @@ visual treatment.
 
 ### Terminals
 
-![A terminal tab open at a worktree, showing the Treeline color scheme inside xterm.js](docs/img/03-terminal.png)
-
 Terminals are real PTYs spawned in the main process via `node-pty` and
 rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
 
@@ -100,9 +98,6 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
   selected sidebar item, even if one already exists. Useful for keeping
   one tab running `claude` and another tab on the same repo for actual
   work.
-
-  ![Two tabs open on the same repo — one for Claude, one for work](docs/img/07-multi-tabs.png)
-
 - **Click the `>_` icon on a repo node** → opens a fresh tab at the
   repo root. Same as `+` but doesn't require selecting first.
 - **Click a tab's `×`** → closes the tab, kills its PTY (SIGHUP, then
@@ -114,14 +109,10 @@ not visible, so switching back is instant — no replay flicker.
 
 ### Create / delete worktrees
 
-![Create-worktree modal with a branch name and an auto-derived path](docs/img/04-create-modal.png)
-
 The create dialog auto-fills the path as `<repo>/<branch>`. If the
 branch already exists, the underlying git call falls back to
 `git worktree add <path> <branch>` (no `-b`), so re-creating a worktree
 after deleting its directory just works.
-
-![Delete-worktree confirmation listing the tabs that will be closed](docs/img/05-delete-modal.png)
 
 The delete dialog warns you about open tabs that will close, then runs
 `git worktree remove --force <path>`. Tabs are closed before the path
