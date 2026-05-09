@@ -96,6 +96,39 @@ The build is unsigned because the developer cert in this checkout is
 expired. To produce a signed build, set `CSC_LINK` and `CSC_KEY_PASSWORD`
 in the environment (or update `electron-builder.yml`) and re-run.
 
+## Releasing
+
+Two ways to publish a downloadable build:
+
+**Tag a version.** Push a `v*` tag and the
+[Release workflow](../.github/workflows/release.yml) builds the `.dmg`
++ `.zip` for arm64 and x64, then creates a GitHub Release with them
+attached and auto-generated release notes.
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+**Manual dispatch.** Open the workflow on GitHub Actions and click
+"Run workflow". You'll be asked for a tag/version label and whether to
+publish as a draft (default: yes). The artifacts are also uploaded to
+the workflow run itself, so even without a Release you can download
+them from the workflow's "Artifacts" panel.
+
+The build is currently unsigned. To enable signing + notarization:
+
+1. Renew your Apple Developer cert.
+2. Add these secrets to the repo (Settings → Secrets → Actions):
+   `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+   `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
+3. Replace the `CSC_IDENTITY_AUTO_DISCOVERY: 'false'` line in
+   `release.yml` with the env block commented above it.
+
+`hardenedRuntime` and the entitlements file are already wired in
+`electron-builder.yml` — once the secrets are present, electron-builder
+will sign and notarize automatically.
+
 ## Updating screenshots
 
 ```bash

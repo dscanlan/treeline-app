@@ -1,5 +1,7 @@
 # treeline-app
 
+[![CI](https://github.com/dscanlan/treeline-app/actions/workflows/ci.yml/badge.svg)](https://github.com/dscanlan/treeline-app/actions/workflows/ci.yml)
+
 A worktree-aware terminal multiplexer for macOS. One Electron window
 contains both a sidebar of all your git worktrees across multiple repos
 and the terminals you have open in them — so spawning Claude in a
@@ -33,21 +35,30 @@ dance is optional.
 v0.1.0 — feature-complete for v1: macOS only, repos managed manually,
 tabs are session-only (no restore across launches).
 
-## Install / run
+## Install
+
+### Pre-built (recommended)
+
+Grab the latest `.dmg` from the
+[Releases page](https://github.com/dscanlan/treeline-app/releases). Both
+Apple Silicon (`-arm64.dmg`) and Intel (`.dmg`) are published. The build
+is unsigned (the dev cert in this repo is expired), so the first launch
+needs **control-click → Open** to bypass Gatekeeper.
+
+### From source
 
 ```bash
-git clone <this repo>
+git clone https://github.com/dscanlan/treeline-app.git
 cd treeline-app
 npm install              # also auto-rebuilds node-pty against Electron's ABI
 npm run dev              # launches the app with HMR for the renderer
 ```
 
-For a packaged build (.dmg + .zip, both arm64 and x64):
+To make your own packaged build:
 
 ```bash
 npm run package:mac
-open release/mac-arm64/treeline-app.app   # control-click → Open the first
-                                          # time; the build is unsigned
+open release/mac-arm64/treeline-app.app
 ```
 
 For a quick demo with pre-loaded fixture repos:
