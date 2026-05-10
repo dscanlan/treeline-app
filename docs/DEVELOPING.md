@@ -92,9 +92,11 @@ release/
 └── mac-arm64/                          # arm64 unpacked .app
 ```
 
-The build is unsigned because the developer cert in this checkout is
-expired. To produce a signed build, set `CSC_LINK` and `CSC_KEY_PASSWORD`
-in the environment (or update `electron-builder.yml`) and re-run.
+Local `npm run package:mac` runs unsigned by default — there's no cert
+on a developer's machine. To produce a signed `.dmg` locally, set
+`CSC_LINK` (path to a `.p12` or its base64) and `CSC_KEY_PASSWORD` in the
+environment before running. The release workflow (next section) signs
+and notarizes on every tag.
 
 ## Releasing
 
@@ -116,11 +118,11 @@ publish as a draft (default: yes). The artifacts are also uploaded to
 the workflow run itself, so even without a Release you can download
 them from the workflow's "Artifacts" panel.
 
-The build is currently unsigned, which means downloaded `.dmg`s hit
-Gatekeeper's *"Apple could not verify…"* wall on Sequoia and need the
-`xattr -dr com.apple.quarantine …` workaround documented in the
-[README](../README.md#pre-built-recommended). Signing fixes that. The
-full path:
+Signing + notarization is already wired up and active — the five
+required secrets are configured on the GitHub repo and the workflow's
+env block consumes them. The setup below is preserved for the next time
+the Developer ID cert needs renewing (they last 5 years) or someone
+forks this repo and needs to re-create the chain from scratch.
 
 ### 1. Prerequisites
 

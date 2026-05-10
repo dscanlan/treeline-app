@@ -41,31 +41,19 @@ tabs are session-only (no restore across launches).
 
 Grab the latest `.dmg` from the
 [Releases page](https://github.com/dscanlan/treeline-app/releases). Both
-Apple Silicon (`-arm64.dmg`) and Intel (`.dmg`) are published.
+Apple Silicon (`-arm64.dmg`) and Intel (`.dmg`) are published. Builds
+are signed with a Developer ID Application cert and notarized by Apple,
+so a plain double-click just launches — no Gatekeeper prompts, no
+`xattr` dance.
 
-> **First-launch friction.** The build is **not code-signed** (the dev
-> cert in this repo is expired). On macOS Sequoia, Gatekeeper now
-> blocks *all* unsigned downloaded apps with a *"Not Opened — Apple
-> could not verify…"* dialog that offers only **Done** or **Move to
-> Bin**. There are two ways to actually run it:
+> If you're still on the unsigned **v0.1.0** download, Gatekeeper will
+> block it with a *"Not Opened — Apple could not verify…"* dialog whose
+> only buttons are **Done** and **Move to Bin**. Either upgrade to
+> v0.2.0+, or strip the quarantine flag from a terminal:
 >
-> 1. **Strip the quarantine flag from a terminal** (fastest):
->
->    ```bash
->    xattr -dr com.apple.quarantine /Applications/treeline-app.app
->    ```
->
->    Then double-click as normal.
->
-> 2. **System Settings path.** Click **Done** on the blocking dialog,
->    open *System Settings → Privacy & Security*, scroll to the
->    bottom, find *"'treeline-app' was blocked…"*, click **Open
->    Anyway**, enter your password.
->
-> The proper fix is code-signing — when the Apple Developer cert is
-> renewed, the release workflow's signing block (commented in
-> `.github/workflows/release.yml`) gets enabled and downloads stop
-> needing this dance.
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/treeline-app.app
+> ```
 
 ### From source
 
@@ -327,9 +315,6 @@ src/
 - **macOS only.** Linux/Windows are doable (node-pty + xterm.js are
   cross-platform) but the title bar, traffic-light gutter, and
   packaging config are mac-specific.
-- **Unsigned packaged builds.** The DMG works but Gatekeeper will block
-  on first launch (control-click → Open). Renew your Apple Developer
-  cert and re-package once you want signed builds.
 - **Tabs are session-only.** Quitting kills all PTYs. Repos and the
   sidebar collapse state persist; tab state does not.
 - **`postcss.config.js` MODULE_TYPELESS_PACKAGE_JSON warning** is
