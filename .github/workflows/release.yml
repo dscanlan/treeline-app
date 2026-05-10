@@ -31,6 +31,12 @@ jobs:
           node-version: '20'
           cache: npm
 
+      # See ci.yml for the rationale — distutils is gone from Python 3.12+,
+      # so pin 3.11 for node-gyp to find it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install
         run: npm ci
 

@@ -23,6 +23,14 @@ jobs:
           node-version: '20'
           cache: npm
 
+      # node-pty's native rebuild is driven by node-gyp, which still imports
+      # `distutils` — removed in Python 3.12+. macos-latest runners ship 3.13,
+      # so pin 3.11 explicitly. Without this, `npm ci` fails at the
+      # postinstall step with `ModuleNotFoundError: No module named 'distutils'`.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       # `npm ci` runs the postinstall (electron-builder install-app-deps),
       # which downloads Electron and rebuilds node-pty against its ABI.
       - name: Install
