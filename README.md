@@ -41,9 +41,31 @@ tabs are session-only (no restore across launches).
 
 Grab the latest `.dmg` from the
 [Releases page](https://github.com/dscanlan/treeline-app/releases). Both
-Apple Silicon (`-arm64.dmg`) and Intel (`.dmg`) are published. The build
-is unsigned (the dev cert in this repo is expired), so the first launch
-needs **control-click → Open** to bypass Gatekeeper.
+Apple Silicon (`-arm64.dmg`) and Intel (`.dmg`) are published.
+
+> **First-launch friction.** The build is **not code-signed** (the dev
+> cert in this repo is expired). On macOS Sequoia, Gatekeeper now
+> blocks *all* unsigned downloaded apps with a *"Not Opened — Apple
+> could not verify…"* dialog that offers only **Done** or **Move to
+> Bin**. There are two ways to actually run it:
+>
+> 1. **Strip the quarantine flag from a terminal** (fastest):
+>
+>    ```bash
+>    xattr -dr com.apple.quarantine /Applications/treeline-app.app
+>    ```
+>
+>    Then double-click as normal.
+>
+> 2. **System Settings path.** Click **Done** on the blocking dialog,
+>    open *System Settings → Privacy & Security*, scroll to the
+>    bottom, find *"'treeline-app' was blocked…"*, click **Open
+>    Anyway**, enter your password.
+>
+> The proper fix is code-signing — when the Apple Developer cert is
+> renewed, the release workflow's signing block (commented in
+> `.github/workflows/release.yml`) gets enabled and downloads stop
+> needing this dance.
 
 ### From source
 
