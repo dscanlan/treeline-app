@@ -49,16 +49,16 @@ jobs:
       - name: Package macOS (arm64 + x64)
         run: npm run package:mac
         env:
-          # Disable signing — the local cert in this checkout is expired.
-          # When you renew the cert, replace this block with:
-          #   CSC_LINK: ${{ secrets.CSC_LINK }}
-          #   CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          #   APPLE_ID: ${{ secrets.APPLE_ID }}
-          #   APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          # and set hardenedRuntime: true + entitlements in electron-builder.yml
-          # (already present). electron-builder will sign + notarize automatically.
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Sign + notarize using the Developer ID Application cert.
+          # hardenedRuntime + entitlements live in electron-builder.yml.
+          # See docs/DEVELOPING.md "Releasing" for how these secrets are
+          # generated; revert to `CSC_IDENTITY_AUTO_DISCOVERY: 'false'` to
+          # ship an unsigned build if the cert ever lapses again.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List artifacts
         run: ls -lh release/
