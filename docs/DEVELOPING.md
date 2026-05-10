@@ -116,18 +116,125 @@ publish as a draft (default: yes). The artifacts are also uploaded to
 the workflow run itself, so even without a Release you can download
 them from the workflow's "Artifacts" panel.
 
-The build is currently unsigned. To enable signing + notarization:
+The build is currently unsigned, which means downloaded `.dmg`s hit
+Gatekeeper's *"Apple could not verify…"* wall on Sequoia and need the
+`xattr -dr com.apple.quarantine …` workaround documented in the
+[README](../README.md#pre-built-recommended). Signing fixes that. The
+full path:
 
-1. Renew your Apple Developer cert.
-2. Add these secrets to the repo (Settings → Secrets → Actions):
-   `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
-   `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`.
-3. Replace the `CSC_IDENTITY_AUTO_DISCOVERY: 'false'` line in
-   `release.yml` with the env block commented above it.
+### 1. Prerequisites
 
-`hardenedRuntime` and the entitlements file are already wired in
-`electron-builder.yml` — once the secrets are present, electron-builder
-will sign and notarize automatically.
+You need an active **Apple Developer Program** membership ($99/year)
+and a **Developer ID Application** certificate. The "Apple Development"
+cert that ships with a normal Apple ID does *not* work — Gatekeeper
+specifically requires Developer ID.
+
+1. developer.apple.com → Certificates → `+` → **Developer ID Application**.
+2. Follow the prompts to generate a CSR in Keychain Access, upload it,
+   download the resulting `.cer`, double-click to install.
+
+### 2. Export the cert + private key as `.p12`
+
+In Keychain Access:
+
+1. Find the new **Developer ID Application: <your name>** entry.
+2. Expand the disclosure triangle — there must be a private key
+   underneath. If there isn't, the keychain doesn't have the matching
+   key and you need to re-do the CSR/import on the same machine.
+3. Right-click the cert → **Export "Developer ID Application: …"**.
+4. Format: **Personal Information Exchange (.p12)**.
+5. Set a strong password — you'll need it as `CSC_KEY_PASSWORD`.
+
+### 3. Base64-encode the `.p12` for GitHub secrets
+
+GitHub secrets are plain text, so binary data has to be encoded:
+
+```bash
+base64 -i ~/Downloads/developer-id.p12 | pbcopy
+```
+
+The clipboard now has the value for `CSC_LINK`.
+
+### 4. App-specific password for notarization
+
+1. appleid.apple.com → **Sign-In and Security** → **App-Specific
+   Passwords**.
+2. **Generate Password** → label it `treeline-app notarization`.
+3. The 19-char string is `APPLE_APP_SPECIFIC_PASSWORD`.
+
+### 5. Find your Team ID
+
+developer.apple.com → **Membership Details** → 10-character Team ID at
+the top.
+
+### 6. Add the secrets
+
+Repo on GitHub → **Settings → Secrets and variables → Actions → New
+repository secret**. Add five:
+
+| Name | Value |
+| ---- | ----- |
+| `CSC_LINK` | base64 contents of the `.p12` (from step 3) |
+| `CSC_KEY_PASSWORD` | password you set on the `.p12` (step 2) |
+| `APPLE_ID` | your Apple Developer account email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | from step 4 |
+| `APPLE_TEAM_ID` | from step 5 |
+
+### 7. Switch the workflow on
+
+In `.github/workflows/release.yml`, replace:
+
+```yaml
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+```
+
+with:
+
+```yaml
+env:
+  CSC_LINK: ${{ secrets.CSC_LINK }}
+  CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+  APPLE_ID: ${{ secrets.APPLE_ID }}
+  APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+```
+
+Push, tag a new version, and the workflow will:
+
+1. Build the app and `.dmg` as before.
+2. Sign every binary inside with the Developer ID cert.
+3. Submit the `.dmg` to Apple's notarization service via `notarytool`.
+4. Wait for the notary verdict (~3–10 minutes).
+5. Staple the notarization ticket to the `.dmg` so first launch works
+   even offline.
+
+`hardenedRuntime: true` and `resources/entitlements.mac.plist` are
+already configured in `electron-builder.yml`, so no further changes
+needed there.
+
+### Things that go wrong
+
+- **`Code signing failed: no identity matching`** — the cert in the
+  `.p12` isn't a "Developer ID Application" cert, it's "Apple
+  Development" or similar. Re-do step 1 with the right cert type.
+- **Notarization rejected** with `errors: [{ code: 4000 }]` — your
+  entitlements include a JIT key (we do, for V8) without
+  `com.apple.security.cs.allow-unsigned-executable-memory`. Already
+  present in `resources/entitlements.mac.plist`; if you change it,
+  re-check both entries.
+- **`Unable to find a matching keychain`** — usually transient; the
+  `CSC_LINK` decode placed the cert into a temp keychain that
+  electron-builder couldn't find. Retry the workflow.
+- **Notarization stuck "in progress" for >30 min** — Apple's notary
+  service is slow some days. The workflow will eventually time out
+  (after 30 min). Re-run.
+
+### Reverting
+
+If something breaks and you need to ship an unsigned build to unblock
+yourself, replace the env block with `CSC_IDENTITY_AUTO_DISCOVERY:
+'false'` again — that's the documented escape hatch.
 
 ## Updating screenshots
 
