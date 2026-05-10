@@ -19,6 +19,7 @@ export function SidebarToggle() {
       onClick={onClick}
       title={`${collapsed ? 'Show' : 'Hide'} sidebar (⌘B)`}
       aria-label={`${collapsed ? 'Show' : 'Hide'} sidebar`}
+      data-ss="sidebar-toggle"
       className="no-drag rounded px-2 py-0.5 text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text"
     >
       {collapsed ? '›' : '‹'}

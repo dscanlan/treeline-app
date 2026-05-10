@@ -8,8 +8,12 @@ export interface TabsSlice {
   /** cwd → tab IDs in MRU order (index 0 = most recently active). */
   tabsByCwd: Record<string, string[]>;
 
-  /** Append a new tab; caller passes the freshly-spawned ptyId. */
-  addTab: (input: { ptyId: string; cwd: string }) => string;
+  /**
+   * Append a new tab; caller passes the freshly-spawned ptyId. `title`
+   * overrides the default `basename(cwd)` — used by scratch terminals which
+   * want "Scratch N" instead of the cwd's basename.
+   */
+  addTab: (input: { ptyId: string; cwd: string; title?: string }) => string;
   /** Remove a tab; returns the next tab id to activate (or null). */
   removeTab: (id: string) => string | null;
   /** Switch active tab and bump MRU. */
@@ -25,14 +29,14 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
   activeTabId: null,
   tabsByCwd: {},
 
-  addTab: ({ ptyId, cwd }) => {
+  addTab: ({ ptyId, cwd, title }) => {
     const id = ptyId; // ptyId is already a uuid; reuse as tab id.
     const now = Date.now();
     const tab: Tab = {
       id,
       ptyId,
       cwd,
-      title: basename(cwd),
+      title: title ?? basename(cwd),
       status: 'idle',
       foregroundCmd: null,
       createdAt: now,

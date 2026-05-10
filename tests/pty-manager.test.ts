@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   PtyManager,
+  type CwdProbe,
   type IPtyLike,
+  type PtyCwdChangedEvent,
   type PtyDataEvent,
   type PtyExitEvent,
   type PtySpawnedEvent,
@@ -51,7 +53,7 @@ describe('PtyManager', () => {
   it('spawn() returns an id and emits a "spawned" event with the shell pid', () => {
     const fake = new FakePty();
     const spawnFn: SpawnFn = () => fake;
-    const mgr = new PtyManager(spawnFn);
+    const mgr = new PtyManager(spawnFn, undefined, 0);
 
     const events: PtySpawnedEvent[] = [];
     mgr.on('spawned', (e) => events.push(e as PtySpawnedEvent));
@@ -64,7 +66,7 @@ describe('PtyManager', () => {
 
   it('coalesces multiple data chunks into a single tick-flushed event', async () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const events: PtyDataEvent[] = [];
     mgr.on('data', (e) => events.push(e as PtyDataEvent));
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
@@ -79,7 +81,7 @@ describe('PtyManager', () => {
 
   it('flushes pending data before emitting exit', async () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const seen: string[] = [];
     mgr.on('data', (e: PtyDataEvent) => seen.push('data:' + e.chunk));
     mgr.on('exit', () => seen.push('exit'));
@@ -92,7 +94,7 @@ describe('PtyManager', () => {
 
   it('write/resize forwards to the underlying pty', () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
     mgr.write(id, 'pwd\n');
     mgr.resize(id, 100, 30);
@@ -102,7 +104,7 @@ describe('PtyManager', () => {
 
   it('resize clamps non-positive dims to 1', () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
     mgr.resize(id, 0, -5);
     expect(fake.resized).toEqual([{ cols: 1, rows: 1 }]);
@@ -110,7 +112,7 @@ describe('PtyManager', () => {
 
   it('kill() sends SIGHUP and resolves on exit', async () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
 
     const promise = mgr.kill(id);
@@ -132,7 +134,7 @@ describe('PtyManager', () => {
         }
       }
       const fake = new StubbornPty();
-      const mgr = new PtyManager(() => fake);
+      const mgr = new PtyManager(() => fake, undefined, 0);
       const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
 
       const promise = mgr.kill(id, 50);
@@ -148,7 +150,7 @@ describe('PtyManager', () => {
 
   it('on natural exit, the entry is removed', async () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
     expect(mgr.has(id)).toBe(true);
     fake.emitExit(0);
@@ -161,7 +163,7 @@ describe('PtyManager', () => {
     const b = new FakePty();
     b.pid = 2;
     const queue = [a, b];
-    const mgr = new PtyManager(() => queue.shift()!);
+    const mgr = new PtyManager(() => queue.shift()!, undefined, 0);
     const r1 = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
     const r2 = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
     expect(mgr.shellPids().sort((x, y) => x.shellPid - y.shellPid)).toEqual([
@@ -172,11 +174,156 @@ describe('PtyManager', () => {
 
   it('exit event carries code and signal', async () => {
     const fake = new FakePty();
-    const mgr = new PtyManager(() => fake);
+    const mgr = new PtyManager(() => fake, undefined, 0);
     const events: PtyExitEvent[] = [];
     mgr.on('exit', (e) => events.push(e as PtyExitEvent));
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
     fake.emitExit(137, 9);
     expect(events).toEqual([{ id, code: 137, signal: 9 }]);
+  });
+
+  // ── cwd tracking ─────────────────────────────────────────────────────────
+
+  it('emits cwd-changed with opts.cwd immediately on spawn', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const events: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+    const { id } = mgr.spawn({ cwd: '/Users/me/repo', cols: 80, rows: 24 });
+    expect(events).toEqual([{ id, cwd: '/Users/me/repo' }]);
+    expect(mgr.cwdOf(id)).toBe('/Users/me/repo');
+  });
+
+  it('parses an OSC 7 cwd notification (BEL terminator) and emits cwd-changed', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const events: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+    const { id } = mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+    // Apple's stock zsh emits exactly this format.
+    fake.emitData('\x1b]7;file://hostname/Users/me/other%20repo\x07$ ');
+    expect(events).toEqual([
+      { id, cwd: '/start' },
+      { id, cwd: '/Users/me/other repo' },
+    ]);
+    expect(mgr.cwdOf(id)).toBe('/Users/me/other repo');
+  });
+
+  it('parses an OSC 7 with the ESC \\ string terminator', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const events: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+    const { id } = mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+    fake.emitData('\x1b]7;file:///tmp/x\x1b\\');
+    expect(events.at(-1)).toEqual({ id, cwd: '/tmp/x' });
+  });
+
+  it('reassembles an OSC 7 sequence split across two chunks', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const events: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+    const { id } = mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+    fake.emitData('output\x1b]7;file://h/Users/me/');
+    fake.emitData('split-path\x07more output');
+    expect(events.at(-1)).toEqual({ id, cwd: '/Users/me/split-path' });
+  });
+
+  it('does not re-emit cwd-changed when OSC 7 reports the same path', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const events: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+    mgr.spawn({ cwd: '/Users/me/repo', cols: 80, rows: 24 });
+    fake.emitData('\x1b]7;file://h/Users/me/repo\x07');
+    fake.emitData('\x1b]7;file://h/Users/me/repo\x07');
+    expect(events).toHaveLength(1); // only the spawn-time emit
+  });
+
+  it('ignores malformed OSC 7 bodies that are not file:// URLs', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const events: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+    mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+    fake.emitData('\x1b]7;not-a-url\x07');
+    fake.emitData('\x1b]7;\x07'); // empty body
+    expect(events).toHaveLength(1); // still just the spawn emit
+  });
+
+  it('falls back to the cwd probe when no OSC 7 has been seen', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = new FakePty();
+      const probeCalls: number[] = [];
+      const probe: CwdProbe = async (pid) => {
+        probeCalls.push(pid);
+        return '/probed/path';
+      };
+      const mgr = new PtyManager(() => fake, probe, 100);
+      const events: PtyCwdChangedEvent[] = [];
+      mgr.on('cwd-changed', (e) => events.push(e as PtyCwdChangedEvent));
+      const { id } = mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+
+      await vi.advanceTimersByTimeAsync(105);
+      // The probe runs inside an async arrow; one more microtask flush.
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(probeCalls).toEqual([fake.pid]);
+      expect(events).toEqual([
+        { id, cwd: '/start' },
+        { id, cwd: '/probed/path' },
+      ]);
+
+      // Stop the timer so vitest exits cleanly.
+      fake.emitExit(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('skips the cwd probe when OSC 7 was observed within 2 poll intervals', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = new FakePty();
+      const probeCalls: number[] = [];
+      const probe: CwdProbe = async (pid) => {
+        probeCalls.push(pid);
+        return '/should-not-be-used';
+      };
+      const mgr = new PtyManager(() => fake, probe, 100);
+      mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+
+      // Recent OSC 7 observation — probe must back off.
+      fake.emitData('\x1b]7;file://h/from-osc\x07');
+      await vi.advanceTimersByTimeAsync(105);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(probeCalls).toEqual([]);
+
+      fake.emitExit(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the cwd-poll timer on natural exit', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = new FakePty();
+      const probeCalls: number[] = [];
+      const probe: CwdProbe = async (pid) => {
+        probeCalls.push(pid);
+        return null;
+      };
+      const mgr = new PtyManager(() => fake, probe, 50);
+      mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+      fake.emitExit(0);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(probeCalls).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

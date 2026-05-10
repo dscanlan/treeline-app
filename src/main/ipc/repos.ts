@@ -1,13 +1,29 @@
-import { dialog, ipcMain, type BrowserWindow } from 'electron';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import type { Repo } from '@shared/types';
-import { isGitRepo } from '../git';
+import { resolveParentRepoPath } from '../git';
+import { createRepo, type CreateRepoOpts } from '../repos-create';
 import type { ReposStore } from '../repos-store';
 import { validateAbsPath } from '../util/safe-path';
 
 export interface ReposIpcHooks {
   onRepoAdded?: (path: string) => void;
   onRepoRemoved?: (path: string) => void;
+  /** Called after dismissedRepos has been persisted. */
+  onRepoDismissed?: (path: string) => void;
+}
+
+/**
+ * Broadcast a discovered-repo event to every renderer. Called from the main
+ * process when `RepoDiscovery` notices an untracked repo via a PTY cwd.
+ */
+export function broadcastDiscoveredRepo(payload: {
+  repoPath: string;
+  viaCwd: string;
+}): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send(Channels.ReposDiscovered, payload);
+  }
 }
 
 export function registerReposIpc(
@@ -28,10 +44,21 @@ export function registerReposIpc(
 
   handle(Channels.ReposAdd, async (rawPath) => {
     const path = validateAbsPath(rawPath);
-    const ok = await isGitRepo(path);
-    if (!ok) throw new Error(`Not a git repository: ${path}`);
-    const repo = await store.addRepo(path);
-    hooks.onRepoAdded?.(path);
+    // Resolve to the parent repo's working tree so picking a worktree path
+    // (e.g. `<repo>/.claude/worktrees/foo`), a subdirectory, or the repo root
+    // all converge on the same canonical entry. This is what makes the
+    // toast's Add and the sidebar's "+ Add repo" both accept worktree paths.
+    const parent = await resolveParentRepoPath(path);
+    if (!parent) throw new Error(`Not a git repository: ${path}`);
+    const repo = await store.addRepo(parent);
+    hooks.onRepoAdded?.(parent);
+    return repo;
+  });
+
+  handle(Channels.ReposCreate, async (rawOpts) => {
+    // createRepo validates rawOpts internally; we just narrow the unknown.
+    const repo = await createRepo(store, rawOpts as CreateRepoOpts);
+    hooks.onRepoAdded?.(repo.path);
     return repo;
   });
 
@@ -41,10 +68,17 @@ export function registerReposIpc(
     hooks.onRepoRemoved?.(path);
   });
 
+  handle(Channels.ReposDismissDiscovered, async (rawPath) => {
+    const path = validateAbsPath(rawPath);
+    await store.dismissRepo(path);
+    hooks.onRepoDismissed?.(path);
+  });
+
   handle(Channels.ReposPickDirectory, async (): Promise<string | null> => {
     const win = getMainWindow();
     const opts: Electron.OpenDialogOptions = {
-      title: 'Add repository',
+      title: 'Add repo or worktree path',
+      message: 'Pick a repo root, a subdirectory, or a worktree path. Treeline resolves to the parent repo automatically.',
       properties: ['openDirectory'],
       buttonLabel: 'Add',
     };

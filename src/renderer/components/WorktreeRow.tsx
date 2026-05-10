@@ -27,7 +27,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
       : 'text-treeline-cyan';
 
   return (
-    <li className="group/wt">
+    <li className="group/wt" data-ss="worktree-row" data-ss-path={worktree.path}>
       <div
         className={`flex w-full items-center gap-2 rounded px-2 py-1 ${
           selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'

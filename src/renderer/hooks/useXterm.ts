@@ -4,29 +4,34 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
-// Treeline palette — must match tailwind.config.ts.
+// Graphite (dark) — must match tailwind.config.ts. Traditional dark-terminal
+// ANSI convention (ANSI 0=darkest, 7=lightest). `cyan` here is a true cyan
+// (`#22d3ee`, Tailwind cyan-400) rather than the chrome blue, so programs
+// that print cyan (npm, ls -G dirs) still look right; the chrome blue lives
+// in the `blue` slot. Magenta is the muted violet `#b59cf5` to keep the
+// single cool-accent discipline of the chrome.
 const xtermTheme = {
-  background: '#242742',
-  foreground: '#cad3f5',
-  cursor: '#cad3f5',
-  cursorAccent: '#242742',
-  selectionBackground: '#313244',
-  black: '#242742',
-  red: '#ed8796',
-  green: '#7ed385',
-  yellow: '#eed49f',
-  blue: '#8ddceb',
-  magenta: '#c6a0f6',
-  cyan: '#8ddceb',
-  white: '#cad3f5',
-  brightBlack: '#6e738d',
-  brightRed: '#ed8796',
-  brightGreen: '#7ed385',
-  brightYellow: '#eed49f',
-  brightBlue: '#8ddceb',
-  brightMagenta: '#c6a0f6',
-  brightCyan: '#8ddceb',
-  brightWhite: '#cad3f5',
+  background: '#0e0f12',           // surface
+  foreground: '#e6e8ee',           // text
+  cursor: '#e6e8ee',
+  cursorAccent: '#0e0f12',
+  selectionBackground: '#2a2d36',  // one step above highlight, visible
+  black: '#0e0f12',                // surface (matches bg)
+  red: '#f87171',                  // Tailwind red-400
+  green: '#4ade80',                // Tailwind green-400
+  yellow: '#facc15',               // Tailwind yellow-400
+  blue: '#7aa2f7',                 // Tokyo Night blue (chrome accent)
+  magenta: '#b59cf5',              // muted violet
+  cyan: '#22d3ee',                 // Tailwind cyan-400 — true cyan
+  white: '#e6e8ee',                // text
+  brightBlack: '#7a7f8c',          // dim — for comments etc.
+  brightRed: '#fca5a5',
+  brightGreen: '#86efac',
+  brightYellow: '#fde047',
+  brightBlue: '#93c5fd',
+  brightMagenta: '#c4b5fd',
+  brightCyan: '#67e8f9',
+  brightWhite: '#fafafc',
 } as const;
 
 export interface XtermHandle {

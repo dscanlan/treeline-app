@@ -39,6 +39,97 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // Untracked repos noticed via PTY cwds — surfaced as a toast.
+  unsubs.push(
+    api.repos.onDiscovered((e) => {
+      useStore.getState().enqueueDiscovery(e);
+    }),
+  );
+
+  // Dev-only: state hydration for the screenshot harness. Production main
+  // never sends to this channel, so the listener is dead weight outside
+  // `scripts/take-screenshots-auto.sh`.
+  unsubs.push(
+    api.screenshot.onHydrate((p) => {
+      if (p.reset) {
+        try {
+          localStorage.clear();
+        } catch {
+          /* ignore */
+        }
+        useStore.setState({
+          repos: [],
+          worktreesByRepo: {},
+          selectedSidebarPath: null,
+          selectedScratchId: null,
+          pendingDiscoveries: [],
+          filter: '',
+          sidebarCollapsed: false,
+          modal: null,
+          tabs: [],
+          activeTabId: null,
+          tabsByCwd: {},
+          processes: [],
+          processesByWorktreePath: {},
+          forceTooltip: null,
+          scratches: [],
+        });
+      }
+      const s = useStore.getState();
+      if (p.repos) s.setRepos(p.repos);
+      if (p.worktreesByRepo) {
+        for (const [path, wts] of Object.entries(p.worktreesByRepo)) {
+          s.setWorktrees(path, wts);
+        }
+      }
+      if (p.pendingDiscoveries) {
+        // Bypass enqueueDiscovery's persistence — the harness wants a clean
+        // single-toast state, not whatever was saved last session.
+        useStore.setState({ pendingDiscoveries: p.pendingDiscoveries });
+      }
+      if (p.selected !== undefined) s.setSelected(p.selected);
+      if (p.filter !== undefined) s.setFilter(p.filter);
+      if (p.sidebarCollapsed !== undefined) s.setSidebarCollapsed(p.sidebarCollapsed);
+      if (p.scratches !== undefined) {
+        // Replace wholesale — addScratch would append on top of any prior
+        // state; harness scenarios always start with `reset: true` so the
+        // hydrate intent is "this is the full set".
+        useStore.setState({ scratches: p.scratches });
+      }
+      if (p.selectedScratchId !== undefined) s.setSelectedScratch(p.selectedScratchId);
+      if (p.modal !== undefined) {
+        if (p.modal === null) s.closeModal();
+        else s.openModal(p.modal);
+      }
+      if (p.tabs) {
+        // Build the by-cwd index from scratch so `worktreeStatus()` lookups
+        // see the synthesised tabs immediately. Manual set bypasses the
+        // tabs-slice's MRU bookkeeping (irrelevant here — the harness
+        // controls the active tab explicitly via activeTabId).
+        const tabsByCwd: Record<string, string[]> = {};
+        for (const t of p.tabs) {
+          (tabsByCwd[t.cwd] ??= []).unshift(t.id);
+        }
+        useStore.setState({ tabs: p.tabs, tabsByCwd });
+      }
+      if (p.activeTabId !== undefined) {
+        useStore.setState({ activeTabId: p.activeTabId });
+      }
+      if (p.processesByWorktreePath !== undefined) {
+        const flat = Object.values(p.processesByWorktreePath).flat();
+        s.setProcesses(flat, p.processesByWorktreePath);
+      }
+      if (p.terminalStatus) {
+        s.applyStatusUpdates(p.terminalStatus);
+      }
+      if (p.forceTooltipNear !== undefined) {
+        s.setForceTooltip(
+          p.forceTooltipNear === null ? null : p.forceTooltipNear,
+        );
+      }
+    }),
+  );
+
   return () => unsubs.forEach((fn) => fn());
 }
 

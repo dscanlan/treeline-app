@@ -65,11 +65,34 @@ export interface AppConfig {
   codeRoot: string | null;
   /** Persisted sidebar collapse state. */
   sidebarCollapsed: boolean;
-  schemaVersion: 1;
+  /**
+   * Repo toplevels the user has chosen not to be re-prompted about when their
+   * cwd lands inside one. Populated by the "Don't ask again" action on the
+   * discovered-repo toast.
+   */
+  dismissedRepos: string[];
+  schemaVersion: 2;
 }
 
 export interface TerminalStatusUpdate {
   ptyId: string;
   status: TabStatus;
   foregroundCmd: string | null;
+}
+
+/**
+ * A scratch terminal: a shell session not bound to any tracked repo. Lives in
+ * renderer state only (never persisted to AppConfig), but the shape is shared
+ * so the screenshot harness can hydrate scratch rows for capture scenarios.
+ */
+export interface Scratch {
+  /** Mirrors the PTY id; reused as the Tab id too. */
+  id: string;
+  /** Display label in the sidebar, e.g. "Scratch 1". */
+  label: string;
+  /** PTY session id; identical to `id` today, kept separate for clarity. */
+  ptyId: string;
+  /** Working directory at spawn time — homedir for user-spawned scratches. */
+  cwd: string;
+  createdAt: number;
 }

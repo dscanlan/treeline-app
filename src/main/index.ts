@@ -1,17 +1,26 @@
 import { app, BrowserWindow, shell } from 'electron';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { defaultSpawn, PtyManager, type PtyExitEvent, type PtySpawnedEvent } from './pty-manager';
+import {
+  defaultSpawn,
+  PtyManager,
+  type PtyCwdChangedEvent,
+  type PtyExitEvent,
+  type PtySpawnedEvent,
+} from './pty-manager';
 import { ReposStore } from './repos-store';
 import { buildAppMenu } from './menu';
 import { WorktreeWatcher } from './worktree-watcher';
 import { TerminalStatusMonitor } from './terminal-status';
 import { ProcessMonitor } from './process-monitor';
-import { registerReposIpc } from './ipc/repos';
+import { RepoDiscovery, type DiscoveredRepoEvent } from './repo-discovery';
+import { broadcastDiscoveredRepo, registerReposIpc } from './ipc/repos';
 import { registerWorktreesIpc, broadcastWorktreesChanged } from './ipc/worktrees';
 import { registerPtyIpc } from './ipc/pty';
 import { registerProcessesIpc, broadcastProcesses } from './ipc/processes';
 import { registerConfigIpc } from './ipc/config';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
+import { getScreenshotId, runScreenshot } from './screenshot';
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
@@ -19,6 +28,7 @@ let reposStore: ReposStore | null = null;
 let worktreeWatcher: WorktreeWatcher | null = null;
 let terminalStatusMonitor: TerminalStatusMonitor | null = null;
 let processMonitor: ProcessMonitor | null = null;
+let repoDiscovery: RepoDiscovery | null = null;
 let isQuitting = false;
 
 function createMainWindow(): BrowserWindow {
@@ -29,13 +39,18 @@ function createMainWindow(): BrowserWindow {
     minHeight: 600,
     title: 'treeline',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#242742',
+    backgroundColor: '#0e0f12', // Graphite surface — must match tailwind treeline-surface
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Sandboxed preload can't import `node:os`, but it CAN read
+      // `process.argv`. Bake homedir into the preload's argv at window
+      // creation; the preload parses it and exposes it as
+      // `window.treeline.system.homeDir`. Used by the scratch-terminal flow.
+      additionalArguments: [`--treeline-home-dir=${homedir()}`],
     },
   });
 
@@ -59,6 +74,13 @@ function createMainWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
+  // Dev mode shows Electron's default Dock icon because the .icns is only
+  // embedded in the .app bundle at packaging time. Override at runtime so
+  // `npm run dev` shows the project icon. Guarded so prod is untouched.
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    app.dock?.setIcon(join(__dirname, '../../resources/icon.png'));
+  }
+
   reposStore = new ReposStore(join(app.getPath('userData'), 'config.json'));
   const cfg = reposStore.load();
 
@@ -87,11 +109,33 @@ app.whenReady().then(() => {
   // Initial seed for the process monitor so prefix matching works on tick #1.
   processMonitor.setWorktreePaths(worktreeWatcher.allWorktreePaths());
 
+  // Watches for cwds inside untracked git repos and surfaces them to the
+  // renderer as toast prompts. Seeded with the current tracked + dismissed
+  // sets; kept in sync via the repos IPC hooks below.
+  repoDiscovery = new RepoDiscovery();
+  repoDiscovery.setTrackedRepos(cfg.repos.map((r) => r.path));
+  repoDiscovery.setDismissedRepos(cfg.dismissedRepos);
+  ptyManager.on('cwd-changed', ({ cwd }: PtyCwdChangedEvent) => {
+    void repoDiscovery?.onCwd(cwd);
+  });
+  repoDiscovery.on('discovered-repo', (e: DiscoveredRepoEvent) => {
+    broadcastDiscoveredRepo(e);
+  });
+
   // Register all IPC handlers before the window loads, so the renderer never
   // sees a missing handler on first paint.
   registerReposIpc(reposStore, () => mainWindow, {
-    onRepoAdded: (path) => worktreeWatcher?.add(path),
-    onRepoRemoved: (path) => worktreeWatcher?.remove(path),
+    onRepoAdded: (path) => {
+      worktreeWatcher?.add(path);
+      repoDiscovery?.setTrackedRepos(reposStore?.get().repos.map((r) => r.path) ?? []);
+    },
+    onRepoRemoved: (path) => {
+      worktreeWatcher?.remove(path);
+      repoDiscovery?.setTrackedRepos(reposStore?.get().repos.map((r) => r.path) ?? []);
+    },
+    onRepoDismissed: () => {
+      repoDiscovery?.setDismissedRepos(reposStore?.get().dismissedRepos ?? []);
+    },
   });
   registerWorktreesIpc();
   registerPtyIpc(ptyManager);
@@ -100,6 +144,14 @@ app.whenReady().then(() => {
 
   buildAppMenu();
   mainWindow = createMainWindow();
+
+  // Headless screenshot mode. When TREELINE_SCREENSHOT_ID is set, the app
+  // sets up the named scenario, captures the renderer to docs/img/, and
+  // exits. See src/main/screenshot.ts and scripts/take-screenshots-auto.sh.
+  const screenshotId = getScreenshotId();
+  if (screenshotId && mainWindow) {
+    void runScreenshot(mainWindow, screenshotId, ptyManager);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

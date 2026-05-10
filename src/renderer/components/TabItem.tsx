@@ -11,6 +11,11 @@ export function TabItem({ tab }: Props) {
   const isActive = useStore((s) => s.activeTabId === tab.id);
   const setActive = useStore((s) => s.setActive);
   const setSelected = useStore((s) => s.setSelected);
+  const setSelectedScratch = useStore((s) => s.setSelectedScratch);
+  // A scratch tab's id matches a Scratch.id (both are the ptyId). When the
+  // user activates it, highlight the matching scratch row in the sidebar
+  // instead of a (non-existent) worktree row at the cwd.
+  const isScratch = useStore((s) => s.scratches.some((sc) => sc.id === tab.id));
 
   return (
     <div
@@ -18,7 +23,8 @@ export function TabItem({ tab }: Props) {
       aria-selected={isActive}
       onClick={() => {
         setActive(tab.id);
-        setSelected(tab.cwd);
+        if (isScratch) setSelectedScratch(tab.id);
+        else setSelected(tab.cwd);
       }}
       className={`group flex h-7 cursor-pointer items-center gap-2 rounded-t border-x border-t px-2 text-xs ${
         isActive

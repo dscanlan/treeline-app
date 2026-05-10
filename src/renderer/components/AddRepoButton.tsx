@@ -31,6 +31,7 @@ export function AddRepoButton() {
         type="button"
         onClick={onClick}
         disabled={busy}
+        title="Add an existing repo. Pick a repo root, a subdirectory, or a worktree path — treeline resolves to the parent repo."
         className="rounded border border-treeline-highlight px-2 py-1 text-treeline-text hover:bg-treeline-highlight disabled:opacity-50"
       >
         {busy ? 'Adding…' : '+ Add repo'}

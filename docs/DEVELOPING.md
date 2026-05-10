@@ -238,15 +238,27 @@ yourself, replace the env block with `CSC_IDENTITY_AUTO_DISCOVERY:
 
 ## Updating screenshots
 
+Two paths, pick by what you need:
+
 ```bash
+# Automated. Builds, then headlessly captures every scenario in
+# src/main/screenshot.ts via webContents.capturePage(). Best for the
+# bulk of the README shots (sidebar, modals, hover states, scratch).
+./scripts/take-screenshots-auto.sh
+
+# Interactive. Walks you through each shot, prompting before each
+# capture. Use this when you need the native chrome (traffic lights,
+# rounded corners, shadow) that capturePage() doesn't include.
 ./scripts/launch-with-test-scenario.sh   # in one terminal
 ./scripts/take-screenshots.sh            # in another
 ```
 
-The screenshot helper walks you through each shot interactively,
-prompting you to set the app to the right state before clicking the
-window. PNGs land in `docs/img/` with stable filenames the README
-references.
+PNGs land in `docs/img/` with stable filenames the README references.
+To add a new scenario, register it in `src/main/screenshot.ts`
+(`SCENARIOS` map) and append its id to `ALL_SCENARIOS` in
+`scripts/take-screenshots-auto.sh`. The harness now always calls
+`app.exit` even when a scenario throws, so a broken selector fails
+fast instead of stranding the loop.
 
 ## Common gotchas
 
@@ -275,6 +287,18 @@ Harmless. `postcss.config.js` uses ESM syntax without `"type": "module"`
 in `package.json`. Adding the field would silence the warning but
 require renaming `.eslintrc.cjs` rules around CJS configs; not worth
 the churn for v1.
+
+### "Unable to load preload script: module not found: node:os"
+
+The preload runs with `sandbox: true` (see `webPreferences` in
+`src/main/index.ts`), which **bans Node built-ins** — `node:os`,
+`node:path`, `node:fs`, etc. all throw at preload load time, which
+cascades into a renderer crash and an empty `window.treeline`. The
+fix is to pass the value in from main via
+`webPreferences.additionalArguments` and read it from `process.argv`
+inside the preload (`process` IS available in the sandbox). The
+existing `system.homeDir` exposure is the reference implementation
+of that pattern.
 
 ## Adding a feature
 
