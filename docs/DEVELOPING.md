@@ -80,16 +80,16 @@ Output lands in `release/`:
 
 ```
 release/
-├── treeline-app-0.1.0.dmg              (x64)
-├── treeline-app-0.1.0.dmg.blockmap
-├── treeline-app-0.1.0-mac.zip          (x64)
-├── treeline-app-0.1.0-mac.zip.blockmap
-├── treeline-app-0.1.0-arm64.dmg
-├── treeline-app-0.1.0-arm64.dmg.blockmap
-├── treeline-app-0.1.0-arm64-mac.zip
-├── treeline-app-0.1.0-arm64-mac.zip.blockmap
-├── mac/                                # x64 unpacked .app
-└── mac-arm64/                          # arm64 unpacked .app
+├── Treeline-0.2.0.dmg                  (x64)
+├── Treeline-0.2.0.dmg.blockmap
+├── Treeline-0.2.0-mac.zip              (x64)
+├── Treeline-0.2.0-mac.zip.blockmap
+├── Treeline-0.2.0-arm64.dmg
+├── Treeline-0.2.0-arm64.dmg.blockmap
+├── Treeline-0.2.0-arm64-mac.zip
+├── Treeline-0.2.0-arm64-mac.zip.blockmap
+├── mac/                                # x64 unpacked Treeline.app
+└── mac-arm64/                          # arm64 unpacked Treeline.app
 ```
 
 Local `npm run package:mac` runs unsigned by default — there's no cert
