@@ -68,7 +68,7 @@ To make your own packaged build:
 
 ```bash
 npm run package:mac
-open release/mac-arm64/treeline-app.app
+open release/mac-arm64/Treeline.app
 ```
 
 For a quick demo with pre-loaded fixture repos:

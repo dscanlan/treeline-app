@@ -1,5 +1,5 @@
 appId: dev.treeline.app
-productName: treeline-app
+productName: Treeline
 directories:
   output: release
   buildResources: resources
