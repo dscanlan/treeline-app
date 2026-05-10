@@ -32,9 +32,9 @@ body,
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #313244;
+  background: #1c1e24; /* Graphite — highlight */
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #6e738d;
+  background: #7a7f8c; /* Graphite — dim */
 }

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { Channels } from '@shared/ipc-channels';
-import type { TreelineApi } from '@shared/ipc-contract';
+import type { ScreenshotHydratePayload, TreelineApi } from '@shared/ipc-contract';
 import type {
   AppConfig,
   ProcessSnapshot,
@@ -8,6 +8,21 @@ import type {
   TerminalStatusUpdate,
   Worktree,
 } from '@shared/types';
+
+/**
+ * Sandboxed preload (see `sandbox: true` in main/index.ts) can't import
+ * Node built-ins like `node:os`. Main passes homedir via `additionalArguments`
+ * on webPreferences, which appears in our `process.argv` here. Empty-string
+ * fallback rather than throwing: nothing in the renderer should crash if the
+ * scratch flow is never exercised.
+ */
+function homeDirFromArgv(): string {
+  const PREFIX = '--treeline-home-dir=';
+  for (const a of process.argv) {
+    if (a.startsWith(PREFIX)) return a.slice(PREFIX.length);
+  }
+  return '';
+}
 
 // Helper: subscribe to an IPC event, optionally filter by predicate.
 function listen<T>(
@@ -27,9 +42,14 @@ const api: TreelineApi = {
   repos: {
     list: () => ipcRenderer.invoke(Channels.ReposList) as Promise<Repo[]>,
     add: (path) => ipcRenderer.invoke(Channels.ReposAdd, path) as Promise<Repo>,
+    create: (opts) => ipcRenderer.invoke(Channels.ReposCreate, opts) as Promise<Repo>,
     remove: (path) => ipcRenderer.invoke(Channels.ReposRemove, path) as Promise<void>,
     pickDirectory: () =>
       ipcRenderer.invoke(Channels.ReposPickDirectory) as Promise<string | null>,
+    dismissDiscovered: (path) =>
+      ipcRenderer.invoke(Channels.ReposDismissDiscovered, path) as Promise<void>,
+    onDiscovered: (cb) =>
+      listen<{ repoPath: string; viaCwd: string }>(Channels.ReposDiscovered, cb),
   },
 
   worktrees: {
@@ -87,6 +107,18 @@ const api: TreelineApi = {
 
   window: {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
+  },
+
+  // Snapshot of relevant system info. The value is baked into argv by main
+  // (see additionalArguments in createMainWindow) so it's available
+  // synchronously without an IPC round-trip.
+  system: {
+    homeDir: homeDirFromArgv(),
+  },
+
+  screenshot: {
+    onHydrate: (cb) => listen<ScreenshotHydratePayload>(Channels.ScreenshotHydrate, cb),
+    signalReady: () => ipcRenderer.send(Channels.ScreenshotReady),
   },
 };
 

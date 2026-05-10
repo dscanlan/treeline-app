@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand';
 export type Modal =
   | { kind: 'create-worktree'; repoPath: string }
   | { kind: 'delete-worktree'; repoPath: string; worktreePath: string; branch: string }
+  | { kind: 'create-repo' }
   | null;
 
 export interface ModalSlice {

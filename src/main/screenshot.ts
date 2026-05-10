@@ -1,0 +1,672 @@
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { Channels } from '@shared/ipc-channels';
+import type { ScreenshotHydratePayload } from '@shared/ipc-contract';
+import type { DetectedProcess, Repo, Scratch, Tab, Worktree } from '@shared/types';
+import type { PtyManager } from './pty-manager';
+
+/**
+ * Headless capture harness. Activated by setting `TREELINE_SCREENSHOT_ID=<id>`
+ * before launching electron. Main loads the renderer, waits for it to signal
+ * that `loadInitialState()` is done, runs the matching scenario's setup,
+ * waits for the next paint, calls `webContents.capturePage()`, writes a PNG
+ * to docs/img/, and exits.
+ *
+ * `webContents.capturePage()` returns the renderer bitmap only — no native
+ * title bar, no traffic lights, no shadow. That's a deliberate trade-off:
+ * full automation in exchange for losing macOS chrome. The interactive
+ * `scripts/take-screenshots.sh` flow remains for chrome-critical shots.
+ *
+ * Terminal-content scenarios (03/07/11/14) spawn real PTYs into mkdtemp
+ * directories with a clean PS1 so the captured prompt is predictable.
+ */
+
+// ── Fixture repos ───────────────────────────────────────────────────────────
+
+const REPO_TREELINE_APP: Repo = {
+  path: '/Users/example/code/treeline-app',
+  name: 'treeline-app',
+  addedAt: 1_700_000_000_000,
+};
+const WORKTREES_TREELINE_APP: Worktree[] = [
+  {
+    path: '/Users/example/code/treeline-app',
+    branch: 'main',
+    commit: 'a1b2c3d',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: false,
+  },
+  {
+    path: '/Users/example/code/treeline-app/feat-auth',
+    branch: 'feat-auth',
+    commit: 'b7c8d9e',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: false,
+  },
+  {
+    path: '/Users/example/code/treeline-app/.claude/worktrees/discovery-feat',
+    branch: 'worktree-discovery-feat',
+    commit: 'd4e5f6a',
+    isBare: false,
+    isDirty: true,
+    isCurrent: false,
+    isClaude: true,
+  },
+];
+
+const REPO_CGS: Repo = {
+  path: '/Users/example/code/cgs',
+  name: 'cgs',
+  addedAt: 1_715_000_000_000,
+};
+const WORKTREES_CGS: Worktree[] = [
+  {
+    path: '/Users/example/code/cgs',
+    branch: 'main',
+    commit: '693b890',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: false,
+  },
+  {
+    path: '/Users/example/code/cgs/.claude/worktrees/tender-conjuring-lamport',
+    branch: 'worktree-tender-conjuring-lamport',
+    commit: '89a557e',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: true,
+  },
+  {
+    path: '/Users/example/code/cgs/.claude/worktrees/serene-curious-knuth',
+    branch: 'worktree-serene-curious-knuth',
+    commit: 'c2d3e4f',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: true,
+  },
+];
+
+const REPO_DASHBOARD: Repo = {
+  path: '/Users/example/code/dashboard',
+  name: 'dashboard',
+  addedAt: 1_710_000_000_000,
+};
+const WORKTREES_DASHBOARD: Worktree[] = [
+  {
+    path: '/Users/example/code/dashboard',
+    branch: 'main',
+    commit: 'e5f6a7b',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: false,
+  },
+  {
+    path: '/Users/example/code/dashboard/auth-worktree',
+    branch: 'feat-auth-redesign',
+    commit: 'f1a2b3c',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: false,
+  },
+  {
+    path: '/Users/example/code/dashboard/bug-fix-worktree',
+    branch: 'fix-pagination-overflow',
+    commit: '234567a',
+    isBare: false,
+    isDirty: true,
+    isCurrent: false,
+    isClaude: false,
+  },
+];
+
+const ALL_WORKTREES = {
+  [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP,
+  [REPO_CGS.path]: WORKTREES_CGS,
+  [REPO_DASHBOARD.path]: WORKTREES_DASHBOARD,
+};
+
+// ── Scenario plumbing ──────────────────────────────────────────────────────
+
+interface ScenarioCtx {
+  win: BrowserWindow;
+  ptyManager: PtyManager | null;
+  /** Resources to clean up after capture (PTY ids + temp dirs). */
+  cleanups: Array<() => Promise<void>>;
+}
+
+type Scenario = (ctx: ScenarioCtx) => Promise<void>;
+
+const SCENARIOS: Record<string, Scenario> = {
+  // ── basic states ───────────────────────────────────────────────────────
+
+  '01-empty': async ({ win }) => {
+    sendHydrate(win, { reset: true });
+  },
+
+  '02-sidebar': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+    });
+  },
+
+  '04-create-modal': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      modal: { kind: 'create-worktree', repoPath: REPO_TREELINE_APP.path },
+    });
+  },
+
+  '05-delete-modal': async ({ win }) => {
+    const target = WORKTREES_TREELINE_APP[2]!; // the dirty Claude worktree
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      modal: {
+        kind: 'delete-worktree',
+        repoPath: REPO_TREELINE_APP.path,
+        worktreePath: target.path,
+        branch: target.branch,
+      },
+    });
+  },
+
+  '06-collapsed': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      sidebarCollapsed: true,
+    });
+  },
+
+  '08-filter': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      filter: 'auth',
+    });
+  },
+
+  '12-claude-group-expanded': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_CGS],
+      worktreesByRepo: { [REPO_CGS.path]: WORKTREES_CGS },
+    });
+  },
+
+  '13-dirty-marker': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD],
+      worktreesByRepo: { [REPO_DASHBOARD.path]: WORKTREES_DASHBOARD },
+    });
+  },
+
+  // ── auto-discovery flow ────────────────────────────────────────────────
+
+  '16-discovery-toast': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      pendingDiscoveries: [
+        {
+          repoPath: REPO_CGS.path,
+          viaCwd: '/Users/example/code/cgs/.claude/worktrees/tender-conjuring-lamport',
+        },
+      ],
+    });
+  },
+
+  '17-add-after-discovery': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_CGS, REPO_TREELINE_APP],
+      worktreesByRepo: {
+        [REPO_CGS.path]: WORKTREES_CGS,
+        [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP,
+      },
+      selected: REPO_CGS.path,
+    });
+  },
+
+  // ── hover-state captures ───────────────────────────────────────────────
+
+  '09-hover-repo-actions': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+    });
+    await delay(150);
+    await hoverElement(win, '[data-ss="repo-node"]');
+  },
+
+  '10-hover-worktree-delete': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+    });
+    await delay(150);
+    await hoverElement(
+      win,
+      '[data-ss="worktree-row"][data-ss-path$="discovery-feat"]',
+    );
+  },
+
+  '15-sidebar-collapse-btn': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+    });
+    await delay(150);
+    await hoverElement(win, '[data-ss="sidebar-toggle"]');
+  },
+
+  // ── terminal-content captures ──────────────────────────────────────────
+  // Spawn real PTYs in mkdtemp dirs with PS1='> ' so the prompt is clean
+  // and predictable. The PTY's xterm subscribes via the ptyId we feed into
+  // the tabs hydrate, so subsequent `pty.write` calls render in the canvas.
+
+  '03-terminal': async (ctx) => {
+    const { tab } = await spawnTabPty(ctx, 'main');
+    // Wait for the shell to finish sourcing rc files. Without this the
+    // typed commands get echoed but never executed — the queued input
+    // sits in the PTY buffer until init completes.
+    await waitForPtySettle(ctx, tab.ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: REPO_TREELINE_APP.path,
+    });
+    // Let xterm mount and subscribe to PTY data before we write commands.
+    await delay(400);
+    await typeAndSettle(ctx, tab.ptyId, [
+      "clear\n",
+      "echo 'treeline-app on main · ready'\n",
+      "git --version\n",
+      "ls -la 2>/dev/null | head -6\n",
+    ]);
+  },
+
+  '07-multi-tabs': async (ctx) => {
+    const a = await spawnTabPty(ctx, 'main');
+    const b = await spawnTabPty(ctx, 'feat-auth');
+    await Promise.all([
+      waitForPtySettle(ctx, a.tab.ptyId),
+      waitForPtySettle(ctx, b.tab.ptyId),
+    ]);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [a.tab, b.tab],
+      activeTabId: b.tab.id,
+      selected: REPO_TREELINE_APP.path,
+      terminalStatus: [
+        { ptyId: a.tab.ptyId, status: 'idle', foregroundCmd: null },
+        { ptyId: b.tab.ptyId, status: 'running', foregroundCmd: 'npm test' },
+      ],
+    });
+    await delay(400);
+    await typeAndSettle(ctx, a.tab.ptyId, ["clear\n", "echo 'main · idle prompt'\n"]);
+    await typeAndSettle(ctx, b.tab.ptyId, [
+      "clear\n",
+      "echo 'treeline-app on feat-auth'\n",
+      "echo 'npm test  (4 of 32 suites)'\n",
+    ]);
+  },
+
+  '11-claude-tab-running': async (ctx) => {
+    const wt = WORKTREES_TREELINE_APP[2]!; // discovery-feat (Claude path)
+    const { tab } = await spawnTabPty(ctx, 'discovery-feat');
+    await waitForPtySettle(ctx, tab.ptyId);
+    const fakeClaude: DetectedProcess = {
+      pid: 31415,
+      kind: 'claude',
+      cwd: wt.path,
+      idle: false,
+    };
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      processesByWorktreePath: { [wt.path]: [fakeClaude] },
+      terminalStatus: [
+        { ptyId: tab.ptyId, status: 'running', foregroundCmd: 'claude' },
+      ],
+    });
+    await delay(400);
+    await typeAndSettle(ctx, tab.ptyId, [
+      "clear\n",
+      "printf '\\033[35m\\xe2\\x9c\\xa6 Claude Code session\\033[0m\\n'\n",
+      "printf 'Worktree: discovery-feat\\n'\n",
+      "printf 'Status: running \\xc2\\xb7 awaiting input\\n'\n",
+    ]);
+  },
+
+  '14-status-dots': async (ctx) => {
+    const a = await spawnTabPty(ctx, 'main'); // running
+    const b = await spawnTabPty(ctx, 'feat-auth'); // idle
+    await Promise.all([
+      waitForPtySettle(ctx, a.tab.ptyId),
+      waitForPtySettle(ctx, b.tab.ptyId),
+    ]);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [a.tab, b.tab],
+      activeTabId: a.tab.id,
+      selected: REPO_TREELINE_APP.path,
+      terminalStatus: [
+        { ptyId: a.tab.ptyId, status: 'running', foregroundCmd: 'npm test' },
+        { ptyId: b.tab.ptyId, status: 'idle', foregroundCmd: null },
+      ],
+    });
+    await delay(400);
+    await typeAndSettle(ctx, a.tab.ptyId, [
+      "clear\n",
+      "echo 'npm test' && echo '… 4 of 32 passing'\n",
+    ]);
+  },
+
+  // ── add-button tooltip (custom in-renderer overlay) ────────────────────
+
+  // ── scratch terminals + create-repo modal ──────────────────────────────
+  // Surface the two new sidebar affordances. `19` shows the auto-numbered
+  // scratch rows pinned above the repo list with a divider; `20` shows the
+  // CreateRepoModal in its default mode so docs can illustrate the new-repo
+  // flow without recording a video.
+
+  '19-scratch-terminals': async ({ win }) => {
+    const scratchA: Scratch = {
+      id: 'scratch-1-id',
+      label: 'Scratch 1',
+      ptyId: 'scratch-1-id',
+      cwd: '/Users/example',
+      createdAt: 1_730_000_000_000,
+    };
+    const scratchB: Scratch = {
+      id: 'scratch-2-id',
+      label: 'Scratch 2',
+      ptyId: 'scratch-2-id',
+      cwd: '/Users/example',
+      createdAt: 1_730_000_001_000,
+    };
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      scratches: [scratchA, scratchB],
+      // Highlight Scratch 1 so the selection styling is visible in the shot.
+      selectedScratchId: scratchA.id,
+    });
+  },
+
+  '20-create-repo-modal': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      modal: { kind: 'create-repo' },
+    });
+  },
+
+  '18-add-button-tooltip': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      forceTooltipNear: {
+        // The Add button is the only one with this exact title prefix;
+        // selecting by class would be brittle.
+        selector: 'button[title^="Add an existing repo"]',
+        text: 'Add an existing repo. Pick a repo root, a subdirectory, or a worktree path — treeline resolves to the parent repo.',
+      },
+    });
+    await delay(150);
+    await hoverElement(win, 'button[title^="Add an existing repo"]');
+  },
+};
+
+// ── Public API ─────────────────────────────────────────────────────────────
+
+export function getScreenshotId(): string | null {
+  const v = process.env['TREELINE_SCREENSHOT_ID'];
+  return v && v.length > 0 ? v : null;
+}
+
+export async function runScreenshot(
+  win: BrowserWindow,
+  id: string,
+  ptyManager: PtyManager | null,
+): Promise<void> {
+  const setup = SCENARIOS[id];
+  if (!setup) {
+    console.error(`[screenshot] unknown scenario id: ${id}`);
+    console.error(`[screenshot] known: ${Object.keys(SCENARIOS).join(', ')}`);
+    app.exit(2);
+    return;
+  }
+
+  await waitForRendererReady(win, 5000);
+
+  // Park the cursor in the top-left empty gutter so we don't render any
+  // element in :hover state by default. Hover scenarios override this.
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: 5, y: 5 });
+
+  const ctx: ScenarioCtx = { win, ptyManager, cleanups: [] };
+
+  // Always call `app.exit` — historically this used to live after the try
+  // block, which meant a throwing scenario (e.g. hoverElement against a
+  // selector that no longer matches) left Electron alive indefinitely. The
+  // shell loop then waited forever instead of failing fast. Track exit code
+  // explicitly and call exit in the finally.
+  let exitCode = 0;
+  try {
+    await setup(ctx);
+
+    // Two animation frames is enough for Zustand → React → DOM. 250ms is a
+    // comfortable upper bound that still keeps the run fast.
+    await delay(250);
+
+    const image = await win.webContents.capturePage();
+    const outPath = join(__dirname, '..', '..', 'docs', 'img', `${id}.png`);
+    await mkdir(dirname(outPath), { recursive: true });
+    await writeFile(outPath, image.toPNG());
+    // eslint-disable-next-line no-console
+    console.log(`[screenshot] saved ${outPath}`);
+  } catch (err) {
+    exitCode = 1;
+    console.error(`[screenshot] scenario ${id} failed:`, err);
+  } finally {
+    // Best-effort cleanup of PTYs and temp dirs spawned by this scenario.
+    for (const fn of ctx.cleanups) {
+      await fn().catch(() => {
+        /* ignore */
+      });
+    }
+    app.exit(exitCode);
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function sendHydrate(win: BrowserWindow, payload: ScreenshotHydratePayload): void {
+  win.webContents.send(Channels.ScreenshotHydrate, payload);
+}
+
+async function hoverElement(win: BrowserWindow, selector: string): Promise<void> {
+  const result = (await win.webContents.executeJavaScript(
+    `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`,
+  )) as { x: number; y: number } | null;
+
+  if (!result) {
+    throw new Error(`[screenshot] no element matches selector: ${selector}`);
+  }
+  win.webContents.sendInputEvent({ type: 'mouseMove', x: result.x, y: result.y });
+}
+
+/**
+ * Spawn a real PTY inside a fresh mkdtemp directory and return enough metadata
+ * to feed into a Tab hydrate payload. Registers cleanup callbacks on the ctx
+ * so the PTY is killed and the directory is removed after the capture.
+ *
+ * The `branchName` is purely cosmetic — it determines the tab title shown
+ * in the TabBar (since `Tab.title = basename(cwd)`).
+ */
+async function spawnTabPty(
+  ctx: ScenarioCtx,
+  branchName: string,
+): Promise<{ tab: Tab; tmpDir: string }> {
+  if (!ctx.ptyManager) throw new Error('[screenshot] PtyManager not available');
+
+  const tmpDir = await mkdtemp(join(tmpdir(), `treeline-ss-${branchName}-`));
+  // Override PS1 so the prompt is a clean `> ` instead of the user's full
+  // shell prompt with paths and git branches that vary by machine. Disable
+  // history so background scrollback is empty.
+  const env = {
+    ...process.env,
+    PS1: '> ',
+    HISTFILE: '/dev/null',
+    PROMPT: '> ',
+  } as NodeJS.ProcessEnv;
+  const oldEnv = process.env;
+  process.env = env;
+  let ptyId: string;
+  try {
+    const spawned = ctx.ptyManager.spawn({ cwd: tmpDir, cols: 100, rows: 24 });
+    ptyId = spawned.id;
+  } finally {
+    process.env = oldEnv;
+  }
+
+  const tab: Tab = {
+    id: ptyId,
+    ptyId,
+    cwd: `/Users/example/code/treeline-app/${branchName}`,
+    title: branchName,
+    status: 'idle',
+    foregroundCmd: null,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+  };
+
+  ctx.cleanups.push(async () => {
+    await ctx.ptyManager?.kill(ptyId).catch(() => {
+      /* ignore */
+    });
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {
+      /* ignore */
+    });
+  });
+
+  return { tab, tmpDir };
+}
+
+/**
+ * Resolve when the PTY has been quiet for `settleMs` (no `data` events in
+ * that window). Used to detect "shell finished initialising" and "command
+ * finished running" without fragile fixed delays. Also resolves on the
+ * `maxWaitMs` deadline so a misbehaving shell can't hang the harness.
+ */
+function waitForPtySettle(
+  ctx: ScenarioCtx,
+  ptyId: string,
+  settleMs = 600,
+  maxWaitMs = 6000,
+): Promise<void> {
+  const mgr = ctx.ptyManager;
+  if (!mgr) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let lastChunkAt = Date.now();
+    const start = Date.now();
+
+    const onData = (e: { id: string }) => {
+      if (e.id === ptyId) lastChunkAt = Date.now();
+    };
+    mgr.on('data', onData);
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const settled = now - lastChunkAt >= settleMs;
+      const expired = now - start >= maxWaitMs;
+      if (settled || expired) {
+        clearInterval(interval);
+        mgr.off('data', onData);
+        resolve();
+      }
+    }, 100);
+  });
+}
+
+/**
+ * Write each line into the PTY and wait for the shell to settle between
+ * commands. Cheaper than fixed delays for short commands and slow enough
+ * for `git --version` etc. to finish printing before the next one starts.
+ */
+async function typeAndSettle(
+  ctx: ScenarioCtx,
+  ptyId: string,
+  lines: string[],
+): Promise<void> {
+  for (const line of lines) {
+    ctx.ptyManager?.write(ptyId, line);
+    await waitForPtySettle(ctx, ptyId, 400, 3000);
+  }
+}
+
+function waitForRendererReady(win: BrowserWindow, timeoutMs: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const onReady = (e: Electron.IpcMainEvent) => {
+      if (e.sender !== win.webContents) return;
+      ipcMain.off(Channels.ScreenshotReady, onReady);
+      clearTimeout(timer);
+      resolve();
+    };
+    ipcMain.on(Channels.ScreenshotReady, onReady);
+
+    const timer = setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.warn('[screenshot] renderer-ready signal timed out; capturing anyway');
+      ipcMain.off(Channels.ScreenshotReady, onReady);
+      resolve();
+    }, timeoutMs);
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

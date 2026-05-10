@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { Worktree } from '@shared/types';
 import { detectClaudeWorktree } from '@shared/claude-detect';
 import { parseWorktreePorcelain } from './git-porcelain';
@@ -27,6 +28,35 @@ export async function repoRootAt(path: string): Promise<string | null> {
   });
   const trimmed = stdout.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Resolves any path inside a git repo to the **parent** working tree —
+ * `cgs/.claude/worktrees/foo` → `cgs`, `cgs/src/util` → `cgs`, `cgs` → `cgs`.
+ *
+ * Implemented via `git rev-parse --git-common-dir`, which always points at the
+ * shared `.git` directory regardless of whether `path` is a main checkout, a
+ * subdirectory, or a linked worktree. Returns null if `path` is not inside any
+ * git repository. For bare repos, returns the `.git` directory itself (callers
+ * may want to surface that as an error rather than tracking it; treeline's
+ * worktree flow doesn't currently make sense for bare repos).
+ */
+export async function resolveParentRepoPath(path: string): Promise<string | null> {
+  // `--path-format=absolute` is supported since git 2.31 (March 2021); macOS's
+  // bundled git is newer than that. Without it, common-dir is sometimes printed
+  // relative to cwd, which leads to wrong dirname() results.
+  const { stdout } = await run(
+    GIT,
+    ['rev-parse', '--path-format=absolute', '--git-common-dir', '--is-bare-repository'],
+    { cwd: path, throwOnError: false },
+  );
+  // Output is two lines: <abs path to common .git dir> then <true|false>.
+  const lines = stdout.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+  const commonDir = lines[0]!;
+  const isBare = lines[1] === 'true';
+  if (!commonDir) return null;
+  return isBare ? commonDir : dirname(commonDir);
 }
 
 /** True if the worktree at `path` has any uncommitted or untracked changes. */
@@ -98,4 +128,17 @@ export async function removeWorktree(path: string): Promise<void> {
   // Run from inside the worktree itself — it still exists on disk at this
   // point, and from there git can locate the parent gitdir.
   await run(GIT, ['worktree', 'remove', '--force', path], { cwd: path });
+}
+
+/**
+ * Initialize a fresh git repo at `path` on the given branch. `git init -b` has
+ * been supported since git 2.28 (Jul 2020) — macOS bundled git is newer.
+ *
+ * Caller is responsible for ensuring `path` exists and is NOT already a repo;
+ * `git init` is idempotent so re-running on an existing repo would silently
+ * succeed, which would be a surprising UX. The IPC layer (repos-create.ts)
+ * enforces the not-already-a-repo precondition.
+ */
+export async function initRepo(path: string, branch: string): Promise<void> {
+  await run(GIT, ['init', '-b', branch], { cwd: path });
 }

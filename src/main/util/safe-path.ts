@@ -23,3 +23,24 @@ export function validateBranchName(branch: unknown): string {
   }
   return branch;
 }
+
+/**
+ * Validate a directory name (a single path segment, NOT a full path). Used
+ * when the user types the folder name for a new repo into CreateRepoModal —
+ * we then join it with a separately-validated parent dir. Rejecting separators
+ * here prevents the user from sneaking in `../escape` or `sub/dir` shenanigans
+ * via the name field.
+ */
+export function validateFolderName(name: unknown): string {
+  if (typeof name !== 'string') throw new Error('folder name must be a string');
+  const trimmed = name.trim();
+  if (trimmed.length === 0) throw new Error('folder name must not be empty');
+  if (trimmed.includes('\0')) throw new Error('folder name contains NUL byte');
+  if (trimmed.includes('/') || trimmed.includes('\\')) {
+    throw new Error('folder name must not contain path separators');
+  }
+  if (trimmed === '.' || trimmed === '..') {
+    throw new Error('folder name must not be "." or ".."');
+  }
+  return trimmed;
+}

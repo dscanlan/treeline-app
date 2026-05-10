@@ -23,7 +23,8 @@ describe('ReposStore', () => {
     expect(cfg.repos).toEqual([]);
     expect(cfg.codeRoot).toBeNull();
     expect(cfg.sidebarCollapsed).toBe(false);
-    expect(cfg.schemaVersion).toBe(1);
+    expect(cfg.dismissedRepos).toEqual([]);
+    expect(cfg.schemaVersion).toBe(2);
   });
 
   it('addRepo + removeRepo round-trips through disk', async () => {
@@ -68,7 +69,7 @@ describe('ReposStore', () => {
     const store = new ReposStore(configPath);
     const cfg = store.load();
     expect(cfg.repos).toEqual([]);
-    expect(cfg.schemaVersion).toBe(1);
+    expect(cfg.schemaVersion).toBe(2);
   });
 
   it('migrates a partial config (missing keys) without losing data', () => {
@@ -76,7 +77,7 @@ describe('ReposStore', () => {
       configPath,
       JSON.stringify({
         repos: [{ path: '/x', name: 'x', addedAt: 100 }],
-        // codeRoot, sidebarCollapsed, schemaVersion all missing
+        // codeRoot, sidebarCollapsed, dismissedRepos, schemaVersion all missing
       }),
     );
     const store = new ReposStore(configPath);
@@ -84,7 +85,38 @@ describe('ReposStore', () => {
     expect(cfg.repos).toHaveLength(1);
     expect(cfg.codeRoot).toBeNull();
     expect(cfg.sidebarCollapsed).toBe(false);
-    expect(cfg.schemaVersion).toBe(1);
+    expect(cfg.dismissedRepos).toEqual([]);
+    expect(cfg.schemaVersion).toBe(2);
+  });
+
+  it('dismissRepo persists across reloads and is idempotent', async () => {
+    const a = new ReposStore(configPath);
+    a.load();
+    await a.dismissRepo('/Users/me/scratch');
+    await a.dismissRepo('/Users/me/scratch'); // dup
+    await a.dismissRepo('/Users/me/other');
+    const b = new ReposStore(configPath);
+    expect(b.load().dismissedRepos).toEqual([
+      '/Users/me/scratch',
+      '/Users/me/other',
+    ]);
+  });
+
+  it('migrates a v1 config (no dismissedRepos field) by defaulting to []', () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        repos: [{ path: '/x', name: 'x', addedAt: 100 }],
+        codeRoot: null,
+        sidebarCollapsed: true,
+        schemaVersion: 1,
+      }),
+    );
+    const store = new ReposStore(configPath);
+    const cfg = store.load();
+    expect(cfg.dismissedRepos).toEqual([]);
+    expect(cfg.sidebarCollapsed).toBe(true);
+    expect(cfg.schemaVersion).toBe(2);
   });
 
   it('writes atomically — the tmp file is never left behind on success', async () => {

@@ -14,6 +14,7 @@ export function RepoNode({ repo }: Props) {
   const filter = useStore((s) => s.filter.toLowerCase());
   const openModal = useStore((s) => s.openModal);
   const setRepos = useStore((s) => s.setRepos);
+  const selected = useStore((s) => s.selectedSidebarPath === repo.path);
 
   const filtered = filter
     ? worktrees.filter(
@@ -43,8 +44,12 @@ export function RepoNode({ repo }: Props) {
   const onNewTerminal = () => void openTabAt(repo.path, { forceNew: true });
 
   return (
-    <div className="group/repo mt-2">
-      <div className="flex items-center gap-1 rounded px-2 py-1 hover:bg-treeline-highlight">
+    <div className="group/repo mt-2" data-ss="repo-node" data-ss-repo={repo.path}>
+      <div
+        className={`flex items-center gap-1 rounded px-2 py-1 ${
+          selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight'
+        }`}
+      >
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}

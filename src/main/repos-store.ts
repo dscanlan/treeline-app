@@ -7,7 +7,8 @@ const DEFAULT_CONFIG: AppConfig = {
   repos: [],
   codeRoot: null,
   sidebarCollapsed: false,
-  schemaVersion: 1,
+  dismissedRepos: [],
+  schemaVersion: 2,
 };
 
 /**
@@ -82,6 +83,16 @@ export class ReposStore {
     await this.save({ ...this.get(), sidebarCollapsed: v });
   }
 
+  /**
+   * Mark `absPath` as a repo the user does not want to be prompted about when
+   * their cwd lands inside it. No-op if it's already on the list.
+   */
+  async dismissRepo(absPath: string): Promise<void> {
+    const cfg = this.get();
+    if (cfg.dismissedRepos.includes(absPath)) return;
+    await this.save({ ...cfg, dismissedRepos: [...cfg.dismissedRepos, absPath] });
+  }
+
   /** Coerce arbitrary disk content into a current-schema AppConfig. */
   private migrate(raw: Partial<AppConfig> | null): AppConfig {
     const base: AppConfig = { ...DEFAULT_CONFIG };
@@ -105,7 +116,12 @@ export class ReposStore {
     if (typeof raw.sidebarCollapsed === 'boolean') {
       base.sidebarCollapsed = raw.sidebarCollapsed;
     }
-    // schemaVersion is rewritten to 1 on every save — no need to read it.
+    if (Array.isArray(raw.dismissedRepos)) {
+      base.dismissedRepos = raw.dismissedRepos.filter(
+        (p): p is string => typeof p === 'string',
+      );
+    }
+    // schemaVersion is rewritten to current on every save — no need to read it.
     return base;
   }
 }

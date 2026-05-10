@@ -101,7 +101,9 @@ up on exit.
 
 | Action                          | Where                                                   |
 | ------------------------------- | ------------------------------------------------------- |
-| Add a repo                      | `+ Add repo` button (native picker)                    |
+| Add an existing repo            | `+ Add repo` button (native picker)                    |
+| Create a new repo               | `✱ New repo` button (modal — `git init` in a new or empty folder) |
+| Open a scratch terminal         | `>_ Scratch` button (shell in your home directory, no repo) |
 | Filter worktrees by branch/path | `Filter…` input above the repo list                    |
 | Open repo root in a new tab     | `>_` icon on hover (next to the repo name)             |
 | Create a worktree               | `+` icon on hover (next to the repo name)              |
@@ -139,6 +141,40 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
 
 Terminals stay mounted (consuming PTY data into their scrollback) when
 not visible, so switching back is instant — no replay flicker.
+
+### Scratch terminals
+
+![Two auto-numbered scratch terminals pinned above the repo list with a divider; the first is selected and highlighted](docs/img/19-scratch-terminals.png)
+
+Sometimes you want a shell that isn't tied to a repo — to poke at
+`~/Downloads`, run an ad-hoc script, or just type `man tar`. Click
+`>_ Scratch` and a new auto-numbered terminal (`Scratch 1`, `Scratch 2`,
+…) spawns in your home directory and pins itself above the repo list.
+They're ephemeral: closing the tab (or typing `exit`) removes the
+sidebar row, and quitting the app drops them entirely — no persistence,
+no surprises on the next launch.
+
+If a scratch terminal `cd`s into a tracked repo's path, the regular
+status indicators light up the same way they would on any tab. And if
+it lands inside an *untracked* repo, the discovered-repo toast still
+fires — promote it to the sidebar in one click.
+
+### Create a new repo
+
+![New repo modal with a Create-new-folder / Use-existing-folder toggle, parent dir + browse, folder name, and initial branch fields](docs/img/20-create-repo-modal.png)
+
+Click `✱ New repo` to skip the `mkdir foo && cd foo && git init`
+shell dance. Pick whether you want to create a fresh folder or
+initialize an existing empty one, choose where it lives, set the
+initial branch (`main` by default), and treeline runs `git init -b
+<branch>`, registers the repo in the sidebar, expands it, and drops
+you into a terminal at the root — ready to start committing.
+
+Validation is strict: a "create new" target can't already exist, and an
+"existing folder" target must be a directory that isn't a repo yet and
+contains no files (the macOS `.DS_Store` Finder artifact doesn't
+count). Errors render inline in the modal so a wrong pick doesn't lose
+the rest of your input.
 
 ### Create / delete worktrees
 
@@ -201,7 +237,10 @@ The short version:
 - **`src/main/`** — privileged work: spawning shells, running git,
   watching the filesystem, polling the process table.
 - **`src/preload/index.ts`** — single contextBridge that exposes
-  `window.treeline.{repos, worktrees, pty, processes, terminalStatus, config, window}`.
+  `window.treeline.{repos, worktrees, pty, processes, terminalStatus, config, window, system}`.
+  The `system.homeDir` value is injected at window-creation time via
+  `webPreferences.additionalArguments`, since a sandboxed preload can't
+  `import 'node:os'` directly.
 - **`src/renderer/`** — React UI; gets data from main only via the
   preload bridge. `contextIsolation: true`, `nodeIntegration: false`,
   `sandbox: true`.
@@ -209,7 +248,7 @@ The short version:
 ## Testing
 
 ```bash
-npm test              # vitest, ~62 tests across 7 suites
+npm test              # vitest, ~105 tests across 9 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -220,8 +259,10 @@ The suites:
 | -------------------- | ------------------------------------------------------- |
 | `claude-detect`      | `.claude/worktrees/` paths and `worktree-*` branches    |
 | `git-porcelain`      | The `git worktree list --porcelain` parser              |
-| `git`                | Real-temp-repo round-trips (list/create/remove/dirty)   |
+| `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init) |
 | `repos-store`        | Atomic writes, schema migration, corrupt-file recovery  |
+| `repos-create`       | `git init` validation paths (new vs existing folder, branch, collisions) |
+| `repo-discovery`     | PTY-cwd → untracked-repo detection + dismissed-list gates |
 | `pty-manager`        | Chunk coalescing, SIGHUP→SIGKILL escalation             |
 | `terminal-status`    | `running` / `idle` / `exited` deltas                    |
 | `process-monitor`    | cputime parsing, longest-prefix attribution, idle ≥10 s |
@@ -262,17 +303,23 @@ src/
 │   ├── process-monitor.ts        # 2 s ps + lsof scan; AI CLI detection
 │   ├── terminal-status.ts        # 1 s tick; per-PTY foreground state
 │   ├── worktree-watcher.ts       # fs.watch + 5 s poll fallback
+│   ├── repo-discovery.ts         # untracked-repo detection from PTY cwds
 │   ├── repos-store.ts            # atomic JSON config in app userData
+│   ├── repos-create.ts           # `git init` flow: validation + register
+│   ├── screenshot.ts             # dev-only headless capture harness
 │   ├── ipc/                      # one file per domain
 │   └── util/             # exec, safe-path
 ├── preload/index.ts      # contextBridge surface
 └── renderer/
     ├── App.tsx           # top-level layout
-    ├── components/       # Sidebar, MainArea, TabBar, terminals, modals
-    ├── store/            # Zustand: repos, tabs, processes, modal slices
+    ├── components/       # Sidebar (incl. Scratch{List,Row,TerminalButton},
+    │                     #   NewRepoButton), MainArea, TabBar, terminals,
+    │                     #   modals (CreateRepo, CreateWorktree, DeleteWorktree)
+    ├── store/            # Zustand: repos, tabs, processes, modal, scratch,
+    │                     #   discoveries, screenshot slices
     ├── hooks/useXterm.ts
     ├── ipc/client.ts     # subscribes IPC events into the store
-    └── actions/tabs.ts   # focusOrOpen / closeTab
+    └── actions/          # tabs.ts (focusOrOpen / closeTab), scratch.ts
 ```
 
 ## Caveats

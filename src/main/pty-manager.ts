@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { run } from './util/exec';
 
 // Avoid binding node-pty's IPty type at module-evaluation time (the binding may
 // not be available in vitest's Node runtime where the .node addon was built
@@ -23,6 +24,13 @@ export interface SpawnOpts {
 
 export type SpawnFn = (opts: SpawnOpts) => IPtyLike;
 
+/**
+ * Resolves a shell's current cwd. Defaults to `lsof -p <pid> -d cwd`.
+ * Injectable so tests can return a deterministic value without touching `lsof`.
+ * Should resolve to `null` on any failure rather than throwing.
+ */
+export type CwdProbe = (pid: number) => Promise<string | null>;
+
 interface PtyEntry {
   proc: IPtyLike;
   shellPid: number;
@@ -30,6 +38,16 @@ interface PtyEntry {
   flushScheduled: boolean;
   dataSub: { dispose(): void };
   exitSub: { dispose(): void };
+  /** Last-known cwd. Seeded with opts.cwd at spawn; updated by OSC 7 + lsof. */
+  cwd: string;
+  /**
+   * Tail of recent output retained so an OSC 7 sequence that straddles two
+   * chunk boundaries still parses on the next chunk. Capped at OSC_TAIL_MAX.
+   */
+  oscScanTail: string;
+  /** epoch ms of the most recent OSC 7 observation (0 if never). */
+  lastOscAt: number;
+  cwdPollTimer: NodeJS.Timeout | null;
 }
 
 export interface PtyDataEvent {
@@ -48,21 +66,41 @@ export interface PtySpawnedEvent {
   shellPid: number;
 }
 
+export interface PtyCwdChangedEvent {
+  id: string;
+  cwd: string;
+}
+
 /**
  * Owns node-pty processes. Coalesces high-frequency data chunks into one event
  * per microtask tick so the IPC layer relays a manageable number of messages
  * to the renderer (otherwise every ~64-byte read becomes its own ipcRenderer
  * event during something like `npm install`).
  *
+ * Per-PTY cwd tracking has two sources:
+ *   1. **OSC 7** — most modern shells emit `ESC ] 7 ; file://host/path BEL` on
+ *      each prompt. Apple's stock zsh/bash do; user-customised dotfiles often
+ *      drop it. Parsed inline from data chunks; sub-prompt latency.
+ *   2. **lsof poll** — `lsof -p <shellPid> -d cwd -Fn` every `cwdPollMs`. Acts
+ *      as a floor for shells without OSC 7. Skipped when OSC 7 was observed
+ *      within the last 2 intervals (so OSC-7-enabled shells pay zero lsof
+ *      cost in steady state).
+ *
  * Emits:
- *   - 'spawned'  { id, shellPid }
- *   - 'data'     { id, chunk }
- *   - 'exit'     { id, code, signal }
+ *   - 'spawned'      { id, shellPid }
+ *   - 'data'         { id, chunk }
+ *   - 'exit'         { id, code, signal }
+ *   - 'cwd-changed'  { id, cwd }   — fires once on spawn with opts.cwd, then
+ *                                    only on transitions
  */
 export class PtyManager extends EventEmitter {
   private readonly ptys = new Map<string, PtyEntry>();
 
-  constructor(private readonly spawnFn: SpawnFn) {
+  constructor(
+    private readonly spawnFn: SpawnFn,
+    private readonly cwdProbe: CwdProbe = defaultCwdProbe,
+    private readonly cwdPollMs: number = 5000,
+  ) {
     super();
   }
 
@@ -85,10 +123,21 @@ export class PtyManager extends EventEmitter {
         } satisfies PtyExitEvent);
         this.disposeEntry(id);
       }),
+      cwd: opts.cwd,
+      oscScanTail: '',
+      lastOscAt: 0,
+      cwdPollTimer: null,
     };
 
     this.ptys.set(id, entry);
     this.emit('spawned', { id, shellPid: proc.pid } satisfies PtySpawnedEvent);
+    // Surface the initial cwd so subscribers don't need to special-case spawn.
+    this.emit('cwd-changed', { id, cwd: opts.cwd } satisfies PtyCwdChangedEvent);
+
+    if (this.cwdPollMs > 0) {
+      entry.cwdPollTimer = setInterval(() => void this.pollCwd(id), this.cwdPollMs);
+    }
+
     return { id, shellPid: proc.pid };
   }
 
@@ -152,15 +201,77 @@ export class PtyManager extends EventEmitter {
     return [...this.ptys.entries()].map(([id, e]) => ({ id, shellPid: e.shellPid }));
   }
 
+  /** Last-known cwd of `id`, or undefined if no such PTY. */
+  cwdOf(id: string): string | undefined {
+    return this.ptys.get(id)?.cwd;
+  }
+
   // ── internals ──────────────────────────────────────────────────────────────
 
   private queueChunk(id: string, chunk: string): void {
     const entry = this.ptys.get(id);
     if (!entry) return;
+    this.scanForOsc7(id, entry, chunk);
     entry.pendingChunks.push(chunk);
     if (!entry.flushScheduled) {
       entry.flushScheduled = true;
       setImmediate(() => this.flushNow(id));
+    }
+  }
+
+  /**
+   * Inspect a chunk (concatenated with the prior scan tail) for OSC 7 cwd
+   * notifications. Updates `entry.cwd` and emits `cwd-changed` on transitions.
+   * Retains a bounded suffix as the next scan tail so a sequence split across
+   * chunks still resolves on the following call.
+   */
+  private scanForOsc7(id: string, entry: PtyEntry, chunk: string): void {
+    const buf = entry.oscScanTail + chunk;
+    let lastEnd = 0;
+    let foundCwd: string | null = null;
+
+    OSC7_RE.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = OSC7_RE.exec(buf)) !== null) {
+      const decoded = decodeOsc7Body(match[1]!);
+      if (decoded) foundCwd = decoded;
+      lastEnd = OSC7_RE.lastIndex;
+    }
+
+    // Tail = anything after the last fully-matched sequence that still might
+    // contain the start of a new (partial) one. Capped so a malformed stream
+    // missing its terminator doesn't grow the buffer without bound.
+    const after = buf.slice(lastEnd);
+    const partialStart = after.lastIndexOf(OSC7_PREFIX);
+    entry.oscScanTail = partialStart === -1
+      ? ''
+      : after.slice(partialStart, partialStart + OSC_TAIL_MAX);
+
+    if (foundCwd !== null) {
+      entry.lastOscAt = Date.now();
+      if (foundCwd !== entry.cwd) {
+        entry.cwd = foundCwd;
+        this.emit('cwd-changed', { id, cwd: foundCwd } satisfies PtyCwdChangedEvent);
+      }
+    }
+  }
+
+  /**
+   * Resolve the shell's cwd via the injected probe. Skipped if OSC 7 was seen
+   * recently — that signal is faster and free.
+   */
+  private async pollCwd(id: string): Promise<void> {
+    const entry = this.ptys.get(id);
+    if (!entry) return;
+    if (Date.now() - entry.lastOscAt < this.cwdPollMs * 2) return;
+
+    const cwd = await this.cwdProbe(entry.shellPid);
+    // Re-fetch: the entry may have been disposed during the await.
+    const live = this.ptys.get(id);
+    if (!live) return;
+    if (cwd && cwd !== live.cwd) {
+      live.cwd = cwd;
+      this.emit('cwd-changed', { id, cwd } satisfies PtyCwdChangedEvent);
     }
   }
 
@@ -180,6 +291,10 @@ export class PtyManager extends EventEmitter {
   private disposeEntry(id: string): void {
     const entry = this.ptys.get(id);
     if (!entry) return;
+    if (entry.cwdPollTimer) {
+      clearInterval(entry.cwdPollTimer);
+      entry.cwdPollTimer = null;
+    }
     try {
       entry.dataSub.dispose();
     } catch {
@@ -193,6 +308,64 @@ export class PtyManager extends EventEmitter {
     this.ptys.delete(id);
   }
 }
+
+// ── OSC 7 parsing ───────────────────────────────────────────────────────────
+
+const OSC7_PREFIX = '\x1b]7;';
+/** Body must not contain BEL (terminator) or ESC (start of ST terminator). */
+// eslint-disable-next-line no-control-regex
+const OSC7_RE = /\x1b\]7;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+/**
+ * Cap on the bytes carried over between chunks while waiting for an OSC 7
+ * terminator. 4 KB comfortably exceeds any plausible cwd path even with
+ * percent-encoding; anything longer is malformed and gets truncated.
+ */
+const OSC_TAIL_MAX = 4096;
+
+/**
+ * Decode an OSC 7 body of the form `file://[host]/percent-encoded-path`.
+ * Returns the absolute path or null if the body isn't a parseable file URL.
+ */
+function decodeOsc7Body(body: string): string | null {
+  if (!body.startsWith('file://')) return null;
+  const rest = body.slice('file://'.length);
+  const slash = rest.indexOf('/');
+  if (slash === -1) return null;
+  const encoded = rest.slice(slash); // keep the leading slash
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
+}
+
+// ── default cwd probe ───────────────────────────────────────────────────────
+
+/**
+ * `lsof -p <pid> -d cwd -Fn` prints three lines:
+ *
+ *   p<pid>
+ *   fcwd
+ *   n/path/to/cwd
+ *
+ * We only need the line beginning with `n`. Returns null on any failure so
+ * callers can keep their last-known cwd.
+ */
+export const defaultCwdProbe: CwdProbe = async (pid) => {
+  try {
+    const { stdout } = await run(
+      'lsof',
+      ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'],
+      { timeoutMs: 2000, throwOnError: false },
+    );
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('n')) return line.slice(1);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 // ── default node-pty bridge ─────────────────────────────────────────────────
 

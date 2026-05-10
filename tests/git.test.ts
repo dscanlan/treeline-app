@@ -5,11 +5,13 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createWorktree,
+  initRepo,
   isDirty,
   isGitRepo,
   listWorktreesIn,
   removeWorktree,
   repoRootAt,
+  resolveParentRepoPath,
 } from '../src/main/git';
 
 // Mirrors setup_repo / add_worktree in /Users/dominicscanlan/code/treeline/src/git.rs:238-275.
@@ -141,5 +143,93 @@ describe('git module', () => {
     const claude = wts.find((w) => w.branch === 'regular-branch');
     expect(claude?.isClaude).toBe(true);
     expect(claude?.path.includes('/.claude/worktrees/')).toBe(true);
+  });
+
+  // ── resolveParentRepoPath ─────────────────────────────────────────────────
+  // Drives the "Add repo or worktree" flow: any path inside a repo (root,
+  // subdir, worktree) must resolve to the parent working tree so the user
+  // can pick whatever's most convenient and treeline does the right thing.
+
+  it('resolveParentRepoPath returns the repo root when given the repo root', async () => {
+    const resolved = await resolveParentRepoPath(repo);
+    expect(resolved).toBeTruthy();
+    // tmpdir symlink hop: compare basename rather than the full path.
+    expect(resolved!.split('/').pop()).toBe(repo.split('/').pop());
+  });
+
+  it('resolveParentRepoPath returns the repo root when given a subdirectory', async () => {
+    const sub = join(repo, 'sub', 'dir');
+    mkdirSync(sub, { recursive: true });
+    const resolved = await resolveParentRepoPath(sub);
+    expect(resolved!.split('/').pop()).toBe(repo.split('/').pop());
+  });
+
+  it('resolveParentRepoPath returns the parent repo when given a worktree path', async () => {
+    const wt = join(repo, '.claude', 'worktrees', 'feat');
+    mkdirSync(join(repo, '.claude', 'worktrees'), { recursive: true });
+    addWorktreeRaw(repo, wt, 'feat');
+
+    const resolved = await resolveParentRepoPath(wt);
+    expect(resolved).toBeTruthy();
+    // The parent's basename matches the original repo dir, NOT 'feat'.
+    expect(resolved!.split('/').pop()).toBe(repo.split('/').pop());
+    // And specifically does not end at the worktree path.
+    expect(resolved!.endsWith('/feat')).toBe(false);
+  });
+
+  it('resolveParentRepoPath returns the parent repo from inside a worktree subdirectory', async () => {
+    const wt = join(repo, '.claude', 'worktrees', 'feat');
+    mkdirSync(join(repo, '.claude', 'worktrees'), { recursive: true });
+    addWorktreeRaw(repo, wt, 'feat');
+    const wtSub = join(wt, 'src');
+    mkdirSync(wtSub, { recursive: true });
+
+    const resolved = await resolveParentRepoPath(wtSub);
+    expect(resolved!.split('/').pop()).toBe(repo.split('/').pop());
+  });
+
+  it('resolveParentRepoPath returns null for a non-git directory', async () => {
+    const nonRepo = mkdtempSync(join(tmpdir(), 'treeline-not-repo-'));
+    try {
+      const resolved = await resolveParentRepoPath(nonRepo);
+      expect(resolved).toBeNull();
+    } finally {
+      rmSync(nonRepo, { recursive: true, force: true });
+    }
+  });
+
+  // ── initRepo ──────────────────────────────────────────────────────────────
+  // Backs the "Create new repo" flow. `git init -b` lets us set the initial
+  // branch in one shot regardless of the user's `init.defaultBranch` config.
+
+  it('initRepo creates a git repo at the given path on the requested branch', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'treeline-init-'));
+    try {
+      await initRepo(empty, 'main');
+      expect(await isGitRepo(empty)).toBe(true);
+      const head = execFileSync('git', ['symbolic-ref', 'HEAD'], {
+        cwd: empty,
+        encoding: 'utf8',
+        env: ISOLATED_ENV,
+      }).trim();
+      expect(head).toBe('refs/heads/main');
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('initRepo respects a custom initial branch name', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'treeline-init-'));
+    try {
+      await initRepo(empty, 'trunk');
+      const head = execFileSync('git', ['symbolic-ref', 'HEAD'], {
+        cwd: empty,
+        encoding: 'utf8',
+        env: ISOLATED_ENV,
+      }).trim();
+      expect(head).toBe('refs/heads/trunk');
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 });

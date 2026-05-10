@@ -4,8 +4,11 @@ export const Channels = {
   // repos
   ReposList: 'repos:list',
   ReposAdd: 'repos:add',
+  ReposCreate: 'repos:create',
   ReposRemove: 'repos:remove',
   ReposPickDirectory: 'repos:pickDirectory',
+  ReposDismissDiscovered: 'repos:dismissDiscovered',
+  ReposDiscovered: 'repos:discovered',
 
   // worktrees
   WorktreesList: 'worktrees:list',
@@ -35,6 +38,19 @@ export const Channels = {
 
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',
+
+  // dev-only: hydration channel used by scripts/take-screenshots-auto.sh.
+  // Main never sends to this channel in production builds — it's gated on
+  // the TREELINE_SCREENSHOT_ID env var. The double-underscore prefix flags
+  // the channel as internal/debug.
+  ScreenshotHydrate: '__screenshot:hydrate',
+  /**
+   * Renderer → main heartbeat: "I've finished loadInitialState()." Lets the
+   * screenshot harness apply hydrate AFTER the real-config load resolves,
+   * otherwise the stock setRepos(cfg.repos) call lands after the hydrate
+   * and erases the mocked state.
+   */
+  ScreenshotReady: '__screenshot:ready',
 } as const;
 
 export type ChannelName = (typeof Channels)[keyof typeof Channels];
