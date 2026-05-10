@@ -15,7 +15,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:mac": "electron-vite build && electron-builder --mac --arm64 --x64",
+    "package:mac": "electron-vite build && electron-builder --mac --arm64 --x64 --publish never",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
