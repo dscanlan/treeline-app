@@ -9,13 +9,20 @@ files:
 extraMetadata:
   main: out/main/index.js
 mac:
+  # Default name for mac artifacts. Without this, electron-builder would
+  # suffix universal builds as `-universal` (e.g. Treeline-0.3.0-universal.dmg);
+  # we strip that since universal is the only mac arch we ship. The DMG
+  # gets a per-format override below to omit the trailing `-mac` tag.
+  artifactName: ${productName}-${version}-mac.${ext}
   target:
     - target: dmg
-      arch: [arm64, x64]
+      arch: universal
     - target: zip
-      arch: [arm64, x64]
+      arch: universal
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
+dmg:
+  artifactName: ${productName}-${version}.${ext}

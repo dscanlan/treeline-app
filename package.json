@@ -1,6 +1,6 @@
 {
   "name": "treeline-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Worktree-aware terminal multiplexer for git + Claude Code",
   "private": true,
   "main": "out/main/index.js",
@@ -15,7 +15,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:mac": "electron-vite build && electron-builder --mac --arm64 --x64 --publish never",
+    "package:mac": "electron-vite build && electron-builder --mac --universal --publish never",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {

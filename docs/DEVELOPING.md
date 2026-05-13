@@ -70,27 +70,39 @@ npm run package:mac
 This:
 
 1. Runs `electron-vite build` (produces `out/{main,preload,renderer}/`).
-2. Runs `electron-builder --mac --arm64 --x64`. For each arch:
-   - Re-runs `electron-rebuild` to get the right `pty.node`.
-   - Bundles the app into `app.asar` plus an `app.asar.unpacked/`
-     escape hatch for native modules.
-   - Builds a `.dmg` and a `.zip`.
+2. Runs `electron-builder --mac --universal`. Internally that:
+   - Builds the arm64 and x64 variants in turn, rebuilding `node-pty`
+     against each arch's Electron ABI so `pty.node` is correct for both.
+   - Hands the two `.app` bundles to `@electron/universal`, which `lipo`s
+     every Mach-O binary inside (the Electron framework, helpers, and
+     `pty.node` in `app.asar.unpacked/`) into a universal2 binary.
+   - Wraps the result in a single `.dmg` and `.zip`.
 
 Output lands in `release/`:
 
 ```
 release/
-├── Treeline-0.2.0.dmg                  (x64)
-├── Treeline-0.2.0.dmg.blockmap
-├── Treeline-0.2.0-mac.zip              (x64)
-├── Treeline-0.2.0-mac.zip.blockmap
-├── Treeline-0.2.0-arm64.dmg
-├── Treeline-0.2.0-arm64.dmg.blockmap
-├── Treeline-0.2.0-arm64-mac.zip
-├── Treeline-0.2.0-arm64-mac.zip.blockmap
-├── mac/                                # x64 unpacked Treeline.app
-└── mac-arm64/                          # arm64 unpacked Treeline.app
+├── Treeline-0.3.0.dmg                  (universal — arm64 + x64)
+├── Treeline-0.3.0.dmg.blockmap
+├── Treeline-0.3.0-mac.zip              (universal)
+├── Treeline-0.3.0-mac.zip.blockmap
+└── mac-universal/                      # unpacked Treeline.app
 ```
+
+To sanity-check the lipo step succeeded, `file` the two binaries that
+matter — the main executable and the `node-pty` native module — and
+confirm both report two architectures:
+
+```bash
+file release/mac-universal/Treeline.app/Contents/MacOS/Treeline
+file release/mac-universal/Treeline.app/Contents/Resources/app.asar.unpacked/node_modules/node-pty/build/Release/pty.node
+# both: Mach-O universal binary with 2 architectures: [x86_64] [arm64]
+```
+
+If `pty.node` shows only one arch, the universal stitch missed it and
+the app will crash on the missing arch. The escape hatch is
+electron-builder's `mac.x64ArchFiles` glob (forwarded to
+`@electron/universal`); add the `pty.node` path there and rebuild.
 
 Local `npm run package:mac` runs unsigned by default — there's no cert
 on a developer's machine. To produce a signed `.dmg` locally, set

@@ -46,7 +46,7 @@ jobs:
       - name: Tests
         run: npm test
 
-      - name: Package macOS (arm64 + x64)
+      - name: Package macOS (universal)
         run: npm run package:mac
         env:
           # Sign + notarize using the Developer ID Application cert.

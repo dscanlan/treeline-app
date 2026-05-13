@@ -40,11 +40,11 @@ tabs are session-only (no restore across launches).
 ### Pre-built (recommended)
 
 Grab the latest `.dmg` from the
-[Releases page](https://github.com/dscanlan/treeline-app/releases). Both
-Apple Silicon (`-arm64.dmg`) and Intel (`.dmg`) are published. Builds
-are signed with a Developer ID Application cert and notarized by Apple,
-so a plain double-click just launches — no Gatekeeper prompts, no
-`xattr` dance.
+[Releases page](https://github.com/dscanlan/treeline-app/releases). A
+single **universal** `.dmg` runs natively on both Apple Silicon and
+Intel Macs — no second download to pick between. Builds are signed with
+a Developer ID Application cert and notarized by Apple, so a plain
+double-click just launches — no Gatekeeper prompts, no `xattr` dance.
 
 > If you're still on the unsigned **v0.1.0** download, Gatekeeper will
 > block it with a *"Not Opened — Apple could not verify…"* dialog whose
@@ -68,7 +68,7 @@ To make your own packaged build:
 
 ```bash
 npm run package:mac
-open release/mac-arm64/Treeline.app
+open release/mac-universal/Treeline.app
 ```
 
 For a quick demo with pre-loaded fixture repos:
