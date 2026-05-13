@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
 import { Channels } from '@shared/ipc-channels';
+import { checkForUpdatesManual } from './updater';
 
 export function buildAppMenu(): void {
   const isMac = process.platform === 'darwin';
@@ -19,6 +20,10 @@ export function buildAppMenu(): void {
             label: appName,
             submenu: [
               { role: 'about' as const },
+              {
+                label: 'Check for Updates…',
+                click: () => void checkForUpdatesManual(),
+              },
               { type: 'separator' as const },
               { role: 'services' as const },
               { type: 'separator' as const },

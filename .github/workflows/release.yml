@@ -71,6 +71,7 @@ jobs:
           path: |
             release/*.dmg
             release/*.zip
+            release/latest-mac.yml
           if-no-files-found: error
           retention-days: 30
 
@@ -84,6 +85,7 @@ jobs:
           files: |
             release/*.dmg
             release/*.zip
+            release/latest-mac.yml
 
       # Manual dispatch path: publish a draft Release the user can review.
       - name: Create GitHub Release (manual dispatch)
@@ -97,3 +99,4 @@ jobs:
           files: |
             release/*.dmg
             release/*.zip
+            release/latest-mac.yml

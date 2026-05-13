@@ -115,13 +115,14 @@ and notarizes on every tag.
 Two ways to publish a downloadable build:
 
 **Tag a version.** Push a `v*` tag and the
-[Release workflow](../.github/workflows/release.yml) builds the `.dmg`
-+ `.zip` for arm64 and x64, then creates a GitHub Release with them
-attached and auto-generated release notes.
+[Release workflow](../.github/workflows/release.yml) builds the
+universal `.dmg` + `.zip`, then creates a GitHub Release with them
+(plus `latest-mac.yml` for the auto-updater) attached and
+auto-generated release notes.
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 **Manual dispatch.** Open the workflow on GitHub Actions and click
@@ -249,6 +250,20 @@ needed there.
 If something breaks and you need to ship an unsigned build to unblock
 yourself, replace the env block with `CSC_IDENTITY_AUTO_DISCOVERY:
 'false'` again — that's the documented escape hatch.
+
+### Auto-update feed
+
+Each release uploads `latest-mac.yml` alongside the `.dmg` and `.zip`.
+`electron-updater` (wired in `src/main/updater.ts`) reads that file from
+`https://github.com/dscanlan/treeline-app/releases/latest/download/latest-mac.yml`
+on app launch and every 4h while the app is running, and prompts the
+user when a newer version is available. The release feed is configured
+via the top-level `publish:` block in `electron-builder.yml`; deleting
+that block (or the `latest-mac.yml` upload from the workflow) silently
+disables auto-update for future releases. Manual checks run from
+`Treeline → Check for Updates…` in the app menu and surface explicit
+"up to date" / "couldn't reach the server" dialogs — the background
+checks are silent unless an update is found.
 
 ## Updating screenshots
 

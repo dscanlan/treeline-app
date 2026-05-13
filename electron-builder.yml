@@ -26,3 +26,15 @@ mac:
   entitlementsInherit: resources/entitlements.mac.plist
 dmg:
   artifactName: ${productName}-${version}.${ext}
+# Publish target for electron-updater. We never have electron-builder
+# actually upload to GitHub itself (the release.yml workflow uploads the
+# artifacts via softprops/action-gh-release), but the provider config is
+# what tells electron-builder to bake the feed URL into latest-mac.yml so
+# the in-app updater knows where to look. `--publish never` on the CLI
+# keeps the upload step disabled.
+publish:
+  provider: github
+  owner: dscanlan
+  repo: treeline-app
+  # Don't surface pre-release tags (e.g. v0.4.0-rc1) to stable users.
+  releaseType: release

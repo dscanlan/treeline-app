@@ -21,6 +21,7 @@ import { registerProcessesIpc, broadcastProcesses } from './ipc/processes';
 import { registerConfigIpc } from './ipc/config';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
+import { setupAutoUpdater } from './updater';
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
@@ -144,6 +145,11 @@ app.whenReady().then(() => {
 
   buildAppMenu();
   mainWindow = createMainWindow();
+
+  // Wire auto-updates after the window exists so update dialogs can attach
+  // to it as their parent. No-op in dev (electron-updater only works against
+  // a packaged + signed .app).
+  setupAutoUpdater(() => mainWindow);
 
   // Headless screenshot mode. When TREELINE_SCREENSHOT_ID is set, the app
   // sets up the named scenario, captures the renderer to docs/img/, and
