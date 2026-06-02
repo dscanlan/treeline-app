@@ -23,6 +23,7 @@ import { registerFilesIpc } from './ipc/files';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
 import { setupAutoUpdater } from './updater';
+import { isSafeExternalUrl } from './util/safe-url';
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
@@ -32,18 +33,6 @@ let terminalStatusMonitor: TerminalStatusMonitor | null = null;
 let processMonitor: ProcessMonitor | null = null;
 let repoDiscovery: RepoDiscovery | null = null;
 let isQuitting = false;
-
-/** Schemes we'll hand to the OS from a renderer-initiated link click. */
-const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
-
-/** True if `url` parses and uses an allowlisted scheme. */
-function isSafeExternalUrl(url: string): boolean {
-  try {
-    return SAFE_EXTERNAL_PROTOCOLS.has(new URL(url).protocol);
-  } catch {
-    return false; // unparseable URL — don't open it
-  }
-}
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
