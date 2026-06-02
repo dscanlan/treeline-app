@@ -2,7 +2,9 @@
 // directories in the file tree, and drive the All|Changed view. Keeps the IPC
 // dance out of the components, mirroring actions/tabs.ts.
 import type { PanelMode, WorktreeFileView } from '../store/editor-slice';
+import type { DiscardThen } from '../store/modal-slice';
 import { useStore } from '../store';
+import { basename } from '../util/path';
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -14,10 +16,55 @@ export function hasUnsavedEdits(): boolean {
   return s.editing && s.draft !== null && s.draft !== s.openFileText;
 }
 
-/** Confirm discarding unsaved edits; returns true if it's safe to proceed. */
-function confirmDiscard(): boolean {
+/**
+ * If there are unsaved edits, open the discard-confirmation modal (deferring
+ * `then` until the user confirms) and return false to abort the caller. With no
+ * unsaved edits, return true so the caller proceeds immediately.
+ */
+function guardUnsaved(then: DiscardThen): boolean {
   if (!hasUnsavedEdits()) return true;
-  return window.confirm('You have unsaved changes. Discard them?');
+  const path = useStore.getState().openFilePath;
+  useStore.getState().openModal({
+    kind: 'confirm-discard',
+    filename: path ? basename(path) : 'this file',
+    then,
+  });
+  return false;
+}
+
+/**
+ * Run a deferred discard action after the user confirms in the modal: drop the
+ * draft, close the modal, then perform the pending navigation.
+ */
+export function confirmDiscardAndContinue(then: DiscardThen): void {
+  const s = useStore.getState();
+  s.stopEditing();
+  s.closeModal();
+  switch (then.type) {
+    case 'open-file':
+      void doOpenFile(then.path);
+      break;
+    case 'open-diff':
+      void doOpenDiff(then.path);
+      break;
+    case 'close-panel':
+      s.closeCodePanel();
+      break;
+    case 'stop-editing':
+      break; // stopEditing already happened above
+  }
+}
+
+/** Load a file into the panel as full contents (no unsaved-edits guard). */
+async function doOpenFile(path: string): Promise<void> {
+  useStore.getState().openInPanel(path, 'file');
+  await loadFileContent(path);
+}
+
+/** Load a file into the panel as a diff (no unsaved-edits guard). */
+async function doOpenDiff(path: string): Promise<void> {
+  useStore.getState().openInPanel(path, 'diff');
+  await loadFileDiff(path);
 }
 
 /** Longest worktree path containing `filePath`, or null if untracked. */
@@ -57,21 +104,19 @@ async function loadFileDiff(path: string): Promise<void> {
 
 /** Open a file in the panel showing its full contents (used by the tree). */
 export async function openFileInPanel(path: string): Promise<void> {
-  if (!confirmDiscard()) return;
-  useStore.getState().openInPanel(path, 'file');
-  await loadFileContent(path);
+  if (!guardUnsaved({ type: 'open-file', path })) return;
+  await doOpenFile(path);
 }
 
 /** Open a file in the panel showing its diff (used by the Changed list). */
 export async function openDiffInPanel(path: string): Promise<void> {
-  if (!confirmDiscard()) return;
-  useStore.getState().openInPanel(path, 'diff');
-  await loadFileDiff(path);
+  if (!guardUnsaved({ type: 'open-diff', path })) return;
+  await doOpenDiff(path);
 }
 
 /** Close the panel, warning first if there are unsaved edits. */
 export function tryCloseCodePanel(): void {
-  if (!confirmDiscard()) return;
+  if (!guardUnsaved({ type: 'close-panel' })) return;
   const s = useStore.getState();
   s.stopEditing();
   s.closeCodePanel();
@@ -79,7 +124,7 @@ export function tryCloseCodePanel(): void {
 
 /** Leave edit mode (back to read-only), warning first if there are unsaved edits. */
 export function tryStopEditing(): void {
-  if (!confirmDiscard()) return;
+  if (!guardUnsaved({ type: 'stop-editing' })) return;
   useStore.getState().stopEditing();
 }
 
