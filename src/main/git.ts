@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
-import { dirname } from 'node:path';
-import type { Worktree } from '@shared/types';
+import { dirname, join } from 'node:path';
+import type { ChangedFile, ChangedFileStatus, Worktree } from '@shared/types';
 import { detectClaudeWorktree } from '@shared/claude-detect';
 import { parseWorktreePorcelain } from './git-porcelain';
 import { ProcessError, run } from './util/exec';
@@ -66,6 +66,62 @@ export async function isDirty(path: string): Promise<boolean> {
     throwOnError: false,
   });
   return stdout.length > 0;
+}
+
+/** Map a `git status --porcelain` two-char XY code to a display category. */
+function categorizeStatus(xy: string): ChangedFileStatus {
+  if (xy === '??') return 'untracked';
+  const x = xy[0];
+  const y = xy[1];
+  if (x === 'U' || y === 'U' || xy === 'AA' || xy === 'DD') return 'conflicted';
+  if (x === 'R' || y === 'R') return 'renamed';
+  if (x === 'A' || y === 'A') return 'added';
+  if (x === 'D' || y === 'D') return 'deleted';
+  return 'modified';
+}
+
+/** Strip git's optional double-quoting (used for paths with special chars). */
+function unquotePath(p: string): string {
+  if (p.startsWith('"') && p.endsWith('"')) {
+    try {
+      return JSON.parse(p) as string;
+    } catch {
+      return p.slice(1, -1);
+    }
+  }
+  return p;
+}
+
+/**
+ * Working-tree changes for the worktree at `path` (the Source-Control view):
+ * modified, staged, deleted, renamed, and untracked files via
+ * `git status --porcelain`. `core.quotepath=false` keeps non-ASCII names
+ * readable; the result is sorted by relative path.
+ */
+export async function changedFiles(path: string): Promise<ChangedFile[]> {
+  const { stdout } = await run(
+    GIT,
+    ['-c', 'core.quotepath=false', 'status', '--porcelain'],
+    { cwd: path, throwOnError: false },
+  );
+
+  const files: ChangedFile[] = [];
+  for (const line of stdout.split('\n')) {
+    // Each entry is "XY <path>"; the path starts at column 3.
+    if (line.length < 4) continue;
+    const xy = line.slice(0, 2);
+    let rest = line.slice(3);
+    // For renames/copies porcelain prints "old -> new"; we want the new name.
+    if (xy[0] === 'R' || xy[0] === 'C') {
+      const arrow = rest.indexOf(' -> ');
+      if (arrow >= 0) rest = rest.slice(arrow + 4);
+    }
+    const relPath = unquotePath(rest);
+    files.push({ path: join(path, relPath), relPath, status: categorizeStatus(xy) });
+  }
+
+  files.sort((a, b) => a.relPath.localeCompare(b.relPath));
+  return files;
 }
 
 /**

@@ -3,6 +3,7 @@ import { Channels } from '@shared/ipc-channels';
 import type { ScreenshotHydratePayload, TreelineApi } from '@shared/ipc-contract';
 import type {
   AppConfig,
+  ChangedFile,
   DirEntry,
   FileContents,
   ProcessSnapshot,
@@ -103,6 +104,8 @@ const api: TreelineApi = {
     readDir: (path) =>
       ipcRenderer.invoke(Channels.FilesReadDir, path) as Promise<DirEntry[]>,
     read: (path) => ipcRenderer.invoke(Channels.FilesRead, path) as Promise<FileContents>,
+    changed: (path) =>
+      ipcRenderer.invoke(Channels.FilesChanged, path) as Promise<ChangedFile[]>,
   },
 
   config: {

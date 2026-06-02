@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  ChangedFile,
   DetectedProcess,
   DirEntry,
   FileContents,
@@ -134,6 +135,8 @@ export interface TreelineApi {
   files: {
     readDir(path: string): Promise<DirEntry[]>;
     read(path: string): Promise<FileContents>;
+    /** Working-tree changes (git status) for the worktree at `path`. */
+    changed(path: string): Promise<ChangedFile[]>;
   };
 
   config: {

@@ -5,7 +5,7 @@ import { openTabAt } from '../actions/tabs';
 import { toggleDir } from '../actions/editor';
 import { TabStatusDot } from './TabStatusDot';
 import { ProcessBadge } from './ProcessBadge';
-import { FileTree } from './FileTree';
+import { WorktreeFiles } from './WorktreeFiles';
 
 interface Props {
   worktree: Worktree;
@@ -92,7 +92,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
           {wtStatus && <TabStatusDot status={wtStatus} />}
         </div>
       </div>
-      {treeOpen && <FileTree dirPath={worktree.path} depth={0} />}
+      {treeOpen && <WorktreeFiles worktreePath={worktree.path} />}
     </li>
   );
 }

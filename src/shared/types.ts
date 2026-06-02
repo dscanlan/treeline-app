@@ -104,6 +104,26 @@ export interface FileContents {
   binary: boolean;
 }
 
+/** Category derived from a `git status --porcelain` XY code, for the changed-files list. */
+export type ChangedFileStatus =
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'untracked'
+  | 'conflicted';
+
+/**
+ * One entry in a worktree's working-tree change set (`git status`). `path` is
+ * absolute (ready to open in the viewer); `relPath` is relative to the worktree
+ * root, for display.
+ */
+export interface ChangedFile {
+  path: string;
+  relPath: string;
+  status: ChangedFileStatus;
+}
+
 /**
  * A scratch terminal: a shell session not bound to any tracked repo. Lives in
  * renderer state only (never persisted to AppConfig), but the shape is shared

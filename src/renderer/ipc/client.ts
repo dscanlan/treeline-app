@@ -1,16 +1,25 @@
 // Wires IPC events from the preload bridge into the Zustand store. Call
 // `attachIpc(store)` once at startup; it returns an unsubscribe.
 import { useStore } from '../store';
+import { refreshChangedFiles } from '../actions/editor';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
   const unsubs: Array<() => void> = [];
 
-  // Worktree changes from the main process — reload that repo's worktrees.
+  // Worktree changes from the main process — reload that repo's worktrees, and
+  // refresh the changed-file list for any of them currently shown in Changed
+  // view so the Source-Control list stays live as files change.
   unsubs.push(
     api.worktrees.onChange((repoPath) => {
       void api.worktrees.list(repoPath).then((wts) => {
-        useStore.getState().setWorktrees(repoPath, wts);
+        const s = useStore.getState();
+        s.setWorktrees(repoPath, wts);
+        for (const wt of wts) {
+          if (s.expandedDirs[wt.path] && s.worktreeFileView[wt.path] === 'changed') {
+            void refreshChangedFiles(wt.path);
+          }
+        }
       });
     }),
   );

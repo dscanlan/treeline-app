@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { listDir, readFileGuarded } from '../files-io';
+import { changedFiles } from '../git';
 import { validateAbsPath } from '../util/safe-path';
 
 /**
@@ -17,8 +18,13 @@ export function registerFilesIpc(): () => void {
     return readFileGuarded(validateAbsPath(rawPath));
   });
 
+  ipcMain.handle(Channels.FilesChanged, async (_e, rawPath: unknown) => {
+    return changedFiles(validateAbsPath(rawPath));
+  });
+
   return () => {
     ipcMain.removeHandler(Channels.FilesReadDir);
     ipcMain.removeHandler(Channels.FilesRead);
+    ipcMain.removeHandler(Channels.FilesChanged);
   };
 }

@@ -88,6 +88,12 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
    `<CodeMirrorView>` renders it read-only with an extension-derived
    language and the Graphite theme.
 
+The `All | Changed` toggle (`<WorktreeFiles>`) swaps the tree for
+`<ChangedFilesList>`, fed by `window.treeline.files.changed(path)` →
+`git.ts:changedFiles()` (parses `git status --porcelain`). The list
+re-fetches whenever `worktrees:onChange` fires for that repo, so it tracks
+edits live.
+
 Both handlers validate the renderer-supplied path with `safe-path.ts`.
 This isn't a new trust boundary — PTYs already grant full shell access —
 so the guards are about robustness (don't freeze on a huge file, don't
@@ -256,7 +262,7 @@ src/
 │   │   ├── pty.ts                # spawn/write/resize/kill + data/exit.
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
-│   │   ├── files.ts             # files:readDir/read (validate → files-io).
+│   │   ├── files.ts             # files:readDir/read/changed (validate → files-io/git).
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
@@ -281,7 +287,9 @@ src/
     │   ├── TabItem.tsx
     │   ├── TerminalHost.tsx      # Renders all tabs; only active is visible.
     │   ├── TerminalView.tsx      # One xterm instance.
+    │   ├── WorktreeFiles.tsx     # All|Changed toggle under an expanded worktree.
     │   ├── FileTree.tsx          # Lazy per-worktree file tree (+ FileTreeNode).
+    │   ├── ChangedFilesList.tsx  # Flat git-status list (M/A/?/D/R letters).
     │   ├── CodePanel.tsx         # Read-only viewer panel (header + states).
     │   ├── CodeMirrorView.tsx    # CodeMirror 6, language by extension.
     │   ├── codemirror-theme.ts   # Graphite theme (chrome + syntax tokens).

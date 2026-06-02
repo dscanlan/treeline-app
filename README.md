@@ -141,6 +141,12 @@ viewer does that without leaving treeline or breaking your terminal flow.
   **file tree**. Directories load lazily (one level per expand) and `.git`
   is hidden; the icon is a folder, not a chevron, so it reads distinctly
   from the repo's expand/collapse triangle one level up.
+- **`All | Changed` toggle** at the top of the expanded area. **Changed**
+  swaps the tree for a flat list of the worktree's working-tree changes
+  (`git status`), each tagged with a colored status letter (`M` modified,
+  `A` added, `?` untracked, `D` deleted, `R` renamed). It refreshes live as
+  files change, so it's a quick "what have I touched here" view. Deleted
+  entries are shown struck-through and aren't clickable.
 - **Click a file** → it opens in a read-only, syntax-highlighted **panel
   that splits in beside the terminal**, so you can reference code and keep
   working in the same view. Language is picked from the file extension
@@ -259,7 +265,7 @@ The short version:
 ## Testing
 
 ```bash
-npm test              # vitest, ~110 tests across 10 suites
+npm test              # vitest, ~115 tests across 10 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -270,7 +276,7 @@ The suites:
 | -------------------- | ------------------------------------------------------- |
 | `claude-detect`      | `.claude/worktrees/` paths and `worktree-*` branches    |
 | `git-porcelain`      | The `git worktree list --porcelain` parser              |
-| `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init) |
+| `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init/changed-files) |
 | `repos-store`        | Atomic writes, schema migration, corrupt-file recovery  |
 | `repos-create`       | `git init` validation paths (new vs existing folder, branch, collisions) |
 | `files-io`           | Code-viewer reads: dir listing/sort, `.git` hiding, size truncation, binary sniff |

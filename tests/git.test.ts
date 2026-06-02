@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  changedFiles,
   createWorktree,
   initRepo,
   isDirty,
@@ -231,5 +232,52 @@ describe('git module', () => {
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
+  });
+});
+
+describe('changedFiles', () => {
+  let repo: string;
+  let opts: { cwd: string; encoding: 'utf8'; env: typeof ISOLATED_ENV };
+
+  beforeEach(() => {
+    repo = setupRepo();
+    opts = { cwd: repo, encoding: 'utf8', env: ISOLATED_ENV };
+  });
+
+  afterEach(() => {
+    if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('returns [] on a clean worktree', async () => {
+    expect(await changedFiles(repo)).toEqual([]);
+  });
+
+  it('categorizes modified, untracked, added, and deleted entries', async () => {
+    // Commit a second file so we have something to delete.
+    writeFileSync(join(repo, 'todelete.txt'), 'x');
+    execFileSync('git', ['add', 'todelete.txt'], opts);
+    execFileSync('git', ['commit', '-q', '--no-gpg-sign', '-m', 'add todelete'], opts);
+
+    writeFileSync(join(repo, 'file.txt'), 'changed'); // tracked, unstaged → modified
+    writeFileSync(join(repo, 'untracked.txt'), 'new'); // untracked
+    writeFileSync(join(repo, 'added.txt'), 'add'); // staged add
+    execFileSync('git', ['add', 'added.txt'], opts);
+    rmSync(join(repo, 'todelete.txt')); // unstaged delete
+
+    const changes = await changedFiles(repo);
+    const byRel = new Map(changes.map((c) => [c.relPath, c.status]));
+    expect(byRel.get('file.txt')).toBe('modified');
+    expect(byRel.get('untracked.txt')).toBe('untracked');
+    expect(byRel.get('added.txt')).toBe('added');
+    expect(byRel.get('todelete.txt')).toBe('deleted');
+  });
+
+  it('returns worktree-rooted absolute paths, sorted by relative path', async () => {
+    writeFileSync(join(repo, 'z.txt'), '1');
+    writeFileSync(join(repo, 'a.txt'), '2');
+
+    const changes = await changedFiles(repo);
+    expect(changes.map((c) => c.relPath)).toEqual(['a.txt', 'z.txt']);
+    expect(changes[0]!.path).toBe(join(repo, 'a.txt'));
   });
 });

@@ -34,6 +34,7 @@ export const Channels = {
   // files (code viewer)
   FilesReadDir: 'files:readDir',
   FilesRead: 'files:read',
+  FilesChanged: 'files:changed',
 
   // config
   ConfigGet: 'config:get',
