@@ -104,6 +104,29 @@ export interface FileContents {
   binary: boolean;
 }
 
+/**
+ * One row of a unified diff. `hunk` rows carry the `@@` section heading; the
+ * line-number fields are null where they don't apply (e.g. `newLine` on a
+ * deletion). `text` is the line content without the leading +/-/space.
+ */
+export interface DiffLine {
+  kind: 'context' | 'add' | 'del' | 'hunk';
+  oldLine: number | null;
+  newLine: number | null;
+  text: string;
+}
+
+/** A file's unified diff (working tree vs HEAD), parsed for the viewer. */
+export interface FileDiff {
+  path: string;
+  lines: DiffLine[];
+  /** Total added / removed line counts, for the summary header. */
+  added: number;
+  removed: number;
+  /** Git reported a binary change; `lines` is empty. */
+  binary: boolean;
+}
+
 /** Category derived from a `git status --porcelain` XY code, for the changed-files list. */
 export type ChangedFileStatus =
   | 'modified'

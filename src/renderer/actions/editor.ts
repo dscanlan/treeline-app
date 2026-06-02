@@ -1,18 +1,61 @@
 // Code-viewer orchestration: open a file in the side panel, lazily expand
 // directories in the file tree, and drive the All|Changed view. Keeps the IPC
 // dance out of the components, mirroring actions/tabs.ts.
-import type { WorktreeFileView } from '../store/editor-slice';
+import type { PanelMode, WorktreeFileView } from '../store/editor-slice';
 import { useStore } from '../store';
 
-/** Load a file into the code panel (opens the panel if it's closed). */
-export async function openFileInPanel(path: string): Promise<void> {
-  const s = useStore.getState();
-  s.startFileLoad(path);
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Fetch the full-file representation for `path` into the panel. */
+async function loadFileContent(path: string): Promise<void> {
+  useStore.getState().setFileLoading(true);
   try {
     const result = await window.treeline.files.read(path);
     useStore.getState().applyFileResult(result);
   } catch (err) {
-    useStore.getState().setFileError(path, err instanceof Error ? err.message : String(err));
+    useStore.getState().setFileError(path, errMsg(err));
+  }
+}
+
+/** Fetch the diff representation for `path` into the panel. */
+async function loadFileDiff(path: string): Promise<void> {
+  useStore.getState().setDiffLoading(true);
+  try {
+    const diff = await window.treeline.files.diff(path);
+    useStore.getState().applyDiffResult(diff);
+  } catch (err) {
+    useStore.getState().setDiffError(path, errMsg(err));
+  }
+}
+
+/** Open a file in the panel showing its full contents (used by the tree). */
+export async function openFileInPanel(path: string): Promise<void> {
+  useStore.getState().openInPanel(path, 'file');
+  await loadFileContent(path);
+}
+
+/** Open a file in the panel showing its diff (used by the Changed list). */
+export async function openDiffInPanel(path: string): Promise<void> {
+  useStore.getState().openInPanel(path, 'diff');
+  await loadFileDiff(path);
+}
+
+/**
+ * Flip the open file between File and Diff in the panel header, lazily fetching
+ * the other representation the first time it's needed.
+ */
+export function setPanelMode(mode: PanelMode): void {
+  const s = useStore.getState();
+  const path = s.openFilePath;
+  if (!path) return;
+  s.setPanelMode(mode);
+  if (mode === 'file' && s.openFileText === null && s.openFileError === null && !s.openFileLoading) {
+    void loadFileContent(path);
+  }
+  if (mode === 'diff' && s.openDiff === null && s.diffError === null && !s.diffLoading) {
+    void loadFileDiff(path);
   }
 }
 

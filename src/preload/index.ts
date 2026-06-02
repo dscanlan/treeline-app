@@ -6,6 +6,7 @@ import type {
   ChangedFile,
   DirEntry,
   FileContents,
+  FileDiff,
   ProcessSnapshot,
   Repo,
   TerminalStatusUpdate,
@@ -106,6 +107,7 @@ const api: TreelineApi = {
     read: (path) => ipcRenderer.invoke(Channels.FilesRead, path) as Promise<FileContents>,
     changed: (path) =>
       ipcRenderer.invoke(Channels.FilesChanged, path) as Promise<ChangedFile[]>,
+    diff: (path) => ipcRenderer.invoke(Channels.FilesDiff, path) as Promise<FileDiff>,
   },
 
   config: {

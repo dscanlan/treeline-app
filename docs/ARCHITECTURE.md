@@ -94,6 +94,13 @@ The `All | Changed` toggle (`<WorktreeFiles>`) swaps the tree for
 re-fetches whenever `worktrees:onChange` fires for that repo, so it tracks
 edits live.
 
+Clicking a changed file opens its **diff** instead of the full file:
+`files.diff(path)` → `git.ts:fileDiff()` runs `git diff HEAD` (untracked
+files become all-additions) and `parseUnifiedDiff()` turns the patch into
+`{ lines, added, removed }`. `<DiffView>` renders it; the panel's
+`Diff | File` toggle flips `panelMode`, lazily loading whichever
+representation isn't cached yet.
+
 Both handlers validate the renderer-supplied path with `safe-path.ts`.
 This isn't a new trust boundary — PTYs already grant full shell access —
 so the guards are about robustness (don't freeze on a huge file, don't
@@ -262,7 +269,7 @@ src/
 │   │   ├── pty.ts                # spawn/write/resize/kill + data/exit.
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
-│   │   ├── files.ts             # files:readDir/read/changed (validate → files-io/git).
+│   │   ├── files.ts             # files:readDir/read/changed/diff (validate → files-io/git).
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
@@ -290,8 +297,9 @@ src/
     │   ├── WorktreeFiles.tsx     # All|Changed toggle under an expanded worktree.
     │   ├── FileTree.tsx          # Lazy per-worktree file tree (+ FileTreeNode).
     │   ├── ChangedFilesList.tsx  # Flat git-status list (M/A/?/D/R letters).
-    │   ├── CodePanel.tsx         # Read-only viewer panel (header + states).
+    │   ├── CodePanel.tsx         # Viewer panel; Diff|File toggle + states.
     │   ├── CodeMirrorView.tsx    # CodeMirror 6, language by extension.
+    │   ├── DiffView.tsx          # Unified diff rows (line nums, +/- colors).
     │   ├── codemirror-theme.ts   # Graphite theme (chrome + syntax tokens).
     │   ├── CodePanelResizer.tsx  # Draggable terminal/panel divider.
     │   ├── SidebarToggle.tsx

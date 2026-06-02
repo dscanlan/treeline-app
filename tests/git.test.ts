@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   changedFiles,
   createWorktree,
+  fileDiff,
   initRepo,
   isDirty,
   isGitRepo,
   listWorktreesIn,
+  parseUnifiedDiff,
   removeWorktree,
   repoRootAt,
   resolveParentRepoPath,
@@ -279,5 +281,70 @@ describe('changedFiles', () => {
     const changes = await changedFiles(repo);
     expect(changes.map((c) => c.relPath)).toEqual(['a.txt', 'z.txt']);
     expect(changes[0]!.path).toBe(join(repo, 'a.txt'));
+  });
+});
+
+describe('parseUnifiedDiff', () => {
+  it('tracks line numbers and add/remove counts across a hunk', () => {
+    const raw = [
+      'diff --git a/f.txt b/f.txt',
+      'index abc..def 100644',
+      '--- a/f.txt',
+      '+++ b/f.txt',
+      '@@ -1,3 +1,3 @@ heading',
+      ' line1',
+      '-line2old',
+      '+line2new',
+      ' line3',
+      '',
+    ].join('\n');
+
+    const diff = parseUnifiedDiff('/f.txt', raw);
+    expect(diff.added).toBe(1);
+    expect(diff.removed).toBe(1);
+    expect(diff.binary).toBe(false);
+    expect(diff.lines).toEqual([
+      { kind: 'hunk', oldLine: null, newLine: null, text: 'heading' },
+      { kind: 'context', oldLine: 1, newLine: 1, text: 'line1' },
+      { kind: 'del', oldLine: 2, newLine: null, text: 'line2old' },
+      { kind: 'add', oldLine: null, newLine: 2, text: 'line2new' },
+      { kind: 'context', oldLine: 3, newLine: 3, text: 'line3' },
+    ]);
+  });
+
+  it('flags a binary diff', () => {
+    const diff = parseUnifiedDiff('/img.png', 'Binary files a/img.png and b/img.png differ\n');
+    expect(diff.binary).toBe(true);
+    expect(diff.lines).toEqual([]);
+  });
+});
+
+describe('fileDiff', () => {
+  let repo: string;
+
+  beforeEach(() => {
+    repo = setupRepo();
+  });
+
+  afterEach(() => {
+    if (existsSync(repo)) rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('diffs a modified tracked file vs HEAD', async () => {
+    writeFileSync(join(repo, 'file.txt'), 'hello world'); // was "hello"
+    const diff = await fileDiff(join(repo, 'file.txt'));
+    expect(diff.added).toBe(1);
+    expect(diff.removed).toBe(1);
+    expect(diff.lines.some((l) => l.kind === 'add' && l.text === 'hello world')).toBe(true);
+    expect(diff.lines.some((l) => l.kind === 'del' && l.text === 'hello')).toBe(true);
+  });
+
+  it('renders an untracked file as all additions', async () => {
+    writeFileSync(join(repo, 'new.txt'), 'a\nb\nc\n');
+    const diff = await fileDiff(join(repo, 'new.txt'));
+    expect(diff.removed).toBe(0);
+    expect(diff.added).toBe(3);
+    expect(diff.lines.map((l) => l.kind)).toEqual(['add', 'add', 'add']);
+    expect(diff.lines.map((l) => l.newLine)).toEqual([1, 2, 3]);
   });
 });

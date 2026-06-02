@@ -151,6 +151,11 @@ viewer does that without leaving treeline or breaking your terminal flow.
   that splits in beside the terminal**, so you can reference code and keep
   working in the same view. Language is picked from the file extension
   (`.env` and unknown types render as plain text).
+- **Diff view.** Clicking a file in the **Changed** list opens its **diff**
+  (working tree vs `HEAD`): a unified view with a per-file summary, line
+  numbers, and red `-` / green `+` rows. Untracked files render as all
+  additions. The panel header has a **`Diff | File`** toggle to flip the
+  open file between its diff and full contents.
 - **Drag the divider** between the terminal and the panel to resize; the
   terminal re-fits to the new width. The `×` in the panel header closes it.
 
@@ -265,7 +270,7 @@ The short version:
 ## Testing
 
 ```bash
-npm test              # vitest, ~115 tests across 10 suites
+npm test              # vitest, ~120 tests across 10 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -276,7 +281,7 @@ The suites:
 | -------------------- | ------------------------------------------------------- |
 | `claude-detect`      | `.claude/worktrees/` paths and `worktree-*` branches    |
 | `git-porcelain`      | The `git worktree list --porcelain` parser              |
-| `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init/changed-files) |
+| `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init/changed-files) + diff parsing |
 | `repos-store`        | Atomic writes, schema migration, corrupt-file recovery  |
 | `repos-create`       | `git init` validation paths (new vs existing folder, branch, collisions) |
 | `files-io`           | Code-viewer reads: dir listing/sort, `.git` hiding, size truncation, binary sniff |

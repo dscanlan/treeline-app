@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import type { ChangedFile, ChangedFileStatus } from '@shared/types';
 import { useStore } from '../store';
-import { openFileInPanel } from '../actions/editor';
+import { openDiffInPanel } from '../actions/editor';
 
 /** Status letter + color per change category, echoing the dirty-dot palette. */
 const STATUS_META: Record<ChangedFileStatus, { letter: string; className: string; title: string }> =
@@ -70,7 +70,7 @@ function ChangedRow({ file, selected }: { file: ChangedFile; selected: boolean }
   return (
     <button
       type="button"
-      onClick={() => void openFileInPanel(file.path)}
+      onClick={() => void openDiffInPanel(file.path)}
       title={`${meta.title} — ${file.relPath}`}
       className={`flex w-full items-center gap-1.5 py-0.5 pl-6 pr-2 text-left ${
         selected

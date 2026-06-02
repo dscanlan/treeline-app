@@ -4,6 +4,7 @@ import type {
   DetectedProcess,
   DirEntry,
   FileContents,
+  FileDiff,
   ProcessSnapshot,
   Repo,
   Scratch,
@@ -137,6 +138,8 @@ export interface TreelineApi {
     read(path: string): Promise<FileContents>;
     /** Working-tree changes (git status) for the worktree at `path`. */
     changed(path: string): Promise<ChangedFile[]>;
+    /** Unified diff (working tree vs HEAD) for the file at `path`. */
+    diff(path: string): Promise<FileDiff>;
   };
 
   config: {

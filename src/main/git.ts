@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { ChangedFile, ChangedFileStatus, Worktree } from '@shared/types';
+import type { ChangedFile, ChangedFileStatus, DiffLine, FileDiff, Worktree } from '@shared/types';
 import { detectClaudeWorktree } from '@shared/claude-detect';
 import { parseWorktreePorcelain } from './git-porcelain';
+import { readFileGuarded } from './files-io';
 import { ProcessError, run } from './util/exec';
 
 const GIT = 'git';
@@ -122,6 +123,99 @@ export async function changedFiles(path: string): Promise<ChangedFile[]> {
 
   files.sort((a, b) => a.relPath.localeCompare(b.relPath));
   return files;
+}
+
+/**
+ * Parse a unified `git diff` into structured rows, tracking old/new line
+ * numbers across hunks. Pure (no IO) so it's straightforward to unit-test.
+ */
+export function parseUnifiedDiff(path: string, raw: string): FileDiff {
+  const lines: DiffLine[] = [];
+  let added = 0;
+  let removed = 0;
+  let binary = false;
+  let oldLine = 0;
+  let newLine = 0;
+  // The `--- a/file` / `+++ b/file` headers start with -/+ too, so only parse
+  // body lines once we're inside a hunk.
+  let inHunk = false;
+
+  for (const row of raw.split('\n')) {
+    if (row.startsWith('Binary files')) {
+      binary = true;
+      continue;
+    }
+    if (row.startsWith('@@')) {
+      const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(row);
+      if (m) {
+        oldLine = parseInt(m[1]!, 10);
+        newLine = parseInt(m[2]!, 10);
+        lines.push({ kind: 'hunk', oldLine: null, newLine: null, text: m[3]!.trim() });
+        inHunk = true;
+      }
+      continue;
+    }
+    // Header noise (diff --git, index, ---, +++, mode/rename lines) precedes
+    // the first hunk — ignore everything until then.
+    if (!inHunk || row.length === 0) continue;
+    const marker = row[0];
+    const body = row.slice(1);
+    if (marker === '+') {
+      lines.push({ kind: 'add', oldLine: null, newLine, text: body });
+      newLine++;
+      added++;
+    } else if (marker === '-') {
+      lines.push({ kind: 'del', oldLine, newLine: null, text: body });
+      oldLine++;
+      removed++;
+    } else if (marker === ' ') {
+      lines.push({ kind: 'context', oldLine, newLine, text: body });
+      oldLine++;
+      newLine++;
+    }
+    // '\' (no newline at eof) and file headers fall through, ignored.
+  }
+
+  return { path, lines, added, removed, binary };
+}
+
+/** Build an all-additions diff for an untracked file from its contents. */
+async function untrackedAsDiff(absPath: string): Promise<FileDiff> {
+  const fc = await readFileGuarded(absPath);
+  if (fc.binary) return { path: absPath, lines: [], added: 0, removed: 0, binary: true };
+  const contentLines = fc.text.split('\n');
+  // Drop the trailing empty element produced by a final newline.
+  if (contentLines.length > 0 && contentLines[contentLines.length - 1] === '') {
+    contentLines.pop();
+  }
+  const lines: DiffLine[] = contentLines.map((text, i) => ({
+    kind: 'add',
+    oldLine: null,
+    newLine: i + 1,
+    text,
+  }));
+  return { path: absPath, lines, added: lines.length, removed: 0, binary: false };
+}
+
+/**
+ * Unified diff of the file at `absPath`: working tree vs HEAD. Untracked files
+ * (which `git diff` ignores) are rendered as all-additions from their contents.
+ */
+export async function fileDiff(absPath: string): Promise<FileDiff> {
+  const dir = dirname(absPath);
+  const { stdout: status } = await run(
+    GIT,
+    ['-c', 'core.quotepath=false', 'status', '--porcelain', '--', absPath],
+    { cwd: dir, throwOnError: false },
+  );
+  if (status.startsWith('??')) return untrackedAsDiff(absPath);
+
+  const { stdout } = await run(
+    GIT,
+    ['-c', 'core.quotepath=false', 'diff', '--no-color', 'HEAD', '--', absPath],
+    { cwd: dir, throwOnError: false },
+  );
+  return parseUnifiedDiff(absPath, stdout);
 }
 
 /**
