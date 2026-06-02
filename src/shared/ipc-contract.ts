@@ -32,6 +32,15 @@ export interface ScreenshotHydratePayload {
     | { kind: 'create-worktree'; repoPath: string }
     | { kind: 'delete-worktree'; repoPath: string; worktreePath: string; branch: string }
     | { kind: 'create-repo' }
+    | {
+        kind: 'confirm-discard';
+        filename: string;
+        then:
+          | { type: 'open-file'; path: string }
+          | { type: 'open-diff'; path: string }
+          | { type: 'close-panel' }
+          | { type: 'stop-editing' };
+      }
     | null;
   /** Inject scratch-terminal rows into the sidebar. */
   scratches?: Scratch[];
@@ -62,6 +71,9 @@ export interface ScreenshotHydratePayload {
   panelMode?: 'file' | 'diff';
   openFileText?: string | null;
   openDiff?: FileDiff | null;
+  editing?: boolean;
+  draft?: string | null;
+  saveError?: string | null;
   /**
    * Render an in-renderer tooltip near the matched element. Used by the
    * 18-add-button-tooltip scenario because the OS-rendered HTML title

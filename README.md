@@ -182,6 +182,10 @@ Guard rails keep it snappy: files over 1 MB are shown truncated (with a
 `truncated` badge), and binary files (detected by a NUL byte) show a
 placeholder instead of mojibake.
 
+![Editing login.ts in the File view: an amber unsaved-changes dot by the filename, Save and Done in the panel header, and the editable buffer](docs/img/22-file-editing.png)
+
+![The unsaved-changes modal — Keep editing or Discard — shown when navigating away mid-edit](docs/img/23-discard-modal.png)
+
 ### Scratch terminals
 
 ![Two auto-numbered scratch terminals pinned above the repo list with a divider; the first is selected and highlighted](docs/img/19-scratch-terminals.png)

@@ -92,6 +92,10 @@ export function attachIpc(): () => void {
           panelMode: 'file',
           openFileText: null,
           openDiff: null,
+          editing: false,
+          draft: null,
+          saving: false,
+          saveError: null,
         });
       }
       const s = useStore.getState();
@@ -159,6 +163,9 @@ export function attachIpc(): () => void {
       if (p.panelMode !== undefined) editor.panelMode = p.panelMode;
       if (p.openFileText !== undefined) editor.openFileText = p.openFileText;
       if (p.openDiff !== undefined) editor.openDiff = p.openDiff;
+      if (p.editing !== undefined) editor.editing = p.editing;
+      if (p.draft !== undefined) editor.draft = p.draft;
+      if (p.saveError !== undefined) editor.saveError = p.saveError;
       if (Object.keys(editor).length > 0) useStore.setState(editor);
     }),
   );

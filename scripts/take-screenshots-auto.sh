@@ -43,6 +43,8 @@ ALL_SCENARIOS=(
   "19-scratch-terminals"
   "20-create-repo-modal"
   "21-code-viewer-diff"
+  "22-file-editing"
+  "23-discard-modal"
 )
 
 if [ $# -gt 0 ]; then

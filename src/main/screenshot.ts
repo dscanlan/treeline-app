@@ -144,6 +144,25 @@ const ALL_WORKTREES = {
   [REPO_DASHBOARD.path]: WORKTREES_DASHBOARD,
 };
 
+// Saved-on-disk content for the edit-mode scenarios, and the in-progress draft
+// (one extra line) so the unsaved-changes dot + Save button show.
+const LOGIN_TS = `import { db } from '../db';
+import { verifyPassword } from './password';
+import { AuthError } from './errors';
+
+export async function login(email: string, password: string) {
+  const user = await db.users.findByEmail(email);
+  if (!user) {
+    throw new AuthError('no account for that email');
+  }
+  return verifyPassword(user, password);
+}
+`;
+const LOGIN_TS_DRAFT = LOGIN_TS.replace(
+  '  const user = await db.users.findByEmail(email);\n',
+  '  const user = await db.users.findByEmail(email);\n  await rateLimiter.check(email);\n',
+);
+
 // ── Scenario plumbing ──────────────────────────────────────────────────────
 
 interface ScenarioCtx {
@@ -505,6 +524,74 @@ const SCENARIOS: Record<string, Scenario> = {
       'clear\n',
       "echo 'treeline-app on feat-auth'\n",
     ]);
+  },
+
+  // ── code editor: editing a file + the unsaved-changes modal ─────────────
+
+  '22-file-editing': async (ctx) => {
+    const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const file = `${wt.path}/src/auth/login.ts`;
+    const { tab } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, tab.ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      expandedDirs: { [wt.path]: true },
+      worktreeFileView: { [wt.path]: 'changed' },
+      changedByWorktree: {
+        [wt.path]: [
+          { path: file, relPath: 'src/auth/login.ts', status: 'modified' },
+          { path: `${wt.path}/.env.local`, relPath: '.env.local', status: 'untracked' },
+        ],
+      },
+      // File view, mid-edit: a draft with one extra line vs the saved text, so
+      // the amber unsaved dot and Save button are visible.
+      codePanelOpen: true,
+      codePanelWidth: 520,
+      openFilePath: file,
+      panelMode: 'file',
+      openFileText: LOGIN_TS,
+      editing: true,
+      draft: LOGIN_TS_DRAFT,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, tab.ptyId, ['clear\n', "echo 'editing login.ts'\n"]);
+  },
+
+  '23-discard-modal': async (ctx) => {
+    const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const file = `${wt.path}/src/auth/login.ts`;
+    const { tab } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, tab.ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      expandedDirs: { [wt.path]: true },
+      worktreeFileView: { [wt.path]: 'changed' },
+      changedByWorktree: {
+        [wt.path]: [{ path: file, relPath: 'src/auth/login.ts', status: 'modified' }],
+      },
+      codePanelOpen: true,
+      codePanelWidth: 520,
+      openFilePath: file,
+      panelMode: 'file',
+      openFileText: LOGIN_TS,
+      editing: true,
+      draft: LOGIN_TS_DRAFT,
+      // The unsaved-changes confirmation, e.g. triggered by clicking another file.
+      modal: { kind: 'confirm-discard', filename: 'login.ts', then: { type: 'stop-editing' } },
+    });
+    await delay(400);
   },
 
   '18-add-button-tooltip': async ({ win }) => {
