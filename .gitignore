@@ -12,5 +12,8 @@ coverage/
 # Claude Code per-machine settings (project settings.json may still be committed)
 .claude/settings.local.json
 
+# Claude Code scheduler lock (runtime, process-specific)
+.claude/scheduled_tasks.lock
+
 # Test-fixture dir created by scripts/setup-test-scenarios.sh
 .test-code-root/
