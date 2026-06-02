@@ -3,6 +3,8 @@ import { Channels } from '@shared/ipc-channels';
 import type { ScreenshotHydratePayload, TreelineApi } from '@shared/ipc-contract';
 import type {
   AppConfig,
+  DirEntry,
+  FileContents,
   ProcessSnapshot,
   Repo,
   TerminalStatusUpdate,
@@ -95,6 +97,12 @@ const api: TreelineApi = {
 
   terminalStatus: {
     subscribe: (cb) => listen<TerminalStatusUpdate[]>(Channels.TerminalStatusUpdate, cb),
+  },
+
+  files: {
+    readDir: (path) =>
+      ipcRenderer.invoke(Channels.FilesReadDir, path) as Promise<DirEntry[]>,
+    read: (path) => ipcRenderer.invoke(Channels.FilesRead, path) as Promise<FileContents>,
   },
 
   config: {

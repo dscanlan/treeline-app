@@ -6,6 +6,7 @@ import { createModalSlice, type ModalSlice } from './modal-slice';
 import { createDiscoveriesSlice, type DiscoveriesSlice } from './discoveries-slice';
 import { createScreenshotSlice, type ScreenshotSlice } from './screenshot-slice';
 import { createScratchSlice, type ScratchSlice } from './scratch-slice';
+import { createEditorSlice, type EditorSlice } from './editor-slice';
 
 export type AppStore = ReposSlice &
   TabsSlice &
@@ -13,7 +14,8 @@ export type AppStore = ReposSlice &
   ModalSlice &
   DiscoveriesSlice &
   ScreenshotSlice &
-  ScratchSlice;
+  ScratchSlice &
+  EditorSlice;
 
 export const useStore = create<AppStore>()((...a) => ({
   ...createReposSlice(...a),
@@ -23,4 +25,5 @@ export const useStore = create<AppStore>()((...a) => ({
   ...createDiscoveriesSlice(...a),
   ...createScreenshotSlice(...a),
   ...createScratchSlice(...a),
+  ...createEditorSlice(...a),
 }));

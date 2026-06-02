@@ -81,6 +81,30 @@ export interface TerminalStatusUpdate {
 }
 
 /**
+ * One entry in a directory listing, returned by `files.readDir`. `path` is the
+ * absolute path of the entry; `type` distinguishes files from subdirectories so
+ * the file tree can show disclosure chevrons and lazy-load on expand.
+ */
+export interface DirEntry {
+  name: string;
+  path: string;
+  type: 'file' | 'dir';
+}
+
+/**
+ * Result of `files.read`. `text` is the file's UTF-8 contents (empty when
+ * `binary` is true). `truncated` flags that the file exceeded the read cap and
+ * only a prefix is returned; `binary` flags that a NUL byte was detected and the
+ * viewer should show a placeholder rather than garbage.
+ */
+export interface FileContents {
+  path: string;
+  text: string;
+  truncated: boolean;
+  binary: boolean;
+}
+
+/**
  * A scratch terminal: a shell session not bound to any tracked repo. Lives in
  * renderer state only (never persisted to AppConfig), but the shape is shared
  * so the screenshot harness can hydrate scratch rows for capture scenarios.

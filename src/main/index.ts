@@ -19,6 +19,7 @@ import { registerWorktreesIpc, broadcastWorktreesChanged } from './ipc/worktrees
 import { registerPtyIpc } from './ipc/pty';
 import { registerProcessesIpc, broadcastProcesses } from './ipc/processes';
 import { registerConfigIpc } from './ipc/config';
+import { registerFilesIpc } from './ipc/files';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
 import { setupAutoUpdater } from './updater';
@@ -142,6 +143,7 @@ app.whenReady().then(() => {
   registerPtyIpc(ptyManager);
   registerProcessesIpc();
   registerConfigIpc(reposStore);
+  registerFilesIpc();
 
   buildAppMenu();
   mainWindow = createMainWindow();

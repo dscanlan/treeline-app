@@ -2,8 +2,10 @@ import { useStore } from '../store';
 import type { Worktree } from '@shared/types';
 import { basename } from '../util/path';
 import { openTabAt } from '../actions/tabs';
+import { toggleDir } from '../actions/editor';
 import { TabStatusDot } from './TabStatusDot';
 import { ProcessBadge } from './ProcessBadge';
+import { FileTree } from './FileTree';
 
 interface Props {
   worktree: Worktree;
@@ -16,6 +18,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const wtStatus = useStore((s) => s.worktreeStatus(worktree.path));
   const procs = useStore((s) => s.processesByWorktreePath[worktree.path] ?? []);
   const openModal = useStore((s) => s.openModal);
+  const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
 
   const isClaude = worktree.isClaude;
   const labelColor = isClaude ? 'text-treeline-magenta' : 'text-treeline-text';
@@ -33,6 +36,16 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
           selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'
         }`}
       >
+        <button
+          type="button"
+          onClick={() => void toggleDir(worktree.path)}
+          title={treeOpen ? 'Hide files' : 'Show files'}
+          aria-label={treeOpen ? 'Hide files' : 'Show files'}
+          aria-expanded={treeOpen}
+          className="w-3 shrink-0 text-center text-[10px] text-treeline-dim hover:text-treeline-text"
+        >
+          {treeOpen ? '▾' : '▸'}
+        </button>
         <button
           type="button"
           onClick={() => void openTabAt(worktree.path)}
@@ -72,6 +85,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
           </button>
         </div>
       </div>
+      {treeOpen && <FileTree dirPath={worktree.path} depth={0} />}
     </li>
   );
 }

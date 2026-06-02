@@ -1,6 +1,8 @@
 import type {
   AppConfig,
   DetectedProcess,
+  DirEntry,
+  FileContents,
   ProcessSnapshot,
   Repo,
   Scratch,
@@ -122,6 +124,16 @@ export interface TreelineApi {
 
   terminalStatus: {
     subscribe(cb: (updates: TerminalStatusUpdate[]) => void): () => void;
+  };
+
+  /**
+   * Read-only filesystem access for the code viewer. `readDir` lazily lists one
+   * directory's children (tree expands on demand); `read` returns a file's
+   * contents with size/binary guards (see FileContents).
+   */
+  files: {
+    readDir(path: string): Promise<DirEntry[]>;
+    read(path: string): Promise<FileContents>;
   };
 
   config: {

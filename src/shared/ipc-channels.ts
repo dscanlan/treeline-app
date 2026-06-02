@@ -31,6 +31,10 @@ export const Channels = {
   // terminal status
   TerminalStatusUpdate: 'terminalStatus:update',
 
+  // files (code viewer)
+  FilesReadDir: 'files:readDir',
+  FilesRead: 'files:read',
+
   // config
   ConfigGet: 'config:get',
   ConfigSetCodeRoot: 'config:setCodeRoot',

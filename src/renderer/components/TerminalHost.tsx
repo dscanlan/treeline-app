@@ -7,7 +7,7 @@ export function TerminalHost() {
 
   if (tabs.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-treeline-dim">
+      <div className="flex min-w-0 flex-1 items-center justify-center text-treeline-dim">
         <div className="text-center">
           <p className="mb-1 text-treeline-cyan">no terminals open</p>
           <p>Click a worktree in the sidebar to open one.</p>
@@ -17,7 +17,7 @@ export function TerminalHost() {
   }
 
   return (
-    <div className="relative flex-1 bg-treeline-surface">
+    <div className="relative min-w-0 flex-1 bg-treeline-surface">
       {tabs.map((tab) => (
         <TerminalView
           key={tab.id}
