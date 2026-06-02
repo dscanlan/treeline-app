@@ -91,8 +91,9 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 The `All | Changed` toggle (`<WorktreeFiles>`) swaps the tree for
 `<ChangedFilesList>`, fed by `window.treeline.files.changed(path)` →
 `git.ts:changedFiles()` (parses `git status --porcelain`). The list
-re-fetches whenever `worktrees:onChange` fires for that repo, so it tracks
-edits live.
+re-fetches whenever `worktrees:onChange` fires for that repo — i.e. on the
+same `.git` watcher + ~5 s poll that drives the dirty dot, so commits and
+git ops refresh promptly while a bare working-tree save isn't instant.
 
 Clicking a changed file opens its **diff** instead of the full file:
 `files.diff(path)` → `git.ts:fileDiff()` runs `git diff HEAD` (untracked

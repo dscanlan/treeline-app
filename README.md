@@ -143,10 +143,21 @@ viewer does that without leaving treeline or breaking your terminal flow.
   from the repo's expand/collapse triangle one level up.
 - **`All | Changed` toggle** at the top of the expanded area. **Changed**
   swaps the tree for a flat list of the worktree's working-tree changes
-  (`git status`), each tagged with a colored status letter (`M` modified,
-  `A` added, `?` untracked, `D` deleted, `R` renamed). It refreshes live as
-  files change, so it's a quick "what have I touched here" view. Deleted
-  entries are shown struck-through and aren't clickable.
+  (`git status`), each tagged with a colored status letter:
+
+  | Letter | Meaning   | Color  |
+  | ------ | --------- | ------ |
+  | `M`    | modified  | yellow |
+  | `A`    | added     | green  |
+  | `?`    | untracked | green  |
+  | `D`    | deleted   | red    |
+  | `R`    | renamed   | cyan   |
+
+  Deleted entries are shown struck-through and aren't clickable. The list
+  refreshes off the same `.git` watcher that drives the dirty dot, so it
+  updates on commits and git operations and re-polls every ~5 s — a plain
+  file save may take a moment to show rather than appearing instantly. (Re-
+  toggling **All → Changed** forces an immediate refetch.)
 - **Click a file** → it opens in a read-only, syntax-highlighted **panel
   that splits in beside the terminal**, so you can reference code and keep
   working in the same view. Language is picked from the file extension
