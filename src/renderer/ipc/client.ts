@@ -82,6 +82,16 @@ export function attachIpc(): () => void {
           processesByWorktreePath: {},
           forceTooltip: null,
           scratches: [],
+          expandedDirs: {},
+          dirChildren: {},
+          worktreeFileView: {},
+          changedByWorktree: {},
+          changedLoading: {},
+          codePanelOpen: false,
+          openFilePath: null,
+          panelMode: 'file',
+          openFileText: null,
+          openDiff: null,
         });
       }
       const s = useStore.getState();
@@ -136,6 +146,20 @@ export function attachIpc(): () => void {
           p.forceTooltipNear === null ? null : p.forceTooltipNear,
         );
       }
+      // Code-viewer state — set directly (the slice's setters are granular and
+      // the harness wants a wholesale snapshot).
+      const editor: Record<string, unknown> = {};
+      if (p.expandedDirs !== undefined) editor.expandedDirs = p.expandedDirs;
+      if (p.dirChildren !== undefined) editor.dirChildren = p.dirChildren;
+      if (p.worktreeFileView !== undefined) editor.worktreeFileView = p.worktreeFileView;
+      if (p.changedByWorktree !== undefined) editor.changedByWorktree = p.changedByWorktree;
+      if (p.codePanelOpen !== undefined) editor.codePanelOpen = p.codePanelOpen;
+      if (p.codePanelWidth !== undefined) editor.codePanelWidth = p.codePanelWidth;
+      if (p.openFilePath !== undefined) editor.openFilePath = p.openFilePath;
+      if (p.panelMode !== undefined) editor.panelMode = p.panelMode;
+      if (p.openFileText !== undefined) editor.openFileText = p.openFileText;
+      if (p.openDiff !== undefined) editor.openDiff = p.openDiff;
+      if (Object.keys(editor).length > 0) useStore.setState(editor);
     }),
   );
 

@@ -42,6 +42,7 @@ ALL_SCENARIOS=(
   "18-add-button-tooltip"
   "19-scratch-terminals"
   "20-create-repo-modal"
+  "21-code-viewer-diff"
 )
 
 if [ $# -gt 0 ]; then

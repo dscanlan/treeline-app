@@ -48,6 +48,21 @@ export interface ScreenshotHydratePayload {
   /** Synthesised TerminalStatusUpdate batch — drives the green/cyan/dim status dots. */
   terminalStatus?: TerminalStatusUpdate[];
   /**
+   * Code-viewer state for the editor slice — drives the file tree, the
+   * All|Changed list, and the split code panel (file or diff) so the harness
+   * can capture the code viewer without driving the UI.
+   */
+  expandedDirs?: Record<string, boolean>;
+  dirChildren?: Record<string, DirEntry[]>;
+  worktreeFileView?: Record<string, 'all' | 'changed'>;
+  changedByWorktree?: Record<string, ChangedFile[]>;
+  codePanelOpen?: boolean;
+  codePanelWidth?: number;
+  openFilePath?: string | null;
+  panelMode?: 'file' | 'diff';
+  openFileText?: string | null;
+  openDiff?: FileDiff | null;
+  /**
    * Render an in-renderer tooltip near the matched element. Used by the
    * 18-add-button-tooltip scenario because the OS-rendered HTML title
    * tooltip is outside the renderer bitmap and `webContents.capturePage()`

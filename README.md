@@ -133,6 +133,8 @@ not visible, so switching back is instant — no replay flicker.
 
 ### Code viewer
 
+![A worktree expanded to its Changed list in the sidebar, with the split code panel showing a file's diff (working tree vs HEAD) beside the terminal](docs/img/21-code-viewer-diff.png)
+
 You're mostly in the terminal, but sometimes you just need to *look* at a
 file — peek at an `.env`, re-read a config, glance at a function. The code
 viewer does that without leaving treeline or breaking your terminal flow.

@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Channels } from '@shared/ipc-channels';
 import type { ScreenshotHydratePayload } from '@shared/ipc-contract';
-import type { DetectedProcess, Repo, Scratch, Tab, Worktree } from '@shared/types';
+import type {
+  ChangedFile,
+  DetectedProcess,
+  FileDiff,
+  Repo,
+  Scratch,
+  Tab,
+  Worktree,
+} from '@shared/types';
 import type { PtyManager } from './pty-manager';
 
 /**
@@ -437,6 +445,66 @@ const SCENARIOS: Record<string, Scenario> = {
       worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
       modal: { kind: 'create-repo' },
     });
+  },
+
+  // ── code viewer: Changed list + diff panel ─────────────────────────────
+  // Shows the whole feature in one shot: a worktree's folder expanded to the
+  // Changed list in the sidebar, and the split code panel rendering a file's
+  // diff (working tree vs HEAD) next to a terminal.
+
+  '21-code-viewer-diff': async (ctx) => {
+    const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const file = `${wt.path}/src/auth/login.ts`;
+    const changed: ChangedFile[] = [
+      { path: file, relPath: 'src/auth/login.ts', status: 'modified' },
+      { path: `${wt.path}/src/auth/session.ts`, relPath: 'src/auth/session.ts', status: 'added' },
+      { path: `${wt.path}/src/auth/tokens.ts`, relPath: 'src/auth/tokens.ts', status: 'modified' },
+      { path: `${wt.path}/.env.local`, relPath: '.env.local', status: 'untracked' },
+      { path: `${wt.path}/README.md`, relPath: 'README.md', status: 'modified' },
+    ];
+    const diff: FileDiff = {
+      path: file,
+      added: 3,
+      removed: 1,
+      binary: false,
+      lines: [
+        { kind: 'hunk', oldLine: null, newLine: null, text: 'function login(email, password) {' },
+        { kind: 'context', oldLine: 41, newLine: 41, text: '  const user = await db.users.findByEmail(email);' },
+        { kind: 'del', oldLine: 42, newLine: null, text: '  if (!user) return null;' },
+        { kind: 'add', oldLine: null, newLine: 42, text: '  if (!user) {' },
+        { kind: 'add', oldLine: null, newLine: 43, text: "    throw new AuthError('no account for that email');" },
+        { kind: 'add', oldLine: null, newLine: 44, text: '  }' },
+        { kind: 'context', oldLine: 43, newLine: 45, text: '  return verifyPassword(user, password);' },
+        { kind: 'context', oldLine: 44, newLine: 46, text: '}' },
+      ],
+    };
+
+    const { tab } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, tab.ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      // Code viewer: expand feat-auth's folder, show its Changed list, and open
+      // login.ts as a diff in the panel.
+      expandedDirs: { [wt.path]: true },
+      worktreeFileView: { [wt.path]: 'changed' },
+      changedByWorktree: { [wt.path]: changed },
+      codePanelOpen: true,
+      codePanelWidth: 520,
+      openFilePath: file,
+      panelMode: 'diff',
+      openDiff: diff,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, tab.ptyId, [
+      'clear\n',
+      "echo 'treeline-app on feat-auth'\n",
+    ]);
   },
 
   '18-add-button-tooltip': async ({ win }) => {
