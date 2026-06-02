@@ -108,6 +108,8 @@ const api: TreelineApi = {
     changed: (path) =>
       ipcRenderer.invoke(Channels.FilesChanged, path) as Promise<ChangedFile[]>,
     diff: (path) => ipcRenderer.invoke(Channels.FilesDiff, path) as Promise<FileDiff>,
+    write: (path, content) =>
+      ipcRenderer.invoke(Channels.FilesWrite, path, content) as Promise<void>,
   },
 
   config: {

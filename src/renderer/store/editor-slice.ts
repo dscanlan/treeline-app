@@ -34,6 +34,17 @@ export interface EditorSlice {
   diffError: string | null;
   diffLoading: boolean;
 
+  /**
+   * Edit state for the File view. `editing` flips the read-only viewer into an
+   * editor; `draft` holds the in-progress text (compared against `openFileText`
+   * to know if there are unsaved changes). Diff view and truncated files are
+   * never editable.
+   */
+  editing: boolean;
+  draft: string | null;
+  saving: boolean;
+  saveError: string | null;
+
   /** Tree state: dir path → expanded, and dir path → lazily-loaded children. */
   expandedDirs: Record<string, boolean>;
   dirChildren: Record<string, DirEntry[]>;
@@ -76,6 +87,19 @@ export interface EditorSlice {
   /** Flip a directory's expanded flag. */
   setDirExpanded: (path: string, expanded: boolean) => void;
 
+  /** Enter edit mode for the open file (seeds `draft` from the loaded text). */
+  startEditing: () => void;
+  /** Update the in-progress draft as the user types. */
+  setDraft: (text: string) => void;
+  /** Leave edit mode and drop the draft (caller handles any unsaved warning). */
+  stopEditing: () => void;
+  /** Mark a save in-flight. */
+  setSaving: (saving: boolean) => void;
+  /** Apply a successful save: `content` becomes the new clean baseline. */
+  applySaved: (path: string, content: string) => void;
+  /** Record a save failure for `path`. Ignored if the user already switched. */
+  setSaveError: (path: string, error: string) => void;
+
   /** Set a worktree's All|Changed view mode. */
   setWorktreeFileView: (worktreePath: string, view: WorktreeFileView) => void;
   /** Mark the changed-file fetch in-flight for a worktree. */
@@ -98,6 +122,11 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
   openDiff: null,
   diffError: null,
   diffLoading: false,
+
+  editing: false,
+  draft: null,
+  saving: false,
+  saveError: null,
 
   expandedDirs: {},
   dirChildren: {},
@@ -126,6 +155,11 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
       openDiff: null,
       diffError: null,
       diffLoading: mode === 'diff',
+      // Switching files always leaves edit mode (the guard runs first).
+      editing: false,
+      draft: null,
+      saving: false,
+      saveError: null,
     }),
 
   setPanelMode: (mode) => set({ panelMode: mode }),
@@ -171,6 +205,30 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
 
   setDirExpanded: (path, expanded) =>
     set((s) => ({ expandedDirs: { ...s.expandedDirs, [path]: expanded } })),
+
+  startEditing: () =>
+    set((s) => ({ editing: true, draft: s.openFileText ?? '', saveError: null })),
+
+  setDraft: (text) => set({ draft: text }),
+
+  stopEditing: () => set({ editing: false, draft: null, saving: false, saveError: null }),
+
+  setSaving: (saving) => set({ saving }),
+
+  applySaved: (path, content) =>
+    set((s) => {
+      if (s.openFilePath !== path) return s;
+      // `content` becomes the new clean baseline. We deliberately do NOT touch
+      // `draft`: if the user kept typing during the write, their newer draft
+      // stays put and the unsaved indicator (draft !== openFileText) re-arms.
+      return { openFileText: content, saving: false, saveError: null };
+    }),
+
+  setSaveError: (path, error) =>
+    set((s) => {
+      if (s.openFilePath !== path) return s;
+      return { saveError: error, saving: false };
+    }),
 
   setWorktreeFileView: (worktreePath, view) =>
     set((s) => ({ worktreeFileView: { ...s.worktreeFileView, [worktreePath]: view } })),

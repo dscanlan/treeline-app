@@ -36,6 +36,7 @@ export const Channels = {
   FilesRead: 'files:read',
   FilesChanged: 'files:changed',
   FilesDiff: 'files:diff',
+  FilesWrite: 'files:write',
 
   // config
   ConfigGet: 'config:get',

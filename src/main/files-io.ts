@@ -1,5 +1,5 @@
-import { readdir, open, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readdir, open, rename, stat, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import type { DirEntry, FileContents } from '@shared/types';
 
 /**
@@ -71,4 +71,20 @@ export async function readFileGuarded(filePath: string): Promise<FileContents> {
   } finally {
     await fh.close();
   }
+}
+
+/**
+ * Write `content` to `filePath` atomically (write a sibling temp file, then
+ * rename over the target) so a crash mid-write can't leave a half-written file.
+ * Refuses to write anything but an existing regular file — this phase edits
+ * existing files only, and the guard stops a typo'd path from creating junk or
+ * clobbering a directory.
+ */
+export async function writeFileGuarded(filePath: string, content: string): Promise<void> {
+  const info = await stat(filePath); // throws if the path doesn't exist
+  if (!info.isFile()) throw new Error('not a regular file');
+
+  const tmp = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.tmp`);
+  await writeFile(tmp, content, 'utf8');
+  await rename(tmp, filePath); // atomic on the same filesystem
 }

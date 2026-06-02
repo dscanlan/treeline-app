@@ -169,13 +169,18 @@ viewer does that without leaving treeline or breaking your terminal flow.
   numbers, and red `-` / green `+` rows. Untracked files render as all
   additions. The panel header has a **`Diff | File`** toggle to flip the
   open file between its diff and full contents.
+- **Editing.** The File view is read-only until you click **Edit** in the
+  panel header, then it becomes editable. Save with **⌘S** (or the Save
+  button); an amber dot by the filename marks unsaved changes, and writes
+  are atomic (temp file + rename). After a save, the diff and **Changed**
+  list refresh. Switching files or closing the panel with unsaved edits
+  prompts first. Truncated (>1 MB) and binary files stay read-only.
 - **Drag the divider** between the terminal and the panel to resize; the
   terminal re-fits to the new width. The `×` in the panel header closes it.
 
 Guard rails keep it snappy: files over 1 MB are shown truncated (with a
 `truncated` badge), and binary files (detected by a NUL byte) show a
-placeholder instead of mojibake. Editing + save is planned as a follow-up;
-phase 1 is view-only.
+placeholder instead of mojibake.
 
 ### Scratch terminals
 
@@ -283,7 +288,7 @@ The short version:
 ## Testing
 
 ```bash
-npm test              # vitest, ~120 tests across 10 suites
+npm test              # vitest, ~123 tests across 10 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -297,7 +302,7 @@ The suites:
 | `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init/changed-files) + diff parsing |
 | `repos-store`        | Atomic writes, schema migration, corrupt-file recovery  |
 | `repos-create`       | `git init` validation paths (new vs existing folder, branch, collisions) |
-| `files-io`           | Code-viewer reads: dir listing/sort, `.git` hiding, size truncation, binary sniff |
+| `files-io`           | Code-viewer reads + atomic writes: dir listing/sort, `.git` hiding, size truncation, binary sniff, edit-existing guard |
 | `repo-discovery`     | PTY-cwd → untracked-repo detection + dismissed-list gates |
 | `pty-manager`        | Chunk coalescing, SIGHUP→SIGKILL escalation             |
 | `terminal-status`    | `running` / `idle` / `exited` deltas                    |
@@ -342,7 +347,7 @@ src/
 │   ├── repo-discovery.ts         # untracked-repo detection from PTY cwds
 │   ├── repos-store.ts            # atomic JSON config in app userData
 │   ├── repos-create.ts           # `git init` flow: validation + register
-│   ├── files-io.ts              # code-viewer fs reads (listDir + read guards)
+│   ├── files-io.ts              # code-viewer fs: listDir + read guards + atomic write
 │   ├── screenshot.ts             # dev-only headless capture harness
 │   ├── ipc/                      # one file per domain (incl. files.ts)
 │   └── util/             # exec, safe-path

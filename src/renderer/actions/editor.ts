@@ -8,6 +8,31 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** True when edit mode has changes not yet written to disk. */
+export function hasUnsavedEdits(): boolean {
+  const s = useStore.getState();
+  return s.editing && s.draft !== null && s.draft !== s.openFileText;
+}
+
+/** Confirm discarding unsaved edits; returns true if it's safe to proceed. */
+function confirmDiscard(): boolean {
+  if (!hasUnsavedEdits()) return true;
+  return window.confirm('You have unsaved changes. Discard them?');
+}
+
+/** Longest worktree path containing `filePath`, or null if untracked. */
+function worktreePathFor(filePath: string): string | null {
+  const { worktreesByRepo } = useStore.getState();
+  let best: string | null = null;
+  for (const wts of Object.values(worktreesByRepo)) {
+    for (const wt of wts) {
+      const inside = filePath === wt.path || filePath.startsWith(`${wt.path}/`);
+      if (inside && (best === null || wt.path.length > best.length)) best = wt.path;
+    }
+  }
+  return best;
+}
+
 /** Fetch the full-file representation for `path` into the panel. */
 async function loadFileContent(path: string): Promise<void> {
   useStore.getState().setFileLoading(true);
@@ -32,14 +57,52 @@ async function loadFileDiff(path: string): Promise<void> {
 
 /** Open a file in the panel showing its full contents (used by the tree). */
 export async function openFileInPanel(path: string): Promise<void> {
+  if (!confirmDiscard()) return;
   useStore.getState().openInPanel(path, 'file');
   await loadFileContent(path);
 }
 
 /** Open a file in the panel showing its diff (used by the Changed list). */
 export async function openDiffInPanel(path: string): Promise<void> {
+  if (!confirmDiscard()) return;
   useStore.getState().openInPanel(path, 'diff');
   await loadFileDiff(path);
+}
+
+/** Close the panel, warning first if there are unsaved edits. */
+export function tryCloseCodePanel(): void {
+  if (!confirmDiscard()) return;
+  const s = useStore.getState();
+  s.stopEditing();
+  s.closeCodePanel();
+}
+
+/** Leave edit mode (back to read-only), warning first if there are unsaved edits. */
+export function tryStopEditing(): void {
+  if (!confirmDiscard()) return;
+  useStore.getState().stopEditing();
+}
+
+/** Save the open file's draft to disk (⌘S / Save button). */
+export async function saveOpenFile(): Promise<void> {
+  const s = useStore.getState();
+  const path = s.openFilePath;
+  if (!path || !s.editing || s.draft === null) return;
+  if (s.draft === s.openFileText) return; // nothing changed
+  const content = s.draft;
+
+  s.setSaving(true);
+  try {
+    await window.treeline.files.write(path, content);
+    useStore.getState().applySaved(path, content);
+    // The on-disk file changed — refresh the cached diff (if loaded) and the
+    // containing worktree's Changed list so both reflect the save.
+    if (useStore.getState().openDiff !== null) void loadFileDiff(path);
+    const wtPath = worktreePathFor(path);
+    if (wtPath) void refreshChangedFiles(wtPath);
+  } catch (err) {
+    useStore.getState().setSaveError(path, errMsg(err));
+  }
 }
 
 /**

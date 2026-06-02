@@ -1,8 +1,21 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  mkdirSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { listDir, readFileGuarded, MAX_FILE_BYTES } from '../src/main/files-io';
+import {
+  listDir,
+  readFileGuarded,
+  writeFileGuarded,
+  MAX_FILE_BYTES,
+} from '../src/main/files-io';
 
 describe('files-io', () => {
   let dir: string;
@@ -75,6 +88,33 @@ describe('files-io', () => {
 
     it('rejects directories', async () => {
       await expect(readFileGuarded(dir)).rejects.toThrow('not a regular file');
+    });
+  });
+
+  describe('writeFileGuarded', () => {
+    it('overwrites an existing file and leaves no temp file behind', async () => {
+      const p = join(dir, '.env');
+      writeFileSync(p, 'PORT=3000\n');
+      await writeFileGuarded(p, 'PORT=4000\nDEBUG=true\n');
+      expect(readFileSync(p, 'utf8')).toBe('PORT=4000\nDEBUG=true\n');
+      // The atomic write renames its temp file away — nothing .tmp lingers.
+      expect(readdirSync(dir).some((n) => n.includes('.tmp'))).toBe(false);
+    });
+
+    it('round-trips through readFileGuarded', async () => {
+      const p = join(dir, 'note.md');
+      writeFileSync(p, 'old');
+      await writeFileGuarded(p, '# new\n');
+      const res = await readFileGuarded(p);
+      expect(res.text).toBe('# new\n');
+    });
+
+    it('refuses to create a new file (edit-existing only)', async () => {
+      await expect(writeFileGuarded(join(dir, 'nope.txt'), 'x')).rejects.toThrow();
+    });
+
+    it('refuses to write a directory', async () => {
+      await expect(writeFileGuarded(dir, 'x')).rejects.toThrow('not a regular file');
     });
   });
 });

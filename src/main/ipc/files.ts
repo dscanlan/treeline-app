@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { Channels } from '@shared/ipc-channels';
-import { listDir, readFileGuarded } from '../files-io';
+import { listDir, readFileGuarded, writeFileGuarded } from '../files-io';
 import { changedFiles, fileDiff } from '../git';
 import { validateAbsPath } from '../util/safe-path';
 
@@ -26,10 +26,16 @@ export function registerFilesIpc(): () => void {
     return fileDiff(validateAbsPath(rawPath));
   });
 
+  ipcMain.handle(Channels.FilesWrite, async (_e, rawPath: unknown, content: unknown) => {
+    if (typeof content !== 'string') throw new Error('content must be a string');
+    await writeFileGuarded(validateAbsPath(rawPath), content);
+  });
+
   return () => {
     ipcMain.removeHandler(Channels.FilesReadDir);
     ipcMain.removeHandler(Channels.FilesRead);
     ipcMain.removeHandler(Channels.FilesChanged);
     ipcMain.removeHandler(Channels.FilesDiff);
+    ipcMain.removeHandler(Channels.FilesWrite);
   };
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import CodeMirror, { EditorView, type Extension } from '@uiw/react-codemirror';
+import CodeMirror, { EditorView, Prec, keymap, type Extension } from '@uiw/react-codemirror';
 import { loadLanguage, type LanguageName } from '@uiw/codemirror-extensions-langs';
 import { graphiteCodeMirrorTheme } from './codemirror-theme';
 
@@ -68,15 +68,39 @@ interface Props {
   value: string;
   /** Basename of the open file; drives language selection. */
   filename: string;
+  /** When true, the view is editable (defaults to read-only). */
+  editable?: boolean;
+  /** Called with the new text on every edit (only fires when editable). */
+  onChange?: (value: string) => void;
+  /** Called when the user presses ⌘S / Ctrl-S inside the editor. */
+  onSave?: () => void;
 }
 
-/** Read-only, syntax-highlighted CodeMirror view themed to match the app. */
-export function CodeMirrorView({ value, filename }: Props) {
+/** Syntax-highlighted CodeMirror view, read-only by default, editable on demand. */
+export function CodeMirrorView({ value, filename, editable = false, onChange, onSave }: Props) {
   const extensions = useMemo(() => {
     const exts: Extension[] = [...graphiteCodeMirrorTheme, EditorView.lineWrapping];
     const lang = languageExtensionFor(filename);
     if (lang) exts.push(lang);
+    // Intercept ⌘S/Ctrl-S so it saves the file instead of doing nothing.
+    // Highest precedence so it wins over any default binding.
+    exts.push(
+      Prec.highest(
+        keymap.of([
+          {
+            key: 'Mod-s',
+            run: () => {
+              onSave?.();
+              return true;
+            },
+          },
+        ]),
+      ),
+    );
     return exts;
+    // onSave is stable enough (module-level action); excluding it keeps the
+    // editor from rebuilding extensions on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filename]);
 
   return (
@@ -85,15 +109,15 @@ export function CodeMirrorView({ value, filename }: Props) {
       height="100%"
       theme="none"
       extensions={extensions}
-      editable={false}
+      editable={editable}
+      onChange={onChange}
       basicSetup={{
         lineNumbers: true,
         foldGutter: true,
-        highlightActiveLine: false,
-        highlightActiveLineGutter: false,
-        // Read-only view: no edit affordances needed.
+        highlightActiveLine: editable,
+        highlightActiveLineGutter: editable,
         autocompletion: false,
-        closeBrackets: false,
+        closeBrackets: editable,
       }}
       style={{ height: '100%', fontSize: '13px' }}
     />

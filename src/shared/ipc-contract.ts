@@ -144,9 +144,9 @@ export interface TreelineApi {
   };
 
   /**
-   * Read-only filesystem access for the code viewer. `readDir` lazily lists one
+   * Filesystem access for the code viewer. `readDir` lazily lists one
    * directory's children (tree expands on demand); `read` returns a file's
-   * contents with size/binary guards (see FileContents).
+   * contents with size/binary guards (see FileContents); `write` saves edits.
    */
   files: {
     readDir(path: string): Promise<DirEntry[]>;
@@ -155,6 +155,8 @@ export interface TreelineApi {
     changed(path: string): Promise<ChangedFile[]>;
     /** Unified diff (working tree vs HEAD) for the file at `path`. */
     diff(path: string): Promise<FileDiff>;
+    /** Atomically overwrite the existing file at `path` with `content`. */
+    write(path: string, content: string): Promise<void>;
   };
 
   config: {

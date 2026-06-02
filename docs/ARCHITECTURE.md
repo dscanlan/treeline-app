@@ -102,7 +102,16 @@ files become all-additions) and `parseUnifiedDiff()` turns the patch into
 `Diff | File` toggle flips `panelMode`, lazily loading whichever
 representation isn't cached yet.
 
-Both handlers validate the renderer-supplied path with `safe-path.ts`.
+**Editing.** The File view flips editable via the panel's `Edit` button
+(`editing` + a `draft` in the editor slice). `⌘S` / Save calls
+`saveOpenFile()` → `files.write(path, draft)` → `files-io.ts:writeFileGuarded()`,
+which writes a sibling temp file and `rename()`s it over the target
+(atomic) and refuses anything but an existing regular file. On success the
+saved text becomes the clean baseline and the diff + Changed list refresh.
+Switching files / closing the panel with unsaved edits prompts first
+(`confirmDiscard`); truncated and binary files stay read-only.
+
+Both read handlers validate the renderer-supplied path with `safe-path.ts`.
 This isn't a new trust boundary — PTYs already grant full shell access —
 so the guards are about robustness (don't freeze on a huge file, don't
 render garbage for a binary), not sandboxing.
@@ -263,14 +272,14 @@ src/
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
-│   ├── files-io.ts              # Code-viewer reads: listDir + readFileGuarded.
+│   ├── files-io.ts              # Code-viewer fs: listDir + read + atomic write.
 │   ├── ipc/                      # One handler module per domain.
 │   │   ├── repos.ts              # repos:list/add/remove/pickDirectory.
 │   │   ├── worktrees.ts          # list/create/remove + onChange events.
 │   │   ├── pty.ts                # spawn/write/resize/kill + data/exit.
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
-│   │   ├── files.ts             # files:readDir/read/changed/diff (validate → files-io/git).
+│   │   ├── files.ts             # files:readDir/read/changed/diff/write (validate → files-io/git).
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
