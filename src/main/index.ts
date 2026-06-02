@@ -33,6 +33,18 @@ let processMonitor: ProcessMonitor | null = null;
 let repoDiscovery: RepoDiscovery | null = null;
 let isQuitting = false;
 
+/** Schemes we'll hand to the OS from a renderer-initiated link click. */
+const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+/** True if `url` parses and uses an allowlisted scheme. */
+function isSafeExternalUrl(url: string): boolean {
+  try {
+    return SAFE_EXTERNAL_PROTOCOLS.has(new URL(url).protocol);
+  } catch {
+    return false; // unparseable URL — don't open it
+  }
+}
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
@@ -61,8 +73,14 @@ function createMainWindow(): BrowserWindow {
     if (mainWindow === win) mainWindow = null;
   });
 
+  // Links clicked in the renderer (notably xterm's WebLinksAddon, which turns
+  // arbitrary terminal output into clickable links) arrive here. Terminal
+  // content is attacker-influenceable — a malicious file printed to the
+  // terminal, or AI-tool output — so only hand off web/mail schemes to the OS.
+  // Anything else (file://, smb://, custom handlers, …) is dropped: those can
+  // launch local handlers or exfiltrate via SMB without a further prompt.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isSafeExternalUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
 
