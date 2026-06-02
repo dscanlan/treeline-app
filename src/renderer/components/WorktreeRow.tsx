@@ -32,44 +32,36 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   return (
     <li className="group/wt" data-ss="worktree-row" data-ss-path={worktree.path}>
       <div
-        className={`flex w-full items-center gap-2 rounded px-2 py-1 ${
+        className={`flex flex-col gap-0.5 rounded px-2 py-1 ${
           selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'
         }`}
       >
-        <button
-          type="button"
-          onClick={() => void toggleDir(worktree.path)}
-          title={treeOpen ? 'Hide files' : 'Browse files'}
-          aria-label={treeOpen ? 'Hide files' : 'Browse files'}
-          aria-expanded={treeOpen}
-          className={`flex w-4 shrink-0 items-center justify-center hover:text-treeline-text ${
-            treeOpen ? 'text-treeline-cyan' : 'text-treeline-dim'
-          }`}
-        >
-          <FolderIcon open={treeOpen} />
-        </button>
-        <button
-          type="button"
-          onClick={() => void openTabAt(worktree.path)}
-          title={worktree.path}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-        >
-          <span className={`shrink-0 ${iconColor}`}>{icon}</span>
-          <span className={`truncate ${labelColor}`}>
-            {worktree.branch || basename(worktree.path)}
-          </span>
-        </button>
-        <div className="flex shrink-0 items-center gap-1.5 text-xs">
-          {procs.map((p) => (
-            <ProcessBadge key={p.pid} proc={p} />
-          ))}
-          {worktree.isDirty && (
-            <span className="text-treeline-yellow" title="dirty">
-              ●
+        {/* Top line: folder toggle, branch name (gets the full width), and the
+          * hover-only delete affordance. */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void toggleDir(worktree.path)}
+            title={treeOpen ? 'Hide files' : 'Browse files'}
+            aria-label={treeOpen ? 'Hide files' : 'Browse files'}
+            aria-expanded={treeOpen}
+            className={`flex w-4 shrink-0 items-center justify-center hover:text-treeline-text ${
+              treeOpen ? 'text-treeline-cyan' : 'text-treeline-dim'
+            }`}
+          >
+            <FolderIcon open={treeOpen} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void openTabAt(worktree.path)}
+            title={worktree.path}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            <span className={`shrink-0 ${iconColor}`}>{icon}</span>
+            <span className={`truncate ${labelColor}`}>
+              {worktree.branch || basename(worktree.path)}
             </span>
-          )}
-          <span className="text-treeline-dim">{worktree.commit}</span>
-          {wtStatus && <TabStatusDot status={wtStatus} />}
+          </button>
           <button
             type="button"
             onClick={() =>
@@ -81,10 +73,23 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
               })
             }
             title="Delete worktree"
-            className="rounded px-1 text-treeline-dim opacity-0 hover:bg-treeline-surface hover:text-treeline-red group-hover/wt:opacity-100"
+            className="shrink-0 rounded px-1 text-treeline-dim opacity-0 hover:bg-treeline-surface hover:text-treeline-red group-hover/wt:opacity-100"
           >
             ×
           </button>
+        </div>
+        {/* Second line: metadata, dim and indented under the branch name. */}
+        <div className="flex items-center gap-1.5 pl-6 text-xs">
+          {procs.map((p) => (
+            <ProcessBadge key={p.pid} proc={p} />
+          ))}
+          {worktree.isDirty && (
+            <span className="text-treeline-yellow" title="dirty">
+              ●
+            </span>
+          )}
+          <span className="text-treeline-dim">{worktree.commit}</span>
+          {wtStatus && <TabStatusDot status={wtStatus} />}
         </div>
       </div>
       {treeOpen && <FileTree dirPath={worktree.path} depth={0} />}
