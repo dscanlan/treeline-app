@@ -94,6 +94,7 @@ up on exit.
 | Open a scratch terminal         | `>_ Scratch` button (shell in your home directory, no repo) |
 | Filter worktrees by branch/path | `Filter…` input above the repo list                    |
 | Open repo root in a new tab     | `>_` icon on hover (next to the repo name)             |
+| Browse a worktree's files       | folder icon at the left of a worktree row (toggles the file tree) |
 | Create a worktree               | `+` icon on hover (next to the repo name)              |
 | Remove a repo from the sidebar  | `×` icon on hover (the repo's data is untouched)       |
 | Delete a worktree               | `×` icon on hover (next to a worktree row)             |
@@ -129,6 +130,28 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
 
 Terminals stay mounted (consuming PTY data into their scrollback) when
 not visible, so switching back is instant — no replay flicker.
+
+### Code viewer
+
+You're mostly in the terminal, but sometimes you just need to *look* at a
+file — peek at an `.env`, re-read a config, glance at a function. The code
+viewer does that without leaving treeline or breaking your terminal flow.
+
+- **Click the folder icon** at the left of a worktree row to expand its
+  **file tree**. Directories load lazily (one level per expand) and `.git`
+  is hidden; the icon is a folder, not a chevron, so it reads distinctly
+  from the repo's expand/collapse triangle one level up.
+- **Click a file** → it opens in a read-only, syntax-highlighted **panel
+  that splits in beside the terminal**, so you can reference code and keep
+  working in the same view. Language is picked from the file extension
+  (`.env` and unknown types render as plain text).
+- **Drag the divider** between the terminal and the panel to resize; the
+  terminal re-fits to the new width. The `×` in the panel header closes it.
+
+Guard rails keep it snappy: files over 1 MB are shown truncated (with a
+`truncated` badge), and binary files (detected by a NUL byte) show a
+placeholder instead of mojibake. Editing + save is planned as a follow-up;
+phase 1 is view-only.
 
 ### Scratch terminals
 
@@ -225,7 +248,7 @@ The short version:
 - **`src/main/`** — privileged work: spawning shells, running git,
   watching the filesystem, polling the process table.
 - **`src/preload/index.ts`** — single contextBridge that exposes
-  `window.treeline.{repos, worktrees, pty, processes, terminalStatus, config, window, system}`.
+  `window.treeline.{repos, worktrees, pty, processes, terminalStatus, files, config, window, system}`.
   The `system.homeDir` value is injected at window-creation time via
   `webPreferences.additionalArguments`, since a sandboxed preload can't
   `import 'node:os'` directly.
@@ -236,7 +259,7 @@ The short version:
 ## Testing
 
 ```bash
-npm test              # vitest, ~105 tests across 9 suites
+npm test              # vitest, ~110 tests across 10 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -250,6 +273,7 @@ The suites:
 | `git`                | Real-temp-repo round-trips (list/create/remove/dirty/init) |
 | `repos-store`        | Atomic writes, schema migration, corrupt-file recovery  |
 | `repos-create`       | `git init` validation paths (new vs existing folder, branch, collisions) |
+| `files-io`           | Code-viewer reads: dir listing/sort, `.git` hiding, size truncation, binary sniff |
 | `repo-discovery`     | PTY-cwd → untracked-repo detection + dismissed-list gates |
 | `pty-manager`        | Chunk coalescing, SIGHUP→SIGKILL escalation             |
 | `terminal-status`    | `running` / `idle` / `exited` deltas                    |
@@ -294,20 +318,23 @@ src/
 │   ├── repo-discovery.ts         # untracked-repo detection from PTY cwds
 │   ├── repos-store.ts            # atomic JSON config in app userData
 │   ├── repos-create.ts           # `git init` flow: validation + register
+│   ├── files-io.ts              # code-viewer fs reads (listDir + read guards)
 │   ├── screenshot.ts             # dev-only headless capture harness
-│   ├── ipc/                      # one file per domain
+│   ├── ipc/                      # one file per domain (incl. files.ts)
 │   └── util/             # exec, safe-path
 ├── preload/index.ts      # contextBridge surface
 └── renderer/
     ├── App.tsx           # top-level layout
     ├── components/       # Sidebar (incl. Scratch{List,Row,TerminalButton},
     │                     #   NewRepoButton), MainArea, TabBar, terminals,
-    │                     #   modals (CreateRepo, CreateWorktree, DeleteWorktree)
+    │                     #   code viewer (CodePanel, CodeMirrorView, FileTree,
+    │                     #   CodePanelResizer), modals
     ├── store/            # Zustand: repos, tabs, processes, modal, scratch,
-    │                     #   discoveries, screenshot slices
+    │                     #   discoveries, screenshot, editor slices
     ├── hooks/useXterm.ts
     ├── ipc/client.ts     # subscribes IPC events into the store
-    └── actions/          # tabs.ts (focusOrOpen / closeTab), scratch.ts
+    └── actions/          # tabs.ts (focusOrOpen / closeTab), scratch.ts,
+                          #   editor.ts (openFileInPanel / toggleDir)
 ```
 
 ## Caveats

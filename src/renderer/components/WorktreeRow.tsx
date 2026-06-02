@@ -39,12 +39,14 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
         <button
           type="button"
           onClick={() => void toggleDir(worktree.path)}
-          title={treeOpen ? 'Hide files' : 'Show files'}
-          aria-label={treeOpen ? 'Hide files' : 'Show files'}
+          title={treeOpen ? 'Hide files' : 'Browse files'}
+          aria-label={treeOpen ? 'Hide files' : 'Browse files'}
           aria-expanded={treeOpen}
-          className="w-3 shrink-0 text-center text-[10px] text-treeline-dim hover:text-treeline-text"
+          className={`flex w-4 shrink-0 items-center justify-center hover:text-treeline-text ${
+            treeOpen ? 'text-treeline-cyan' : 'text-treeline-dim'
+          }`}
         >
-          {treeOpen ? '▾' : '▸'}
+          <FolderIcon open={treeOpen} />
         </button>
         <button
           type="button"
@@ -87,5 +89,32 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
       </div>
       {treeOpen && <FileTree dirPath={worktree.path} depth={0} />}
     </li>
+  );
+}
+
+/**
+ * Folder glyph for the "browse files" toggle — deliberately not a chevron, so it
+ * reads distinctly from the repo's expand/collapse triangle one level up.
+ * Lucide-style stroked icons (folder / folder-open).
+ */
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {open ? (
+        <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+      ) : (
+        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+      )}
+    </svg>
   );
 }

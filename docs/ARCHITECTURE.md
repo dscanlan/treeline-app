@@ -70,6 +70,29 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
    subscribes via `window.treeline.pty.onData(id, chunk => term.write(chunk))`.
 8. Keystrokes from xterm: `term.onData(d => window.treeline.pty.write(id, d))`.
 
+### Viewing a file (code viewer)
+
+1. User clicks the folder icon on a worktree row. Renderer's
+   `actions/editor.ts:toggleDir(path)` flips `expandedDirs[path]` in the
+   store and, on first expand, calls `window.treeline.files.readDir(path)`.
+2. Main's `files-io.ts:listDir()` reads one directory level (`.git`
+   hidden, dirs-first sort) and returns `DirEntry[]`, cached in the editor
+   slice's `dirChildren`. `<FileTree>` renders it; sub-dirs repeat step 1.
+3. User clicks a file. `actions/editor.ts:openFileInPanel(path)` calls
+   `window.treeline.files.read(path)`.
+4. Main's `files-io.ts:readFileGuarded()` stats the file, reads up to
+   1 MB (flagging `truncated`), sniffs the head for a NUL byte (flagging
+   `binary`), and returns `FileContents`.
+5. The editor slice stores the result (ignoring it if the user already
+   switched files), `<MainArea>` splits in `<CodePanel>`, and
+   `<CodeMirrorView>` renders it read-only with an extension-derived
+   language and the Graphite theme.
+
+Both handlers validate the renderer-supplied path with `safe-path.ts`.
+This isn't a new trust boundary — PTYs already grant full shell access —
+so the guards are about robustness (don't freeze on a huge file, don't
+render garbage for a binary), not sandboxing.
+
 ### Live worktree updates
 
 1. `WorktreeWatcher` registers an `fs.watch` on each `<repo>/.git`
@@ -226,12 +249,14 @@ src/
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
+│   ├── files-io.ts              # Code-viewer reads: listDir + readFileGuarded.
 │   ├── ipc/                      # One handler module per domain.
 │   │   ├── repos.ts              # repos:list/add/remove/pickDirectory.
 │   │   ├── worktrees.ts          # list/create/remove + onChange events.
 │   │   ├── pty.ts                # spawn/write/resize/kill + data/exit.
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
+│   │   ├── files.ts             # files:readDir/read (validate → files-io).
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
@@ -251,11 +276,16 @@ src/
     │   ├── WorktreeRow.tsx       # branch · sha · dirty · status · processes.
     │   ├── TabStatusDot.tsx
     │   ├── ProcessBadge.tsx
-    │   ├── MainArea.tsx
+    │   ├── MainArea.tsx          # Splits terminal + optional code panel.
     │   ├── TabBar.tsx
     │   ├── TabItem.tsx
     │   ├── TerminalHost.tsx      # Renders all tabs; only active is visible.
     │   ├── TerminalView.tsx      # One xterm instance.
+    │   ├── FileTree.tsx          # Lazy per-worktree file tree (+ FileTreeNode).
+    │   ├── CodePanel.tsx         # Read-only viewer panel (header + states).
+    │   ├── CodeMirrorView.tsx    # CodeMirror 6, language by extension.
+    │   ├── codemirror-theme.ts   # Graphite theme (chrome + syntax tokens).
+    │   ├── CodePanelResizer.tsx  # Draggable terminal/panel divider.
     │   ├── SidebarToggle.tsx
     │   └── modals/
     │       ├── ModalShell.tsx
@@ -264,12 +294,14 @@ src/
     │       └── Modals.tsx        # Renders whichever modal is open.
     ├── hooks/useXterm.ts         # Owns the Terminal lifecycle for one tab.
     ├── store/
-    │   ├── index.ts              # Composes the four slices.
+    │   ├── index.ts              # Composes the slices.
     │   ├── repos-slice.ts        # repos, worktreesByRepo, filter, collapsed.
     │   ├── tabs-slice.ts         # tabs, activeTabId, tabsByCwd (MRU).
     │   ├── processes-slice.ts    # processes, processesByWorktreePath.
+    │   ├── editor-slice.ts       # code panel: open file, tree expand/cache.
     │   └── modal-slice.ts        # which modal (if any) is open.
     ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id).
+    ├── actions/editor.ts         # openFileInPanel(path), toggleDir(path).
     ├── ipc/client.ts             # Subscribes IPC events into the store.
     └── util/path.ts              # Tiny basename() (no Node access here).
 
