@@ -36,6 +36,21 @@ describe('RepoDiscovery', () => {
     expect(resolver).not.toHaveBeenCalled();
   });
 
+  it('does not emit for a worktree whose parent repo is tracked', async () => {
+    // An out-of-tree worktree fails the cheap prefix check, but the resolver
+    // maps it to its parent repo — which is tracked, so no toast.
+    const resolver = vi.fn(fixedResolver({ '/elsewhere/wt-foo': '/Users/me/work' }));
+    const d = new RepoDiscovery(resolver);
+    d.setTrackedRepos(['/Users/me/work']);
+    const events: DiscoveredRepoEvent[] = [];
+    d.on('discovered-repo', (e) => events.push(e as DiscoveredRepoEvent));
+
+    await d.onCwd('/elsewhere/wt-foo');
+
+    expect(events).toEqual([]);
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
   it('does not emit when the resolved toplevel is on the dismissed list', async () => {
     const resolver = fixedResolver({ '/Users/me/skip/src': '/Users/me/skip' });
     const d = new RepoDiscovery(resolver);

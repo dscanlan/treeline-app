@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { repoRootAt } from './git';
+import { resolveParentRepoPath } from './git';
 
 /** Resolves a cwd to its containing repo's toplevel, or null if not in a repo. */
 export type ToplevelResolver = (cwd: string) => Promise<string | null>;
@@ -138,7 +138,11 @@ export class RepoDiscovery extends EventEmitter {
 }
 
 /**
- * Default resolver — runs `git -C <cwd> rev-parse --show-toplevel`. Exported
- * separately so tests can compose around it if they want to.
+ * Default resolver — maps a cwd to its **parent** working tree via
+ * `resolveParentRepoPath` (`git rev-parse --git-common-dir`). Crucially this
+ * resolves a linked worktree to the repo it belongs to, not the worktree's own
+ * toplevel, so a tracked repo's out-of-tree worktree is classified `tracked`
+ * (matching how repos are normalized when added). Exported separately so tests
+ * can compose around it if they want to.
  */
-export const defaultResolver: ToplevelResolver = (cwd) => repoRootAt(cwd);
+export const defaultResolver: ToplevelResolver = (cwd) => resolveParentRepoPath(cwd);
