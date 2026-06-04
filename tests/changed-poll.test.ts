@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CHANGED_POLL_MS, startChangedFilesPoll } from '@/changed-poll';
+import { CHANGED_POLL_MS, startChangedFilesPoll } from '@shared/changed-poll';
 
 describe('startChangedFilesPoll', () => {
   beforeEach(() => vi.useFakeTimers());

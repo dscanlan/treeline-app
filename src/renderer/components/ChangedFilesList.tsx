@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { ChangedFile, ChangedFileStatus } from '@shared/types';
 import { useStore } from '../store';
 import { openDiffInPanel, refreshChangedFiles } from '../actions/editor';
-import { startChangedFilesPoll } from '../changed-poll';
+import { startChangedFilesPoll } from '@shared/changed-poll';
 
 /** Status letter + color per change category, echoing the dirty-dot palette. */
 const STATUS_META: Record<ChangedFileStatus, { letter: string; className: string; title: string }> =
