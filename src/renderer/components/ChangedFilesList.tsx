@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChangedFile, ChangedFileStatus } from '@shared/types';
 import { useStore } from '../store';
-import { openDiffInPanel } from '../actions/editor';
+import { openDiffInPanel, refreshChangedFiles } from '../actions/editor';
+import { startChangedFilesPoll } from '../changed-poll';
 
 /** Status letter + color per change category, echoing the dirty-dot palette. */
 const STATUS_META: Record<ChangedFileStatus, { letter: string; className: string; title: string }> =
@@ -26,6 +28,18 @@ export function ChangedFilesList({ worktreePath }: { worktreePath: string }) {
       loading: s.changedLoading[worktreePath],
       openFilePath: s.openFilePath,
     })),
+  );
+
+  // This view is mounted only while it's open and its worktree row is expanded,
+  // so a local interval keeps the list live without any global timer. The poll
+  // logic lives in changed-poll.ts so it can be unit-tested without a DOM.
+  useEffect(
+    () =>
+      startChangedFilesPoll(worktreePath, {
+        refresh: refreshChangedFiles,
+        isVisible: () => document.visibilityState === 'visible',
+      }),
+    [worktreePath],
   );
 
   if (files === undefined) {
