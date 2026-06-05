@@ -37,6 +37,8 @@ const xtermTheme = {
 export interface XtermHandle {
   /** Force a re-fit + PTY resize. Call after parent visibility changes. */
   refit: () => void;
+  /** Move keyboard focus into the terminal. Call when its tab becomes active. */
+  focus: () => void;
 }
 
 interface Options {
@@ -55,7 +57,10 @@ export function useXterm(
   opts: Options,
 ): XtermHandle {
   // Keep handle stable so consumers can call `refit()` without re-rendering.
-  const handleRef = useRef<XtermHandle>({ refit: () => undefined });
+  const handleRef = useRef<XtermHandle>({
+    refit: () => undefined,
+    focus: () => undefined,
+  });
 
   useEffect(() => {
     const container = containerRef.current;
@@ -102,6 +107,9 @@ export function useXterm(
       }
     };
     handleRef.current.refit = doFit;
+    handleRef.current.focus = () => {
+      if (!disposed) term.focus();
+    };
 
     requestAnimationFrame(doFit);
 

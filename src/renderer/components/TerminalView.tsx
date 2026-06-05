@@ -17,9 +17,15 @@ export function TerminalView({ ptyId, cwd, active }: Props) {
   const handle = useXterm(containerRef, { ptyId, cwd });
 
   // When this tab becomes active, the container's size may have just changed
-  // (was display:none equivalent). Force a refit on the next frame.
+  // (was display:none equivalent). Force a refit on the next frame and pull
+  // keyboard focus into the terminal so the user can type without an extra
+  // click into the viewport.
   useEffect(() => {
-    if (active) requestAnimationFrame(() => handle.refit());
+    if (active)
+      requestAnimationFrame(() => {
+        handle.refit();
+        handle.focus();
+      });
   }, [active, handle]);
 
   return (
