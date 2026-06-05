@@ -1,6 +1,6 @@
 {
   "name": "treeline-app",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Worktree-aware terminal multiplexer for git + Claude Code",
   "private": true,
   "main": "out/main/index.js",
