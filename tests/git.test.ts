@@ -274,6 +274,26 @@ describe('changedFiles', () => {
     expect(byRel.get('todelete.txt')).toBe('deleted');
   });
 
+  it('flags an untracked directory (git collapses it to a single `dir/` entry)', async () => {
+    // A brand-new folder of files shows up as one `?? newdir/` porcelain row,
+    // not one row per file. Such an entry points at a directory, not a file.
+    mkdirSync(join(repo, 'newdir'));
+    writeFileSync(join(repo, 'newdir', 'a.txt'), '1');
+    writeFileSync(join(repo, 'newdir', 'b.txt'), '2');
+
+    const changes = await changedFiles(repo);
+    const dirEntry = changes.find((c) => c.relPath === 'newdir/');
+    expect(dirEntry).toBeDefined();
+    expect(dirEntry!.isDir).toBe(true);
+    expect(dirEntry!.status).toBe('untracked');
+  });
+
+  it('does not flag regular files as directories', async () => {
+    writeFileSync(join(repo, 'file.txt'), 'changed');
+    const changes = await changedFiles(repo);
+    expect(changes.find((c) => c.relPath === 'file.txt')!.isDir).toBe(false);
+  });
+
   it('returns worktree-rooted absolute paths, sorted by relative path', async () => {
     writeFileSync(join(repo, 'z.txt'), '1');
     writeFileSync(join(repo, 'a.txt'), '2');

@@ -145,6 +145,13 @@ export interface ChangedFile {
   path: string;
   relPath: string;
   status: ChangedFileStatus;
+  /**
+   * True when this entry is a directory rather than a regular file. Git
+   * collapses a brand-new untracked folder into a single `?? dir/` entry, so a
+   * change row can point at a directory. Such rows have no diff and must not be
+   * opened in the viewer.
+   */
+  isDir?: boolean;
 }
 
 /**

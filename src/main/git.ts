@@ -118,7 +118,15 @@ export async function changedFiles(path: string): Promise<ChangedFile[]> {
       if (arrow >= 0) rest = rest.slice(arrow + 4);
     }
     const relPath = unquotePath(rest);
-    files.push({ path: join(path, relPath), relPath, status: categorizeStatus(xy) });
+    // Git collapses an untracked directory into one `?? dir/` entry; the
+    // trailing slash is our signal that `path` is a directory, not a file.
+    const isDir = relPath.endsWith('/');
+    files.push({
+      path: join(path, relPath),
+      relPath,
+      status: categorizeStatus(xy),
+      isDir,
+    });
   }
 
   files.sort((a, b) => a.relPath.localeCompare(b.relPath));

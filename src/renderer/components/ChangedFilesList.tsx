@@ -60,6 +60,9 @@ export function ChangedFilesList({ worktreePath }: { worktreePath: string }) {
 function ChangedRow({ file, selected }: { file: ChangedFile; selected: boolean }) {
   const meta = STATUS_META[file.status];
   const deleted = file.status === 'deleted';
+  // Untracked directories (git's collapsed `?? dir/` entries) have no diff —
+  // opening one would fail with "not a regular file". Show them, don't open.
+  const clickable = !deleted && !file.isDir;
 
   const inner = (
     <>
@@ -70,10 +73,13 @@ function ChangedRow({ file, selected }: { file: ChangedFile; selected: boolean }
     </>
   );
 
-  if (deleted) {
+  if (!clickable) {
+    const title = file.isDir
+      ? `${meta.title} — ${file.relPath} (directory)`
+      : `${meta.title} — ${file.relPath}`;
     return (
       <div
-        title={`${meta.title} — ${file.relPath}`}
+        title={title}
         className="flex items-center gap-1.5 py-0.5 pl-6 pr-2 text-treeline-dim"
       >
         {inner}

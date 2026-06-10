@@ -197,7 +197,15 @@ export async function refreshChangedFiles(worktreePath: string): Promise<void> {
     const files = await window.treeline.files.changed(worktreePath);
     useStore.getState().setChangedFiles(worktreePath, files);
   } catch {
-    useStore.getState().setChangedFiles(worktreePath, []);
+    // A transient failure (locked git, a momentarily-unavailable path) must not
+    // blank an already-populated list — that's the "list disappeared" bug.
+    // Only fall back to empty on a cold load where there's nothing to preserve.
+    const current = useStore.getState().changedByWorktree[worktreePath];
+    if (current === undefined) {
+      useStore.getState().setChangedFiles(worktreePath, []);
+    } else {
+      useStore.getState().setChangedLoading(worktreePath, false);
+    }
   }
 }
 
