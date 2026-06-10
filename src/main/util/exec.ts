@@ -6,6 +6,13 @@ const execFileAsync = promisify(execFile);
 export interface RunResult {
   stdout: string;
   stderr: string;
+  /**
+   * True when the process was killed for exceeding `timeoutMs`. Callers that
+   * use `throwOnError: false` must check this: on a timeout `stdout` is
+   * partial/empty, so treating it as a successful (empty) result silently
+   * misreports state — e.g. a slow `git status` looking like a clean tree.
+   */
+  timedOut: boolean;
 }
 
 export interface RunOptions {
@@ -43,24 +50,29 @@ export async function run(
   };
   try {
     const { stdout, stderr } = await execFileAsync(bin, args, execOpts);
-    return { stdout: stdout.toString(), stderr: stderr.toString() };
+    return { stdout: stdout.toString(), stderr: stderr.toString(), timedOut: false };
   } catch (err) {
     const e = err as NodeJS.ErrnoException & {
       stdout?: string | Buffer;
       stderr?: string | Buffer;
       code?: number | string;
+      killed?: boolean;
     };
     const stdout = e.stdout?.toString() ?? '';
     const stderr = e.stderr?.toString() ?? '';
     const code = typeof e.code === 'number' ? e.code : null;
+    // execFile kills the process (SIGTERM) when it exceeds `timeout`, setting
+    // `killed: true` with no numeric exit code. Surface that distinctly.
+    const timedOut = e.killed === true && code === null;
     if (throwOnError) {
+      const reason = timedOut ? `timed out after ${timeoutMs}ms` : `failed (${code ?? 'unknown'})`;
       throw new ProcessError(
-        `${bin} ${args.join(' ')} failed (${code ?? 'unknown'}): ${stderr || e.message}`,
+        `${bin} ${args.join(' ')} ${reason}: ${stderr || e.message}`,
         stderr,
         stdout,
         code,
       );
     }
-    return { stdout, stderr };
+    return { stdout, stderr, timedOut };
   }
 }

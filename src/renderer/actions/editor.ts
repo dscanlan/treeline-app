@@ -186,8 +186,19 @@ export async function toggleDir(path: string): Promise<void> {
   }
 }
 
+/**
+ * Worktrees with a `files.changed` fetch currently in flight. On a big tree a
+ * single `git status` can take many seconds; the 2.5s poll would otherwise
+ * stack up overlapping calls (each spawning its own git), which only makes the
+ * tree slower. Skip a tick while one is already running for that worktree.
+ */
+const changedInFlight = new Set<string>();
+
 /** Fetch (or re-fetch) a worktree's working-tree changes into the store. */
 export async function refreshChangedFiles(worktreePath: string): Promise<void> {
+  if (changedInFlight.has(worktreePath)) return;
+  changedInFlight.add(worktreePath);
+
   const s = useStore.getState();
   // Only show the spinner on a cold load; background refreshes stay silent.
   if (s.changedByWorktree[worktreePath] === undefined) {
@@ -197,15 +208,18 @@ export async function refreshChangedFiles(worktreePath: string): Promise<void> {
     const files = await window.treeline.files.changed(worktreePath);
     useStore.getState().setChangedFiles(worktreePath, files);
   } catch {
-    // A transient failure (locked git, a momentarily-unavailable path) must not
-    // blank an already-populated list — that's the "list disappeared" bug.
-    // Only fall back to empty on a cold load where there's nothing to preserve.
+    // A transient failure (a timed-out `git status`, locked git, a
+    // momentarily-unavailable path) must not blank an already-populated list —
+    // that's the "list disappeared" bug. Only fall back to empty on a cold load
+    // where there's nothing to preserve.
     const current = useStore.getState().changedByWorktree[worktreePath];
     if (current === undefined) {
       useStore.getState().setChangedFiles(worktreePath, []);
     } else {
       useStore.getState().setChangedLoading(worktreePath, false);
     }
+  } finally {
+    changedInFlight.delete(worktreePath);
   }
 }
 

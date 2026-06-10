@@ -8,6 +8,16 @@ import { ProcessError, run } from './util/exec';
 
 const GIT = 'git';
 
+/**
+ * Timeout for working-tree status calls. `git status` enumerates every
+ * untracked path, which on a large or slow tree (deep node_modules, many
+ * untracked dirs, a slow filesystem) can take well over the default 15s — git
+ * itself warns "It took N seconds to enumerate untracked files." A too-tight
+ * timeout kills the process and yields empty output, which would otherwise be
+ * misread as a clean tree. 60s gives ample headroom.
+ */
+const STATUS_TIMEOUT_MS = 60_000;
+
 /** True if the given path is the root (or under) a git working tree. */
 export async function isGitRepo(path: string): Promise<boolean> {
   try {
@@ -65,6 +75,7 @@ export async function isDirty(path: string): Promise<boolean> {
   const { stdout } = await run(GIT, ['status', '--porcelain'], {
     cwd: path,
     throwOnError: false,
+    timeoutMs: STATUS_TIMEOUT_MS,
   });
   return stdout.length > 0;
 }
@@ -100,11 +111,14 @@ function unquotePath(p: string): string {
  * readable; the result is sorted by relative path.
  */
 export async function changedFiles(path: string): Promise<ChangedFile[]> {
-  const { stdout } = await run(
+  const { stdout, timedOut } = await run(
     GIT,
     ['-c', 'core.quotepath=false', 'status', '--porcelain'],
-    { cwd: path, throwOnError: false },
+    { cwd: path, throwOnError: false, timeoutMs: STATUS_TIMEOUT_MS },
   );
+  // A timeout yields empty stdout; reporting that as "no changes" would hide a
+  // dirty tree. Throw so the renderer keeps the last known list instead.
+  if (timedOut) throw new Error(`git status timed out for ${path}`);
 
   const files: ChangedFile[] = [];
   for (const line of stdout.split('\n')) {
