@@ -9,6 +9,8 @@ interface RepoEntry {
   pollTimer: NodeJS.Timeout;
   debounceTimer: NodeJS.Timeout | null;
   cache: string; // Stable JSON snapshot of the last-known worktree set.
+  refreshing: boolean;
+  refreshQueued: boolean;
 }
 
 /**
@@ -34,6 +36,8 @@ export class WorktreeWatcher extends EventEmitter {
       pollTimer: setInterval(() => this.refresh(repoPath), this.pollMs),
       debounceTimer: null,
       cache: '',
+      refreshing: false,
+      refreshQueued: false,
     };
     this.repos.set(repoPath, entry);
 
@@ -85,12 +89,27 @@ export class WorktreeWatcher extends EventEmitter {
   async refresh(repoPath: string): Promise<void> {
     const entry = this.repos.get(repoPath);
     if (!entry) return;
+    // listWorktreesIn spawns a `git status` per worktree and can run for many
+    // seconds on a large tree, while the poll fires every 5s — without a guard
+    // the overlapping refreshes pile up git processes. Coalesce: remember that
+    // another refresh was requested and run one trailing pass instead.
+    if (entry.refreshing) {
+      entry.refreshQueued = true;
+      return;
+    }
+    entry.refreshing = true;
     let worktrees: Worktree[];
     try {
       worktrees = await listWorktreesIn(repoPath);
     } catch {
       // Repo dir may have been deleted out from under us; surface as empty.
       worktrees = [];
+    } finally {
+      entry.refreshing = false;
+    }
+    if (entry.refreshQueued && this.repos.has(repoPath)) {
+      entry.refreshQueued = false;
+      void this.refresh(repoPath);
     }
     const next = JSON.stringify(worktrees);
     if (next === entry.cache) return;

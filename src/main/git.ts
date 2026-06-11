@@ -4,9 +4,24 @@ import type { ChangedFile, ChangedFileStatus, DiffLine, FileDiff, Worktree } fro
 import { detectClaudeWorktree } from '@shared/claude-detect';
 import { parseWorktreePorcelain } from './git-porcelain';
 import { readFileGuarded } from './files-io';
-import { ProcessError, run } from './util/exec';
+import { ProcessError, run, type RunOptions, type RunResult } from './util/exec';
 
 const GIT = 'git';
+
+/**
+ * Run git with `--no-optional-locks`. Treeline spawns `git status` constantly
+ * in the background (worktree watcher, Changed-view poll), and a plain
+ * `git status` opportunistically rewrites the index to refresh its stat cache,
+ * taking `index.lock` each time. That lock races against the user's own git
+ * commands (`git reset` fails with "index.lock: File exists") and, because the
+ * lock file lives in `.git/`, every status also re-triggers our fs.watch on
+ * that directory — a self-sustaining refresh loop. `--no-optional-locks`
+ * (git ≥ 2.15) skips only these opportunistic writes; commands that genuinely
+ * mutate state still take their mandatory locks as usual.
+ */
+function git(args: string[], opts: RunOptions = {}): Promise<RunResult> {
+  return run(GIT, ['--no-optional-locks', ...args], opts);
+}
 
 /**
  * Timeout for working-tree status calls. `git status` enumerates every
@@ -21,7 +36,7 @@ const STATUS_TIMEOUT_MS = 60_000;
 /** True if the given path is the root (or under) a git working tree. */
 export async function isGitRepo(path: string): Promise<boolean> {
   try {
-    const { stdout } = await run(GIT, ['rev-parse', '--show-toplevel'], {
+    const { stdout } = await git(['rev-parse', '--show-toplevel'], {
       cwd: path,
       throwOnError: false,
     });
@@ -33,7 +48,7 @@ export async function isGitRepo(path: string): Promise<boolean> {
 
 /** Returns the toplevel of the repo containing `path`, or null if not in a repo. */
 export async function repoRootAt(path: string): Promise<string | null> {
-  const { stdout } = await run(GIT, ['rev-parse', '--show-toplevel'], {
+  const { stdout } = await git(['rev-parse', '--show-toplevel'], {
     cwd: path,
     throwOnError: false,
   });
@@ -56,8 +71,7 @@ export async function resolveParentRepoPath(path: string): Promise<string | null
   // `--path-format=absolute` is supported since git 2.31 (March 2021); macOS's
   // bundled git is newer than that. Without it, common-dir is sometimes printed
   // relative to cwd, which leads to wrong dirname() results.
-  const { stdout } = await run(
-    GIT,
+  const { stdout } = await git(
     ['rev-parse', '--path-format=absolute', '--git-common-dir', '--is-bare-repository'],
     { cwd: path, throwOnError: false },
   );
@@ -72,7 +86,7 @@ export async function resolveParentRepoPath(path: string): Promise<string | null
 
 /** True if the worktree at `path` has any uncommitted or untracked changes. */
 export async function isDirty(path: string): Promise<boolean> {
-  const { stdout } = await run(GIT, ['status', '--porcelain'], {
+  const { stdout } = await git(['status', '--porcelain'], {
     cwd: path,
     throwOnError: false,
     timeoutMs: STATUS_TIMEOUT_MS,
@@ -111,8 +125,7 @@ function unquotePath(p: string): string {
  * readable; the result is sorted by relative path.
  */
 export async function changedFiles(path: string): Promise<ChangedFile[]> {
-  const { stdout, timedOut } = await run(
-    GIT,
+  const { stdout, timedOut } = await git(
     ['-c', 'core.quotepath=false', 'status', '--porcelain'],
     { cwd: path, throwOnError: false, timeoutMs: STATUS_TIMEOUT_MS },
   );
@@ -225,15 +238,13 @@ async function untrackedAsDiff(absPath: string): Promise<FileDiff> {
  */
 export async function fileDiff(absPath: string): Promise<FileDiff> {
   const dir = dirname(absPath);
-  const { stdout: status } = await run(
-    GIT,
+  const { stdout: status } = await git(
     ['-c', 'core.quotepath=false', 'status', '--porcelain', '--', absPath],
     { cwd: dir, throwOnError: false },
   );
   if (status.startsWith('??')) return untrackedAsDiff(absPath);
 
-  const { stdout } = await run(
-    GIT,
+  const { stdout } = await git(
     ['-c', 'core.quotepath=false', 'diff', '--no-color', 'HEAD', '--', absPath],
     { cwd: dir, throwOnError: false },
   );
@@ -246,7 +257,7 @@ export async function fileDiff(absPath: string): Promise<FileDiff> {
  * behaviour at git.rs:148-170.
  */
 export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
-  const { stdout } = await run(GIT, ['worktree', 'list', '--porcelain'], {
+  const { stdout } = await git(['worktree', 'list', '--porcelain'], {
     cwd: repoPath,
   });
 
@@ -282,12 +293,12 @@ export async function createWorktree(
   branch: string,
 ): Promise<void> {
   try {
-    await run(GIT, ['worktree', 'add', '-b', branch, path], { cwd: repoPath });
+    await git(['worktree', 'add', '-b', branch, path], { cwd: repoPath });
     return;
   } catch (err) {
     if (err instanceof ProcessError && err.stderr.includes('already exists')) {
       // Branch exists — reuse it on the new worktree path.
-      await run(GIT, ['worktree', 'add', path, branch], { cwd: repoPath });
+      await git(['worktree', 'add', path, branch], { cwd: repoPath });
       return;
     }
     throw err;
@@ -299,7 +310,7 @@ export async function removeWorktree(path: string): Promise<void> {
   // `git worktree remove` resolves the repo from the cwd, not from the argument.
   // Run from inside the worktree itself — it still exists on disk at this
   // point, and from there git can locate the parent gitdir.
-  await run(GIT, ['worktree', 'remove', '--force', path], { cwd: path });
+  await git(['worktree', 'remove', '--force', path], { cwd: path });
 }
 
 /**
@@ -312,5 +323,5 @@ export async function removeWorktree(path: string): Promise<void> {
  * enforces the not-already-a-repo precondition.
  */
 export async function initRepo(path: string, branch: string): Promise<void> {
-  await run(GIT, ['init', '-b', branch], { cwd: path });
+  await git(['init', '-b', branch], { cwd: path });
 }
