@@ -125,8 +125,13 @@ function unquotePath(p: string): string {
  * readable; the result is sorted by relative path.
  */
 export async function changedFiles(path: string): Promise<ChangedFile[]> {
+  // `-uall` enumerates the files inside untracked directories instead of
+  // collapsing them into a single `?? dir/` row. Without it, a brand-new
+  // folder shows up as one inert directory entry the user can't open; with
+  // it, each file is listed and opens as an all-additions diff (VS Code does
+  // the same). Ignored directories (node_modules etc.) are unaffected.
   const { stdout, timedOut } = await git(
-    ['-c', 'core.quotepath=false', 'status', '--porcelain'],
+    ['-c', 'core.quotepath=false', 'status', '--porcelain', '-uall'],
     { cwd: path, throwOnError: false, timeoutMs: STATUS_TIMEOUT_MS },
   );
   // A timeout yields empty stdout; reporting that as "no changes" would hide a
