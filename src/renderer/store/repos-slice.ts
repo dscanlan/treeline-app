@@ -1,6 +1,36 @@
 import type { StateCreator } from 'zustand';
 import type { Repo, Worktree } from '@shared/types';
 
+/** Clamp bounds for the resizable sidebar (px). */
+export const SIDEBAR_MIN_WIDTH = 180;
+export const SIDEBAR_MAX_WIDTH = 600;
+export const SIDEBAR_DEFAULT_WIDTH = 256;
+
+const WIDTH_STORAGE_KEY = 'treeline.sidebarWidth';
+
+function loadPersistedWidth(): number {
+  // Guard: store creation runs at module load. In an Electron renderer
+  // localStorage is always available, but tests / SSR contexts may not have it.
+  if (typeof localStorage === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const n = Number(localStorage.getItem(WIDTH_STORAGE_KEY));
+    if (!Number.isFinite(n) || n === 0) return SIDEBAR_DEFAULT_WIDTH;
+    return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, n));
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
+
+function persistWidth(w: number): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(WIDTH_STORAGE_KEY, String(w));
+  } catch {
+    // Quota exceeded / private mode — best-effort; the width just won't
+    // survive a restart.
+  }
+}
+
 export interface ReposSlice {
   repos: Repo[];
   worktreesByRepo: Record<string, Worktree[]>;
@@ -15,6 +45,14 @@ export interface ReposSlice {
   selectedScratchId: string | null;
   filter: string;
   sidebarCollapsed: boolean;
+  /** Sidebar width in px when expanded. Persisted to localStorage. */
+  sidebarWidth: number;
+  /**
+   * True while the user is dragging the sidebar resize handle. The sidebar
+   * drops its width transition during the drag so it tracks the cursor
+   * instead of lagging behind by an animation frame.
+   */
+  sidebarResizing: boolean;
 
   setRepos: (repos: Repo[]) => void;
   setWorktrees: (repoPath: string, worktrees: Worktree[]) => void;
@@ -22,6 +60,8 @@ export interface ReposSlice {
   setSelectedScratch: (id: string | null) => void;
   setFilter: (s: string) => void;
   setSidebarCollapsed: (v: boolean) => void;
+  setSidebarWidth: (w: number) => void;
+  setSidebarResizing: (v: boolean) => void;
 }
 
 export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (set) => ({
@@ -31,6 +71,8 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   selectedScratchId: null,
   filter: '',
   sidebarCollapsed: false,
+  sidebarWidth: loadPersistedWidth(),
+  sidebarResizing: false,
 
   setRepos: (repos) => set({ repos }),
   setWorktrees: (repoPath, worktrees) =>
@@ -41,4 +83,10 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   setSelectedScratch: (id) => set({ selectedScratchId: id, selectedSidebarPath: null }),
   setFilter: (filter) => set({ filter }),
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+  setSidebarWidth: (w) => {
+    const sidebarWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, w));
+    persistWidth(sidebarWidth);
+    set({ sidebarWidth });
+  },
+  setSidebarResizing: (sidebarResizing) => set({ sidebarResizing }),
 });

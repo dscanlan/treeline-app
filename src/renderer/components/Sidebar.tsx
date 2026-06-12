@@ -9,18 +9,25 @@ import { ScratchTerminalButton } from './ScratchTerminalButton';
 import { SidebarToggle } from './SidebarToggle';
 
 export function Sidebar() {
-  const { repos, sidebarCollapsed, hasScratches } = useStore(
+  const { repos, sidebarCollapsed, sidebarWidth, sidebarResizing, hasScratches } = useStore(
     useShallow((s) => ({
       repos: s.repos,
       sidebarCollapsed: s.sidebarCollapsed,
+      sidebarWidth: s.sidebarWidth,
+      sidebarResizing: s.sidebarResizing,
       hasScratches: s.scratches.length > 0,
     })),
   );
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col border-r border-treeline-highlight bg-treeline-surface text-sm transition-[width] duration-150 ease-out"
-      style={{ width: sidebarCollapsed ? 0 : 256, overflow: 'hidden' }}
+      // The width transition animates collapse/expand but is dropped during a
+      // resize drag so the edge tracks the cursor instead of easing toward it.
+      // The right-edge divider is SidebarResizer, not a border here.
+      className={`flex h-full shrink-0 flex-col bg-treeline-surface text-sm ${
+        sidebarResizing ? '' : 'transition-[width] duration-150 ease-out'
+      }`}
+      style={{ width: sidebarCollapsed ? 0 : sidebarWidth, overflow: 'hidden' }}
       aria-hidden={sidebarCollapsed}
     >
       {/* Header strip: collapse button lives here so the affordance sits on
