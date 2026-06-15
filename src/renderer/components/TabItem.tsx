@@ -5,9 +5,16 @@ import { TabStatusDot } from './TabStatusDot';
 
 interface Props {
   tab: Tab;
+  /** Start a drag-to-reorder gesture from this tab. */
+  onDragStart: (id: string, e: React.PointerEvent) => void;
+  /** True while this tab is the one being dragged. */
+  isDragging: boolean;
+  /** Returns true if the last pointer interaction turned into a real drag, so
+   * the trailing click should be suppressed (not treated as activation). */
+  didDrag: () => boolean;
 }
 
-export function TabItem({ tab }: Props) {
+export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
   const isActive = useStore((s) => s.activeTabId === tab.id);
   const setActive = useStore((s) => s.setActive);
   const setSelected = useStore((s) => s.setSelected);
@@ -21,7 +28,9 @@ export function TabItem({ tab }: Props) {
     <div
       role="tab"
       aria-selected={isActive}
+      onPointerDown={(e) => onDragStart(tab.id, e)}
       onClick={() => {
+        if (didDrag()) return;
         setActive(tab.id);
         if (isScratch) setSelectedScratch(tab.id);
         else setSelected(tab.cwd);
@@ -30,6 +39,10 @@ export function TabItem({ tab }: Props) {
         isActive
           ? 'border-treeline-highlight bg-treeline-highlight text-treeline-text'
           : 'border-transparent text-treeline-dim hover:text-treeline-text'
+      } ${
+        isDragging
+          ? 'z-10 bg-treeline-cyan/20 text-treeline-text shadow-lg ring-1 ring-treeline-cyan'
+          : ''
       }`}
       title={tab.cwd}
     >
@@ -37,6 +50,7 @@ export function TabItem({ tab }: Props) {
       <span className="max-w-[160px] truncate">{tab.title}</span>
       <button
         type="button"
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           void closeTab(tab.id);

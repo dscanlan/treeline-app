@@ -18,6 +18,11 @@ export interface TabsSlice {
   removeTab: (id: string) => string | null;
   /** Switch active tab and bump MRU. */
   setActive: (id: string) => void;
+  /**
+   * Move the tab with `id` to position `toIndex` in the visible strip. Only
+   * reorders the `tabs` array — leaves `tabsByCwd` (MRU focus order) untouched.
+   */
+  reorderTab: (id: string, toIndex: number) => void;
   /** Apply per-PTY status updates from the main process. */
   applyStatusUpdates: (updates: TerminalStatusUpdate[]) => void;
   /** Aggregate worktree status: running → idle → exited. Null if no tabs. */
@@ -89,6 +94,18 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
         activeTabId: id,
         tabsByCwd: { ...s.tabsByCwd, [tab.cwd]: reordered },
       };
+    }),
+
+  reorderTab: (id, toIndex) =>
+    set((s) => {
+      const from = s.tabs.findIndex((t) => t.id === id);
+      if (from === -1) return s;
+      const to = Math.max(0, Math.min(toIndex, s.tabs.length - 1));
+      if (from === to) return s;
+      const tabs = [...s.tabs];
+      const [moved] = tabs.splice(from, 1);
+      tabs.splice(to, 0, moved);
+      return { tabs };
     }),
 
   applyStatusUpdates: (updates) =>
