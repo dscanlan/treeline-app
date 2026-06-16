@@ -594,6 +594,71 @@ const SCENARIOS: Record<string, Scenario> = {
     await delay(400);
   },
 
+  // ── code viewer: rendered markdown Preview ──────────────────────────────
+  '24-markdown-preview': async (ctx) => {
+    const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const file = `${wt.path}/README.md`;
+    const md = [
+      '# treeline-app',
+      '',
+      'A keyboard-driven workspace for **git worktrees**, with an embedded',
+      'terminal and a side _code panel_. See the [docs](https://example.com).',
+      '',
+      '## Features',
+      '',
+      '- Browse worktrees and files',
+      '- [x] Diff and File views',
+      '- [x] Markdown **Preview**',
+      '- [ ] Split panes',
+      '',
+      '## Status legend',
+      '',
+      '| Dot | Meaning |',
+      '| --- | --- |',
+      '| green | idle |',
+      '| magenta | running |',
+      '| gray | exited |',
+      '',
+      '## Example',
+      '',
+      '```ts',
+      'function login(email: string, password: string) {',
+      '  const user = db.users.findByEmail(email);',
+      "  if (!user) throw new AuthError('no account');",
+      '  return verifyPassword(user, password);',
+      '}',
+      '```',
+      '',
+      '> Tip: press the **Preview** tab to render markdown.',
+    ].join('\n');
+
+    const { tab } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, tab.ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      expandedDirs: { [wt.path]: true },
+      worktreeFileView: { [wt.path]: 'changed' },
+      changedByWorktree: {
+        [wt.path]: [{ path: file, relPath: 'README.md', status: 'modified' }],
+      },
+      // Markdown opens on the rendered Preview; the panel header gains a
+      // Preview tab alongside Diff | File.
+      codePanelOpen: true,
+      codePanelWidth: 560,
+      openFilePath: file,
+      panelMode: 'preview',
+      openFileText: md,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, tab.ptyId, ['clear\n', "echo 'markdown preview'\n"]);
+  },
+
   '18-add-button-tooltip': async ({ win }) => {
     sendHydrate(win, {
       reset: true,

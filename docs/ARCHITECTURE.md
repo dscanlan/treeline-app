@@ -86,7 +86,8 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 5. The editor slice stores the result (ignoring it if the user already
    switched files), `<MainArea>` splits in `<CodePanel>`, and
    `<CodeMirrorView>` renders it read-only with an extension-derived
-   language and the Graphite theme.
+   language and the Graphite theme. (Markdown files instead default to the
+   rendered **Preview** — see below.)
 
 The `All | Changed` toggle (`<WorktreeFiles>`) swaps the tree for
 `<ChangedFilesList>`, fed by `window.treeline.files.changed(path)` →
@@ -101,6 +102,18 @@ files become all-additions) and `parseUnifiedDiff()` turns the patch into
 `{ lines, added, removed }`. `<DiffView>` renders it; the panel's
 `Diff | File` toggle flips `panelMode`, lazily loading whichever
 representation isn't cached yet.
+
+**Markdown preview.** `panelMode` has a third value, `'preview'`. Markdown
+files (`isMarkdownPath()` — `.md`/`.markdown`/`.mdx`) open on it by default;
+`<CodePanel>` shows an extra `Preview` tab and renders `<MarkdownView>`
+instead of `<CodeMirrorView>`. Preview reuses the same `openFileText` the
+File view loads (no separate fetch), so toggling between them is free.
+`<MarkdownView>` renders with `react-markdown` + `remark-gfm` (tables, task
+lists, …) + `rehype-highlight` (fenced-code highlighting, themed via
+`.hljs-*` rules in `globals.css`). It emits React elements only — no
+`dangerouslySetInnerHTML` and no raw embedded HTML — so it stays within the
+renderer's strict CSP; links use `target="_blank"`, which routes through the
+main window's `setWindowOpenHandler` (safe schemes → `shell.openExternal`).
 
 **Editing.** The File view flips editable via the panel's `Edit` button
 (`editing` + a `draft` in the editor slice). `⌘S` / Save calls
@@ -307,8 +320,9 @@ src/
     │   ├── WorktreeFiles.tsx     # All|Changed toggle under an expanded worktree.
     │   ├── FileTree.tsx          # Lazy per-worktree file tree (+ FileTreeNode).
     │   ├── ChangedFilesList.tsx  # Flat git-status list (M/A/?/D/R letters).
-    │   ├── CodePanel.tsx         # Viewer panel; Diff|File toggle + states.
+    │   ├── CodePanel.tsx         # Viewer panel; Preview|Diff|File toggle + states.
     │   ├── CodeMirrorView.tsx    # CodeMirror 6, language by extension.
+    │   ├── MarkdownView.tsx      # Rendered markdown Preview (react-markdown + GFM).
     │   ├── DiffView.tsx          # Unified diff rows (line nums, +/- colors).
     │   ├── codemirror-theme.ts   # Graphite theme (chrome + syntax tokens).
     │   ├── CodePanelResizer.tsx  # Draggable terminal/panel divider.

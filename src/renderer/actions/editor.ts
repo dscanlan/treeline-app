@@ -4,7 +4,7 @@
 import type { PanelMode, WorktreeFileView } from '../store/editor-slice';
 import type { DiscardThen } from '../store/modal-slice';
 import { useStore } from '../store';
-import { basename } from '../util/path';
+import { basename, isMarkdownPath } from '../util/path';
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -55,9 +55,14 @@ export function confirmDiscardAndContinue(then: DiscardThen): void {
   }
 }
 
-/** Load a file into the panel as full contents (no unsaved-edits guard). */
+/**
+ * Load a file into the panel (no unsaved-edits guard). Markdown lands on the
+ * rendered Preview by default; everything else opens as raw source. Both modes
+ * read the same file text.
+ */
 async function doOpenFile(path: string): Promise<void> {
-  useStore.getState().openInPanel(path, 'file');
+  const mode = isMarkdownPath(path) ? 'preview' : 'file';
+  useStore.getState().openInPanel(path, mode);
   await loadFileContent(path);
 }
 
@@ -159,7 +164,9 @@ export function setPanelMode(mode: PanelMode): void {
   const path = s.openFilePath;
   if (!path) return;
   s.setPanelMode(mode);
-  if (mode === 'file' && s.openFileText === null && s.openFileError === null && !s.openFileLoading) {
+  // File and Preview both render the file's text; load it on first need.
+  const needsFileText = mode === 'file' || mode === 'preview';
+  if (needsFileText && s.openFileText === null && s.openFileError === null && !s.openFileLoading) {
     void loadFileContent(path);
   }
   if (mode === 'diff' && s.openDiff === null && s.diffError === null && !s.diffLoading) {

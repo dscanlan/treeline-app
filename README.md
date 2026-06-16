@@ -169,6 +169,13 @@ viewer does that without leaving treeline or breaking your terminal flow.
   numbers, and red `-` / green `+` rows. Untracked files render as all
   additions. The panel header has a **`Diff | File`** toggle to flip the
   open file between its diff and full contents.
+- **Markdown preview.** Markdown files (`.md`, `.markdown`, `.mdx`) open on
+  a rendered **Preview** instead of raw source — headings, lists, tables,
+  task lists, blockquotes, links, and syntax-highlighted code fences, all
+  in the app's palette (GitHub-Flavored Markdown). The header shows a
+  **`Preview | Diff | File`** toggle; switch to **File** for the raw source
+  (and to edit it). Links open in your browser; embedded raw HTML and
+  remote images are not rendered (the app's content policy blocks them).
 - **Editing.** The File view is read-only until you click **Edit** in the
   panel header, then it becomes editable. Save with **⌘S** (or the Save
   button); an amber dot by the filename marks unsaved changes, and writes
@@ -181,6 +188,8 @@ viewer does that without leaving treeline or breaking your terminal flow.
 Guard rails keep it snappy: files over 1 MB are shown truncated (with a
 `truncated` badge), and binary files (detected by a NUL byte) show a
 placeholder instead of mojibake.
+
+![A README opened in the rendered Markdown Preview beside the terminal: formatted headings, a task list, a status-legend table, and a syntax-highlighted code block, with a Preview | Diff | File toggle in the panel header](docs/img/24-markdown-preview.png)
 
 ![Editing login.ts in the File view: an amber unsaved-changes dot by the filename, Save and Done in the panel header, and the editable buffer](docs/img/22-file-editing.png)
 

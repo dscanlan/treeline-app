@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import type { FileDiff } from '@shared/types';
 import { useStore } from '../store';
-import { basename } from '../util/path';
+import { basename, isMarkdownPath } from '../util/path';
 import {
   saveOpenFile,
   setPanelMode,
@@ -10,6 +10,7 @@ import {
 } from '../actions/editor';
 import { CodeMirrorView } from './CodeMirrorView';
 import { DiffView } from './DiffView';
+import { MarkdownView } from './MarkdownView';
 
 /**
  * The split code-viewer panel beside the terminal. Shows the open file as its
@@ -39,6 +40,7 @@ export function CodePanel() {
     })),
   );
 
+  const isMarkdown = s.openFilePath !== null && isMarkdownPath(s.openFilePath);
   const dirty = s.editing && s.draft !== null && s.draft !== s.openFileText;
   // Editable only for a fully-loaded, non-binary, non-truncated text file.
   const canEdit =
@@ -90,6 +92,13 @@ export function CodePanel() {
 
         {s.openFilePath && (
           <div className="flex shrink-0 items-center gap-0.5">
+            {isMarkdown && (
+              <ModeTab
+                label="Preview"
+                active={s.panelMode === 'preview'}
+                onClick={() => setPanelMode('preview')}
+              />
+            )}
             <ModeTab label="Diff" active={s.panelMode === 'diff'} onClick={() => setPanelMode('diff')} />
             <ModeTab label="File" active={s.panelMode === 'file'} onClick={() => setPanelMode('file')} />
           </div>
@@ -117,6 +126,13 @@ export function CodePanel() {
           <Centered>Select a file in the sidebar to view it here.</Centered>
         ) : s.panelMode === 'diff' ? (
           <DiffBody loading={s.diffLoading} error={s.diffError} diff={s.openDiff} />
+        ) : s.panelMode === 'preview' ? (
+          <MarkdownBody
+            loading={s.openFileLoading}
+            error={s.openFileError}
+            binary={s.openFileBinary}
+            source={s.openFileText}
+          />
         ) : (
           <FileBody
             loading={s.openFileLoading}
@@ -164,6 +180,24 @@ function FileBody({
       />
     );
   }
+  return null;
+}
+
+function MarkdownBody({
+  loading,
+  error,
+  binary,
+  source,
+}: {
+  loading: boolean;
+  error: string | null;
+  binary: boolean;
+  source: string | null;
+}) {
+  if (loading) return <Centered>Loading…</Centered>;
+  if (error) return <Centered tone="error">{error}</Centered>;
+  if (binary) return <Centered>Binary file — can&apos;t display.</Centered>;
+  if (source !== null) return <MarkdownView source={source} />;
   return null;
 }
 

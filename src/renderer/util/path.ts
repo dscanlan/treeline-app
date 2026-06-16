@@ -7,3 +7,13 @@ export function basename(p: string): string {
   const idx = trimmed.lastIndexOf('/');
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
 }
+
+const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdx']);
+
+/** True for markdown files (.md / .markdown / .mdx) — drives the Preview view. */
+export function isMarkdownPath(p: string): boolean {
+  const name = basename(p);
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0) return false;
+  return MARKDOWN_EXTS.has(name.slice(dot + 1).toLowerCase());
+}

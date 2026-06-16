@@ -4,8 +4,12 @@ import type { ChangedFile, DirEntry, FileContents, FileDiff } from '@shared/type
 /** Which view a worktree's expanded file area is showing. */
 export type WorktreeFileView = 'all' | 'changed';
 
-/** Whether the code panel renders the full file or its diff. */
-export type PanelMode = 'file' | 'diff';
+/**
+ * Whether the code panel renders the full file (raw source), its diff, or — for
+ * markdown files — a rendered Preview. Preview shares the file's text with the
+ * File view (`openFileText`); it's just a different renderer over the same data.
+ */
+export type PanelMode = 'file' | 'diff' | 'preview';
 
 /** Clamp bounds for the resizable code panel (px). */
 export const CODE_PANEL_MIN_WIDTH = 280;
@@ -151,7 +155,8 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
       openFileTruncated: false,
       openFileBinary: false,
       openFileError: null,
-      openFileLoading: mode === 'file',
+      // Preview reads the same file text as the File view, so both load it.
+      openFileLoading: mode === 'file' || mode === 'preview',
       openDiff: null,
       diffError: null,
       diffLoading: mode === 'diff',

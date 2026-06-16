@@ -45,6 +45,7 @@ ALL_SCENARIOS=(
   "21-code-viewer-diff"
   "22-file-editing"
   "23-discard-modal"
+  "24-markdown-preview"
 )
 
 if [ $# -gt 0 ]; then

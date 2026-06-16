@@ -68,7 +68,7 @@ export interface ScreenshotHydratePayload {
   codePanelOpen?: boolean;
   codePanelWidth?: number;
   openFilePath?: string | null;
-  panelMode?: 'file' | 'diff';
+  panelMode?: 'file' | 'diff' | 'preview';
   openFileText?: string | null;
   openDiff?: FileDiff | null;
   editing?: boolean;

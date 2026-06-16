@@ -38,3 +38,50 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: #7a7f8c; /* Graphite — dim */
 }
+
+/* highlight.js token colors for markdown Preview code blocks, mapped to the
+ * Graphite palette (see tailwind.config.ts). rehype-highlight emits .hljs-*
+ * classes; we color them here so fenced code matches the rest of the app. */
+.hljs-comment,
+.hljs-quote {
+  color: #7a7f8c; /* dim */
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: #7aa2f7; /* cyan */
+}
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-regexp,
+.hljs-addition {
+  color: #4ade80; /* green */
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-meta,
+.hljs-deletion {
+  color: #facc15; /* yellow */
+}
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-function .hljs-title,
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable {
+  color: #b59cf5; /* magenta */
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
