@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Channels } from '@shared/ipc-channels';
+import { makeLeaf } from '@shared/pane-tree';
 import type { ScreenshotHydratePayload } from '@shared/ipc-contract';
 import type {
   ChangedFile,
@@ -793,15 +794,17 @@ async function spawnTabPty(
     process.env = oldEnv;
   }
 
+  const now = Date.now();
+  const cwd = `/Users/example/code/treeline-app/${branchName}`;
+  const leaf = makeLeaf({ ptyId, cwd, title: branchName, createdAt: now });
   const tab: Tab = {
     id: ptyId,
-    ptyId,
-    cwd: `/Users/example/code/treeline-app/${branchName}`,
+    cwd,
     title: branchName,
-    status: 'idle',
-    foregroundCmd: null,
-    createdAt: Date.now(),
-    lastActiveAt: Date.now(),
+    root: leaf,
+    focusedPaneId: leaf.id,
+    createdAt: now,
+    lastActiveAt: now,
   };
 
   ctx.cleanups.push(async () => {

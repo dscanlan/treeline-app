@@ -1,5 +1,6 @@
 import { useStore } from '../store';
 import type { Scratch } from '../store/scratch-slice';
+import { leaves } from '@shared/pane-tree';
 import { closeTab } from '../actions/tabs';
 import { TabStatusDot } from './TabStatusDot';
 
@@ -16,11 +17,13 @@ export function ScratchRow({ scratch }: Props) {
   const selected = useStore((s) => s.selectedScratchId === scratch.id);
   const setSelectedScratch = useStore((s) => s.setSelectedScratch);
   const setActive = useStore((s) => s.setActive);
-  // Pull the live tab status off the tabs slice so the same green/cyan/dim
-  // status dot RepoNode → WorktreeRow uses also fires for scratches.
-  const status = useStore(
-    (s) => s.tabs.find((t) => t.id === scratch.id)?.status ?? null,
-  );
+  // Pull the live status off the scratch tab's pane(s) so the same green/cyan/
+  // dim status dot RepoNode → WorktreeRow uses also fires for scratches. A
+  // scratch tab is single-pane today; read its leaf's status.
+  const status = useStore((s) => {
+    const tab = s.tabs.find((t) => t.id === scratch.id);
+    return tab ? leaves(tab.root)[0]?.status ?? null : null;
+  });
 
   return (
     <li className="group/sc" data-ss="scratch-row" data-ss-id={scratch.id}>
