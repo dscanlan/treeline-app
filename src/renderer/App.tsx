@@ -7,8 +7,11 @@ import { Modals } from './components/modals/Modals';
 import { DiscoveredRepoToast } from './components/DiscoveredRepoToast';
 import { ScreenshotForceTooltip } from './components/ScreenshotForceTooltip';
 import { attachIpc, loadInitialState } from './ipc/client';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 
 export function App() {
+  useGlobalShortcuts();
+
   useEffect(() => {
     const detach = attachIpc();
     // Signal main once loadInitialState has fully settled — the screenshot

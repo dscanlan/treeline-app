@@ -73,7 +73,7 @@ function SplitView({
 
     const onMove = (ev: PointerEvent) => {
       const pos = horizontal ? ev.clientX : ev.clientY;
-      let frac = (pos - start) / total;
+      const frac = (pos - start) / total;
       let na = a + frac;
       na = Math.max(MIN, Math.min(pair - MIN, na));
       const next = [...startSizes];
@@ -99,7 +99,7 @@ function SplitView({
       className={`flex h-full w-full min-h-0 min-w-0 ${horizontal ? 'flex-row' : 'flex-col'}`}
     >
       {node.children.map((child, i) => (
-        <div key={getNodeId(child)} style={{ flexBasis: 0, flexGrow: node.sizes[i] }} className="relative min-h-0 min-w-0">
+        <div key={child.id} style={{ flexBasis: 0, flexGrow: node.sizes[i] }} className="relative min-h-0 min-w-0">
           <PaneTreeView
             node={child}
             tabId={tabId}
@@ -123,8 +123,4 @@ function SplitView({
       ))}
     </div>
   );
-}
-
-function getNodeId(n: PaneNode): string {
-  return n.id;
 }
