@@ -258,6 +258,30 @@ The `ProcessMonitor` ports `dashboard.rs:103-148` exactly:
 The renderer's sidebar reads `processesByWorktreePath[wt.path]`
 directly; no per-render computation.
 
+### Listening ports
+
+The same `ProcessMonitor` tick runs a second, independent pass that
+attributes listening TCP ports to worktrees:
+
+1. The process scan and the port scan run concurrently via
+   `Promise.allSettled`, so a slow or failing `lsof` in either can't take
+   down the other — a rejected port scan just yields no chips that tick.
+2. The port scan runs `lsof -iTCP -sTCP:LISTEN -nP` and parses
+   `{pid, port}` from each row's trailing `:PORT` (handles `*:3000` and
+   `[::1]:5173`).
+3. Each listening PID's cwd is resolved with `lsof -a -d cwd -p <pid> -Fn`.
+   Because that probe is expensive, results go through a cross-tick
+   `Map<pid, cwd>` cache (probed at most once per PID, pruned to the PIDs
+   still listening each scan).
+4. `indexPortsByWorktreePath` attributes each listener to a worktree by
+   the same longest-prefix match used for processes; ports are deduped
+   and sorted, and listeners with no resolvable/matching cwd are dropped.
+
+The snapshot carries `portsByWorktreePath` alongside `byWorktreePath`;
+the sidebar reads `portsByWorktreePath[wt.path]` to render the `:PORT`
+chips. Attribution is by the listener's cwd, so a server started outside
+treeline still shows up as long as it's rooted in the worktree.
+
 ### Per-tab status (running / idle / exited)
 
 Independent from AI CLI detection — answers the simpler question "does
@@ -383,7 +407,7 @@ src/
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.
 │   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing.
-│   ├── process-monitor.ts        # 2 s ps + lsof; idle CPU tracking.
+│   ├── process-monitor.ts        # 2 s ps + lsof; idle CPU tracking; listening-port scan.
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.

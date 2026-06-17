@@ -30,7 +30,9 @@ export function attachIpc(): () => void {
   // Process snapshots — main computes the worktree-path index and ships both.
   unsubs.push(
     api.processes.subscribe((snap) => {
-      useStore.getState().setProcesses(snap.procs, snap.byWorktreePath);
+      useStore
+        .getState()
+        .setProcesses(snap.procs, snap.byWorktreePath, snap.portsByWorktreePath);
     }),
   );
 
@@ -116,6 +118,7 @@ export function attachIpc(): () => void {
           tabsByCwd: {},
           processes: [],
           processesByWorktreePath: {},
+          portsByWorktreePath: {},
           forceTooltip: null,
           scratches: [],
           expandedDirs: {},
@@ -182,7 +185,7 @@ export function attachIpc(): () => void {
       }
       if (p.processesByWorktreePath !== undefined) {
         const flat = Object.values(p.processesByWorktreePath).flat();
-        s.setProcesses(flat, p.processesByWorktreePath);
+        s.setProcesses(flat, p.processesByWorktreePath, p.portsByWorktreePath ?? {});
       }
       if (p.terminalStatus) {
         s.applyStatusUpdates(p.terminalStatus);

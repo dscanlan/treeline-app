@@ -44,6 +44,13 @@ export interface ProcessSnapshot {
   procs: DetectedProcess[];
   /** Pre-computed longest-prefix mapping cwd → which worktree it belongs to. */
   byWorktreePath: Record<string, DetectedProcess[]>;
+  /**
+   * Listening TCP ports owned by processes rooted in each worktree, keyed by
+   * worktree path. Each port list is deduped and sorted ascending. Computed in
+   * the main process from a separate `lsof -iTCP -sTCP:LISTEN` pass, attributed
+   * to worktrees by the same longest-prefix match as `byWorktreePath`.
+   */
+  portsByWorktreePath: Record<string, number[]>;
 }
 
 export type TabStatus = 'running' | 'idle' | 'exited';

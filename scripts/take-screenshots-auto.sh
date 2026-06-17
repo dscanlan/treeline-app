@@ -53,6 +53,7 @@ ALL_SCENARIOS=(
   "29-settings-keybind-conflict"
   "30-theme-light"
   "31-theme-midnight"
+  "32-listening-ports"
 )
 
 if [ $# -gt 0 ]; then

@@ -209,6 +209,31 @@ const SCENARIOS: Record<string, Scenario> = {
     });
   },
 
+  '32-listening-ports': async ({ win }) => {
+    // Listening-port chips: a dim cyan `:PORT` per TCP port a process rooted in
+    // the worktree is listening on. feat-auth runs a dev server across two
+    // ports; the Claude worktree shows a chip sitting beside its magenta
+    // process badge, demonstrating the shared metadata line.
+    const devWt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const claudeWt = WORKTREES_TREELINE_APP[2]!; // discovery-feat (Claude path)
+    const fakeClaude: DetectedProcess = {
+      pid: 31415,
+      kind: 'claude',
+      cwd: claudeWt.path,
+      idle: false,
+    };
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      processesByWorktreePath: { [claudeWt.path]: [fakeClaude] },
+      portsByWorktreePath: {
+        [devWt.path]: [3000, 5173],
+        [claudeWt.path]: [8787],
+      },
+    });
+  },
+
   '04-create-modal': async ({ win }) => {
     sendHydrate(win, {
       reset: true,

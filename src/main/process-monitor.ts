@@ -31,6 +31,19 @@ interface CpuSample {
 
 export type ScanFn = () => Promise<RawProcess[]>;
 
+/** A single listening TCP socket: the owning pid and its local port. */
+export interface Listener {
+  pid: number;
+  port: number;
+}
+
+/** A {@link Listener} once its owning process's cwd has been resolved. */
+export interface ListenerWithCwd extends Listener {
+  cwd: string | null;
+}
+
+export type PortScanFn = () => Promise<ListenerWithCwd[]>;
+
 /**
  * Polls the process table once every 2s. Emits 'snapshot' with the deduped
  * list of detected processes plus a `processesByWorktreePath` index that the
@@ -47,6 +60,7 @@ export class ProcessMonitor extends EventEmitter {
   constructor(
     private readonly tickMs: number = 2000,
     private readonly scan: ScanFn = defaultScan,
+    private readonly portScan: PortScanFn = defaultPortScan,
   ) {
     super();
   }
@@ -69,12 +83,18 @@ export class ProcessMonitor extends EventEmitter {
 
   /** Public for tests. */
   async tick(): Promise<void> {
-    let raw: RawProcess[];
-    try {
-      raw = await this.scan();
-    } catch {
-      return;
-    }
+    // Run the ps/lsof process scan and the listening-port scan concurrently and
+    // independently: lsof can be slow or fail, and a failure in either pass must
+    // not take down the other. `allSettled` never rejects.
+    const [procResult, portResult] = await Promise.allSettled([
+      this.scan(),
+      this.portScan(),
+    ]);
+
+    if (procResult.status !== 'fulfilled') return;
+    const raw = procResult.value;
+
+    const listeners = portResult.status === 'fulfilled' ? portResult.value : [];
 
     const now = Date.now();
     const nextHistory = new Map<number, CpuSample>();
@@ -104,7 +124,8 @@ export class ProcessMonitor extends EventEmitter {
     for (const [k, v] of nextHistory) this.cpuHistory.set(k, v);
 
     const byWorktreePath = indexByWorktreePath(detected, this.worktreePaths);
-    this.emit('snapshot', { procs: detected, byWorktreePath });
+    const portsByWorktreePath = indexPortsByWorktreePath(listeners, this.worktreePaths);
+    this.emit('snapshot', { procs: detected, byWorktreePath, portsByWorktreePath });
   }
 }
 
@@ -133,6 +154,35 @@ export function indexByWorktreePath(
     const wt = longestPrefixMatch(worktreePaths, p.cwd);
     if (!wt) continue;
     (out[wt] ?? (out[wt] = [])).push(p);
+  }
+  return out;
+}
+
+/**
+ * Attribute listening ports to worktrees by the same longest-prefix match used
+ * for processes. Listeners whose owning pid had no resolvable cwd, or whose cwd
+ * matches no known worktree, are dropped. Each worktree's port list is deduped
+ * and sorted ascending so the renderer can show stable `:3000 :5173` chips.
+ */
+export function indexPortsByWorktreePath(
+  listeners: ListenerWithCwd[],
+  worktreePaths: string[],
+): Record<string, number[]> {
+  const sets = new Map<string, Set<number>>();
+  for (const l of listeners) {
+    if (!l.cwd) continue;
+    const wt = longestPrefixMatch(worktreePaths, l.cwd);
+    if (!wt) continue;
+    let set = sets.get(wt);
+    if (!set) {
+      set = new Set<number>();
+      sets.set(wt, set);
+    }
+    set.add(l.port);
+  }
+  const out: Record<string, number[]> = {};
+  for (const [wt, set] of sets) {
+    out[wt] = [...set].sort((a, b) => a - b);
   }
   return out;
 }
@@ -214,6 +264,72 @@ async function defaultScan(): Promise<RawProcess[]> {
     out.push({ pid: c.pid, kind: c.kind, cwd, cputime: parseCputime(c.time) });
   }
   return out;
+}
+
+// ── default lsof listening-port scanner ────────────────────────────────────
+
+/**
+ * Parse the default (column) output of `lsof -iTCP -sTCP:LISTEN -nP`. Each data
+ * row looks like:
+ *   `node  12345 dom  23u  IPv4 0x..  0t0  TCP *:3000 (LISTEN)`
+ *   `node  12345 dom  24u  IPv6 0x..  0t0  TCP [::1]:5173 (LISTEN)`
+ * We pull the PID (2nd column) and the port from the trailing `:PORT` of the
+ * NAME column. Header rows and rows without a numeric port are skipped. The same
+ * pid may listen on several ports (multiple rows) — each is returned separately;
+ * dedup happens later in {@link indexPortsByWorktreePath}.
+ */
+export function parseLsofListen(stdout: string): Listener[] {
+  const out: Listener[] = [];
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (line.length === 0) continue;
+    const cols = line.split(/\s+/);
+    // Skip the header row ("COMMAND PID USER ...").
+    if (cols[0] === 'COMMAND') continue;
+    const pid = Number(cols[1]);
+    if (!Number.isInteger(pid) || pid <= 0) continue;
+    // NAME is the second-to-last column ("(LISTEN)" trails it); fall back to
+    // the last if there's no parenthesised state.
+    const name =
+      cols[cols.length - 1] === '(LISTEN)' ? cols[cols.length - 2] : cols[cols.length - 1];
+    if (!name) continue;
+    const colon = name.lastIndexOf(':');
+    if (colon < 0) continue;
+    const port = Number(name.slice(colon + 1));
+    if (!Number.isInteger(port) || port <= 0) continue;
+    out.push({ pid, port });
+  }
+  return out;
+}
+
+/**
+ * Per-pid cwd cache for the port scan. lsof's per-pid cwd probe is heavy, so we
+ * resolve a pid's cwd at most once and reuse it across ticks. The cache is
+ * pruned each scan to the pids still listening, so dead pids don't accumulate.
+ */
+const portCwdCache = new Map<number, string | null>();
+
+async function defaultPortScan(): Promise<ListenerWithCwd[]> {
+  const { stdout } = await run('lsof', ['-iTCP', '-sTCP:LISTEN', '-nP'], {
+    timeoutMs: 4_000,
+    throwOnError: false,
+  });
+  const listeners = parseLsofListen(stdout);
+
+  const pids = [...new Set(listeners.map((l) => l.pid))];
+
+  // Only probe pids we haven't already resolved — lsof is expensive.
+  const unresolved = pids.filter((pid) => !portCwdCache.has(pid));
+  const resolved = await Promise.all(unresolved.map((pid) => cwdForPid(pid)));
+  unresolved.forEach((pid, i) => portCwdCache.set(pid, resolved[i] ?? null));
+
+  // Prune the cache down to the pids still listening this tick.
+  const live = new Set(pids);
+  for (const pid of portCwdCache.keys()) {
+    if (!live.has(pid)) portCwdCache.delete(pid);
+  }
+
+  return listeners.map((l) => ({ ...l, cwd: portCwdCache.get(l.pid) ?? null }));
 }
 
 async function cwdForPid(pid: number): Promise<string | null> {

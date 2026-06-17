@@ -2,7 +2,11 @@ import { ipcMain, webContents } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import type { ProcessSnapshot } from '@shared/types';
 
-let latestSnapshot: ProcessSnapshot = { procs: [], byWorktreePath: {} };
+let latestSnapshot: ProcessSnapshot = {
+  procs: [],
+  byWorktreePath: {},
+  portsByWorktreePath: {},
+};
 
 export function registerProcessesIpc(): () => void {
   ipcMain.handle(Channels.ProcessesSnapshot, async () => latestSnapshot);

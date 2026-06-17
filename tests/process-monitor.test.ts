@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   commandToKind,
   indexByWorktreePath,
+  indexPortsByWorktreePath,
   longestPrefixMatch,
   parseCputime,
+  parseLsofListen,
   parsePsProcesses,
   ProcessMonitor,
+  type ListenerWithCwd,
   type RawProcess,
 } from '../src/main/process-monitor';
 import type { DetectedProcess } from '@shared/types';
@@ -87,6 +90,55 @@ describe('indexByWorktreePath', () => {
   });
 });
 
+describe('parseLsofListen', () => {
+  it('extracts pid and port from IPv4 and IPv6 LISTEN rows, skipping the header', () => {
+    const out = parseLsofListen(
+      [
+        'COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME',
+        'node    12345  dom   23u  IPv4 0x1234567890abcdef      0t0  TCP *:3000 (LISTEN)',
+        'node    12345  dom   24u  IPv6 0x1234567890abcdef      0t0  TCP [::1]:5173 (LISTEN)',
+        'rapportd  999  dom    5u  IPv4 0xdeadbeefdeadbeef      0t0  TCP 127.0.0.1:8080 (LISTEN)',
+      ].join('\n'),
+    );
+    expect(out).toEqual([
+      { pid: 12345, port: 3000 },
+      { pid: 12345, port: 5173 },
+      { pid: 999, port: 8080 },
+    ]);
+  });
+
+  it('ignores rows without a numeric port or pid', () => {
+    const out = parseLsofListen(
+      ['', '   ', 'node  notapid  dom 23u IPv4 0x0 0t0 TCP *:abc (LISTEN)'].join('\n'),
+    );
+    expect(out).toEqual([]);
+  });
+});
+
+describe('indexPortsByWorktreePath', () => {
+  it('attributes ports by longest-prefix cwd, deduping and sorting ascending', () => {
+    const listeners: ListenerWithCwd[] = [
+      { pid: 1, port: 5173, cwd: '/code/wt-a/packages/web' },
+      { pid: 2, port: 3000, cwd: '/code/wt-a' },
+      { pid: 3, port: 3000, cwd: '/code/wt-a/server' }, // dup port, same worktree
+      { pid: 4, port: 9229, cwd: '/code/wt-b' },
+    ];
+    const idx = indexPortsByWorktreePath(listeners, ['/code/wt-a', '/code/wt-b']);
+    expect(idx['/code/wt-a']).toEqual([3000, 5173]);
+    expect(idx['/code/wt-b']).toEqual([9229]);
+  });
+
+  it('drops listeners with no cwd or no matching worktree', () => {
+    const listeners: ListenerWithCwd[] = [
+      { pid: 1, port: 3000, cwd: null },
+      { pid: 2, port: 4000, cwd: '/elsewhere' },
+      { pid: 3, port: 5000, cwd: '/code/wt-a' },
+    ];
+    const idx = indexPortsByWorktreePath(listeners, ['/code/wt-a']);
+    expect(idx).toEqual({ '/code/wt-a': [5000] });
+  });
+});
+
 describe('ProcessMonitor.tick (idle tracking)', () => {
   it('marks a process idle once cputime has been static for ≥10s', async () => {
     const ticks: RawProcess[][] = [
@@ -99,7 +151,11 @@ describe('ProcessMonitor.tick (idle tracking)', () => {
     let now = 1_000_000;
     Date.now = () => now;
     try {
-      const mon = new ProcessMonitor(2000, async () => ticks.shift() ?? []);
+      const mon = new ProcessMonitor(
+        2000,
+        async () => ticks.shift() ?? [],
+        async () => [],
+      );
       mon.setWorktreePaths(['/code/wt-a']);
       const snaps: { procs: DetectedProcess[] }[] = [];
       mon.on('snapshot', (e: { procs: DetectedProcess[] }) => snaps.push(e));
@@ -126,7 +182,11 @@ describe('ProcessMonitor.tick (idle tracking)', () => {
       [{ pid: 100, kind: 'claude', cwd: '/x', cputime: 1 }],
       [{ pid: 200, kind: 'claude', cwd: '/x', cputime: 1 }],
     ];
-    const mon = new ProcessMonitor(2000, async () => ticks.shift() ?? []);
+    const mon = new ProcessMonitor(
+      2000,
+      async () => ticks.shift() ?? [],
+      async () => [],
+    );
     mon.setWorktreePaths(['/x']);
     const snaps: { procs: DetectedProcess[] }[] = [];
     mon.on('snapshot', (e: { procs: DetectedProcess[] }) => snaps.push(e));
@@ -134,5 +194,41 @@ describe('ProcessMonitor.tick (idle tracking)', () => {
     await mon.tick();
     await mon.tick();
     expect(snaps[1]?.procs.map((p) => p.pid)).toEqual([200]);
+  });
+
+  it('emits portsByWorktreePath and isolates a port-scan failure', async () => {
+    const mon = new ProcessMonitor(
+      2000,
+      async () => [{ pid: 100, kind: 'claude', cwd: '/code/wt-a', cputime: 1 }],
+      async () => [{ pid: 100, port: 3000, cwd: '/code/wt-a' }],
+    );
+    mon.setWorktreePaths(['/code/wt-a']);
+    const snaps: { portsByWorktreePath: Record<string, number[]> }[] = [];
+    mon.on('snapshot', (e: { portsByWorktreePath: Record<string, number[]> }) =>
+      snaps.push(e),
+    );
+
+    await mon.tick();
+    expect(snaps[0]?.portsByWorktreePath).toEqual({ '/code/wt-a': [3000] });
+
+    // A failing port scan must not drop the snapshot — ports just go empty.
+    const mon2 = new ProcessMonitor(
+      2000,
+      async () => [{ pid: 100, kind: 'claude', cwd: '/code/wt-a', cputime: 1 }],
+      async () => {
+        throw new Error('lsof blew up');
+      },
+    );
+    mon2.setWorktreePaths(['/code/wt-a']);
+    const snaps2: { procs: DetectedProcess[]; portsByWorktreePath: Record<string, number[]> }[] =
+      [];
+    mon2.on(
+      'snapshot',
+      (e: { procs: DetectedProcess[]; portsByWorktreePath: Record<string, number[]> }) =>
+        snaps2.push(e),
+    );
+    await mon2.tick();
+    expect(snaps2[0]?.procs).toHaveLength(1);
+    expect(snaps2[0]?.portsByWorktreePath).toEqual({});
   });
 });

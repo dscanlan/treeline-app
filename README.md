@@ -102,14 +102,30 @@ up on exit.
 
 Each worktree row shows: the branch name, short SHA, a yellow `●` if the
 working tree is dirty, a colored status dot for any open tabs on that
-path (green = running, cyan = idle, dim = exited), and a magenta `claude`
+path (green = running, cyan = idle, dim = exited), a magenta `claude`
 / `opencode` / `aider` badge if one of those CLIs is currently in that
-worktree.
+worktree, and a dim cyan `:PORT` chip for each TCP port a process rooted
+in that worktree is listening on.
 
 Claude-managed worktrees (paths under `.claude/worktrees/` or branches
 starting with `worktree-`) get a magenta `✦` icon and are grouped into
 their own `✦ Claude` sub-section per repo, mirroring the Rust TUI's
 visual treatment.
+
+#### Listening ports
+
+![Two worktrees in the treeline-app repo: feat-auth showing dim cyan :3000 and :5173 port chips, and the Claude worktree showing a :8787 chip beside its magenta CLAUDE badge](docs/img/32-listening-ports.png)
+
+A background `lsof -iTCP -sTCP:LISTEN` pass (folded into the same 2s
+process scan) finds every listening TCP socket, resolves the owning
+process's working directory, and attributes the port to a worktree by
+the same longest-path-prefix match used for the `claude`/`opencode`/`aider`
+badges. So when a dev server, test runner, or preview boots inside a
+worktree, its `:5173` shows up on that row — and disappears when the
+process exits — without you running `lsof` yourself. Ports are deduped
+and sorted, and attribution is by the listener's **cwd**, so a server
+launched outside treeline still appears as long as it's rooted in the
+worktree.
 
 ### Terminals
 

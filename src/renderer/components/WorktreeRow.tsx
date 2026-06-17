@@ -17,6 +17,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const selected = useStore((s) => s.selectedSidebarPath === worktree.path);
   const wtStatus = useStore((s) => s.worktreeStatus(worktree.path));
   const procs = useStore((s) => s.processesByWorktreePath[worktree.path] ?? []);
+  const ports = useStore((s) => s.portsByWorktreePath[worktree.path] ?? []);
   const openModal = useStore((s) => s.openModal);
   const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
 
@@ -83,6 +84,13 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
           {procs.map((p) => (
             <ProcessBadge key={p.pid} proc={p} />
           ))}
+          {/* ── listening-port chips (feature #4) ──────────────────────────
+            * Self-contained region: renders `:3000 :5173` for ports owned by
+            * processes rooted in this worktree. FUTURE BADGE OWNER (#5 PR
+            * status / #6 notifications): add your badge before or after this
+            * block on the same metadata line — do NOT refactor the layout. */}
+          <PortChips ports={ports} />
+          {/* ── end listening-port chips ─────────────────────────────────── */}
           {worktree.isDirty && (
             <span className="text-treeline-yellow" title="dirty">
               ●
@@ -94,6 +102,29 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
       </div>
       {treeOpen && <WorktreeFiles worktreePath={worktree.path} />}
     </li>
+  );
+}
+
+/**
+ * Listening-port chips for a worktree's second metadata line. One dim `:PORT`
+ * chip per port that a process rooted in this worktree is listening on. Renders
+ * nothing when the worktree owns no listening ports. Kept self-contained so the
+ * row layout stays untouched as later features add sibling badges.
+ */
+function PortChips({ ports }: { ports: number[] }) {
+  if (ports.length === 0) return null;
+  return (
+    <span className="flex items-center gap-1" data-ss="worktree-ports">
+      {ports.map((port) => (
+        <span
+          key={port}
+          title={`listening on port ${port}`}
+          className="rounded border border-treeline-cyan/50 px-1 py-px text-[10px] text-treeline-cyan"
+        >
+          :{port}
+        </span>
+      ))}
+    </span>
   );
 }
 

@@ -59,6 +59,8 @@ export interface ScreenshotHydratePayload {
   activeTabId?: string | null;
   /** Replace processesByWorktreePath wholesale — drives the magenta `claude`/`opencode`/`aider` badges in WorktreeRow. */
   processesByWorktreePath?: Record<string, DetectedProcess[]>;
+  /** Replace portsByWorktreePath wholesale — drives the listening-port chips in WorktreeRow. */
+  portsByWorktreePath?: Record<string, number[]>;
   /** Synthesised TerminalStatusUpdate batch — drives the green/cyan/dim status dots. */
   terminalStatus?: TerminalStatusUpdate[];
   /**
