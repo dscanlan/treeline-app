@@ -129,6 +129,34 @@ This isn't a new trust boundary — PTYs already grant full shell access —
 so the guards are about robustness (don't freeze on a huge file, don't
 render garbage for a binary), not sandboxing.
 
+### Embedded browser
+
+`⌘⇧B` (menu **View → Toggle Browser**, channel `browser:toggle`) flips
+`browserPanelOpen` in the **browser slice**. `<MainArea>` then mounts a third
+region — `<BrowserPanelResizer>` + `<BrowserPane>` — to the right of the
+optional code panel, reusing the code viewer's split idiom.
+
+`<BrowserPane>` hosts an Electron **`<webview>`** (enabled via
+`webPreferences.webviewTag`). Navigation is split in two: `browserSrc` is bound
+to the element's `src` and only changes on an explicit address-bar submit, while
+the live location (`browserAddress`, fed from the guest's `did-navigate` events)
+drives the address bar — so an in-page link click is never clobbered by a
+re-render. Back/forward/reload are imperative through the element ref; typed
+input is normalised by `shared/browser-url.ts` (bare `host:port` → `http://`,
+non-web schemes refused). The `<BrowserPanelResizer>` uses pointer *capture* (vs
+the code panel's window listeners) so the drag survives the cursor crossing into
+the webview's separate process.
+
+Unlike the code viewer's `safe-path` guard (robustness, not a trust boundary),
+this is a real network-capable browser, so it genuinely widens the trust
+surface — and is hardened in `hardenWebviews()`: the guest gets its own
+`persist:treeline-browser` session, attaches with no preload / no node
+integration / isolation on (`will-attach-webview`), and its new-window attempts
+route through the same safe-scheme `setWindowOpenHandler` as the main window.
+The renderer CSP gains `frame-src http: https:` so the frame can load. A
+scriptable IPC surface (drive/inspect the page so an agent can verify its own
+change) is a planned follow-up, deliberately deferred from this view-only cut.
+
 ### Live worktree updates
 
 1. `WorktreeWatcher` registers an `fs.watch` on each `<repo>/.git`
@@ -273,11 +301,12 @@ src/
 │   ├── types.ts                  # Repo, Worktree, Tab, ProcessSnapshot…
 │   ├── ipc-channels.ts           # `repos:list` etc. — string constants.
 │   ├── ipc-contract.ts           # The TreelineApi interface (one source of truth).
+│   ├── browser-url.ts            # normalizeBrowserUrl() for the browser pane.
 │   └── claude-detect.ts          # detectClaudeWorktree(path, branch).
 │
 ├── main/
 │   ├── index.ts                  # app.whenReady wiring.
-│   ├── menu.ts                   # macOS menu template; ⌘B accelerator.
+│   ├── menu.ts                   # macOS menu template; ⌘B / ⌘⇧B accelerators.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.
 │   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing.
@@ -326,6 +355,8 @@ src/
     │   ├── DiffView.tsx          # Unified diff rows (line nums, +/- colors).
     │   ├── codemirror-theme.ts   # Graphite theme (chrome + syntax tokens).
     │   ├── CodePanelResizer.tsx  # Draggable terminal/panel divider.
+    │   ├── BrowserPane.tsx       # Embedded <webview>; address bar + nav + states.
+    │   ├── BrowserPanelResizer.tsx # Terminal/browser divider (pointer capture).
     │   ├── SidebarToggle.tsx
     │   └── modals/
     │       ├── ModalShell.tsx
@@ -339,6 +370,7 @@ src/
     │   ├── tabs-slice.ts         # tabs, activeTabId, tabsByCwd (MRU).
     │   ├── processes-slice.ts    # processes, processesByWorktreePath.
     │   ├── editor-slice.ts       # code panel: open file, tree expand/cache.
+    │   ├── browser-slice.ts      # browser pane: open/width, src/address, nav state.
     │   └── modal-slice.ts        # which modal (if any) is open.
     ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id).
     ├── actions/editor.ts         # openFileInPanel(path), toggleDir(path).

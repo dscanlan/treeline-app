@@ -195,6 +195,26 @@ placeholder instead of mojibake.
 
 ![The unsaved-changes modal — Keep editing or Discard — shown when navigating away mid-edit](docs/img/23-discard-modal.png)
 
+### Browser
+
+Press `⌘⇧B` (or **View → Toggle Browser**) to split an **embedded browser**
+in beside the terminal — view the dev server you're running in a worktree
+without alt-tabbing to Safari/Chrome and hunting for the port.
+
+- **Address bar** with **back / forward / reload** and a loading indicator.
+  Type a URL and hit Enter; a bare host (`localhost:3000`, `127.0.0.1:8080`)
+  is assumed `http://`, and non-web schemes (`file:`, `javascript:`, …) are
+  refused. The pane opens pointed at `http://localhost:3000` by default.
+- **Real Chromium, not an iframe** — it's an Electron `<webview>` with its own
+  isolated session (`persist:treeline-browser`). The guest runs with no node
+  integration and no preload; links that try to open a new window are handed to
+  your OS browser (web/mail schemes only), mirroring the terminal's link policy.
+- **Drag the divider** on the pane's left edge to resize (the terminal re-fits);
+  the `×` in the header closes it.
+
+This is the view-only first cut; a scriptable API to drive and inspect the page
+(e.g. so an agent can verify its own change) is planned as a follow-up.
+
 ### Scratch terminals
 
 ![Two auto-numbered scratch terminals pinned above the repo list with a divider; the first is selected and highlighted](docs/img/19-scratch-terminals.png)
@@ -253,6 +273,7 @@ Collapse state persists across launches via the app config.
 | Shortcut | Action                       |
 | -------- | ---------------------------- |
 | `⌘B`     | Toggle sidebar               |
+| `⌘⇧B`    | Toggle browser pane          |
 | `⌘W`     | Close active window          |
 | `⌘Q`     | Quit (kills all PTYs)        |
 | `⌘R`     | Reload renderer (dev)        |
@@ -301,7 +322,7 @@ The short version:
 ## Testing
 
 ```bash
-npm test              # vitest, ~123 tests across 10 suites
+npm test              # vitest, ~170 tests across 18 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -316,6 +337,7 @@ The suites:
 | `repos-store`        | Atomic writes, schema migration, corrupt-file recovery  |
 | `repos-create`       | `git init` validation paths (new vs existing folder, branch, collisions) |
 | `files-io`           | Code-viewer reads + atomic writes: dir listing/sort, `.git` hiding, size truncation, binary sniff, edit-existing guard |
+| `browser-url`        | Browser-pane address-bar URL normalisation (http(s) passthrough, bare `host:port` → `http://`, rejected non-web schemes) |
 | `repo-discovery`     | PTY-cwd → untracked-repo detection + dismissed-list gates |
 | `pty-manager`        | Chunk coalescing, SIGHUP→SIGKILL escalation             |
 | `terminal-status`    | `running` / `idle` / `exited` deltas                    |
@@ -347,6 +369,7 @@ src/
 │   ├── types.ts
 │   ├── ipc-channels.ts
 │   ├── ipc-contract.ts
+│   ├── browser-url.ts    # address-bar URL normalisation for the browser pane
 │   └── claude-detect.ts
 ├── main/                 # privileged code; runs in Node
 │   ├── index.ts          # whenReady wiring
@@ -370,9 +393,10 @@ src/
     ├── components/       # Sidebar (incl. Scratch{List,Row,TerminalButton},
     │                     #   NewRepoButton), MainArea, TabBar, terminals,
     │                     #   code viewer (CodePanel, CodeMirrorView, FileTree,
-    │                     #   CodePanelResizer), modals
+    │                     #   CodePanelResizer), browser pane (BrowserPane,
+    │                     #   BrowserPanelResizer), modals
     ├── store/            # Zustand: repos, tabs, processes, modal, scratch,
-    │                     #   discoveries, screenshot, editor slices
+    │                     #   discoveries, screenshot, editor, browser slices
     ├── hooks/useXterm.ts
     ├── ipc/client.ts     # subscribes IPC events into the store
     └── actions/          # tabs.ts (focusOrOpen / closeTab), scratch.ts,
