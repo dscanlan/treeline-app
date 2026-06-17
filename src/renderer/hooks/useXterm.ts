@@ -3,36 +3,12 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
-
-// Graphite (dark) — must match tailwind.config.ts. Traditional dark-terminal
-// ANSI convention (ANSI 0=darkest, 7=lightest). `cyan` here is a true cyan
-// (`#22d3ee`, Tailwind cyan-400) rather than the chrome blue, so programs
-// that print cyan (npm, ls -G dirs) still look right; the chrome blue lives
-// in the `blue` slot. Magenta is the muted violet `#b59cf5` to keep the
-// single cool-accent discipline of the chrome.
-const xtermTheme = {
-  background: '#0e0f12',           // surface
-  foreground: '#e6e8ee',           // text
-  cursor: '#e6e8ee',
-  cursorAccent: '#0e0f12',
-  selectionBackground: '#2a2d36',  // one step above highlight, visible
-  black: '#0e0f12',                // surface (matches bg)
-  red: '#f87171',                  // Tailwind red-400
-  green: '#4ade80',                // Tailwind green-400
-  yellow: '#facc15',               // Tailwind yellow-400
-  blue: '#7aa2f7',                 // Tokyo Night blue (chrome accent)
-  magenta: '#b59cf5',              // muted violet
-  cyan: '#22d3ee',                 // Tailwind cyan-400 — true cyan
-  white: '#e6e8ee',                // text
-  brightBlack: '#7a7f8c',          // dim — for comments etc.
-  brightRed: '#fca5a5',
-  brightGreen: '#86efac',
-  brightYellow: '#fde047',
-  brightBlue: '#93c5fd',
-  brightMagenta: '#c4b5fd',
-  brightCyan: '#67e8f9',
-  brightWhite: '#fafafc',
-} as const;
+import {
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
+  themeForId,
+} from '@shared/terminal-theme';
+import { useStore } from '../store';
 
 export interface XtermHandle {
   /** Force a re-fit + PTY resize. Call after parent visibility changes. */
@@ -62,15 +38,22 @@ export function useXterm(
     focus: () => undefined,
   });
 
+  // Terminal theming/font come from the settings store. Read the persisted
+  // values; the second effect below live-applies changes without respawning
+  // the PTY. The initial read seeds the Terminal so the very first paint is
+  // already themed (no flash of default).
+  const settings = useStore((s) => s.settings);
+  const termRef = useRef<Terminal | null>(null);
+  const refitRef = useRef<() => void>(() => undefined);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const term = new Terminal({
-      theme: xtermTheme,
-      fontFamily:
-        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-      fontSize: 13,
+      theme: themeForId(settings.terminalTheme),
+      fontFamily: settings.fontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
+      fontSize: settings.fontSize || DEFAULT_TERMINAL_FONT_SIZE,
       lineHeight: 1.2,
       scrollback: 5000,
       cursorBlink: true,
@@ -110,6 +93,10 @@ export function useXterm(
     handleRef.current.focus = () => {
       if (!disposed) term.focus();
     };
+    // Expose the live term + its refit to the settings effect below so it can
+    // re-apply theme/font without tearing down the PTY connection.
+    termRef.current = term;
+    refitRef.current = doFit;
 
     requestAnimationFrame(doFit);
 
@@ -141,6 +128,7 @@ export function useXterm(
 
     return () => {
       disposed = true;
+      termRef.current = null;
       ro.disconnect();
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
       offData();
@@ -148,8 +136,22 @@ export function useXterm(
       dataDispose.dispose();
       term.dispose();
     };
+    // Mount effect is keyed only on ptyId so changing theme/font does NOT
+    // respawn the PTY. Settings are seeded once here and live-applied below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts.ptyId]);
+
+  // Live-apply terminal theme/font when the settings store changes. Mutating
+  // `term.options` re-renders the existing terminal in place; a refit follows
+  // because a font-size change alters the cell grid (cols/rows).
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = themeForId(settings.terminalTheme);
+    term.options.fontFamily = settings.fontFamily || DEFAULT_TERMINAL_FONT_FAMILY;
+    term.options.fontSize = settings.fontSize || DEFAULT_TERMINAL_FONT_SIZE;
+    refitRef.current();
+  }, [settings.terminalTheme, settings.fontFamily, settings.fontSize]);
 
   return handleRef.current;
 }

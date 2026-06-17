@@ -42,10 +42,12 @@ export const Channels = {
   ConfigGet: 'config:get',
   ConfigSetCodeRoot: 'config:setCodeRoot',
   ConfigSetSidebarCollapsed: 'config:setSidebarCollapsed',
+  ConfigSetSettings: 'config:setSettings',
 
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',
   BrowserToggle: 'browser:toggle',
+  SettingsOpen: 'settings:open',
 
   // main → renderer command forwarded from the scriptable CLI socket
   // (see src/main/cli-server.ts). Today only carries `open`.

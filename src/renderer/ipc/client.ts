@@ -4,6 +4,7 @@ import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
 import { openTabAt } from '../actions/tabs';
 import { findLeaf } from '@shared/pane-tree';
+import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
@@ -54,6 +55,13 @@ export function attachIpc(): () => void {
   unsubs.push(
     api.window.onBrowserToggle(() => {
       useStore.getState().toggleBrowserPanel();
+    }),
+  );
+
+  // "Settings…" menu item / accelerator from the macOS menu.
+  unsubs.push(
+    api.window.onOpenSettings(() => {
+      useStore.getState().openModal({ kind: 'settings' });
     }),
   );
 
@@ -128,6 +136,11 @@ export function attachIpc(): () => void {
         });
       }
       const s = useStore.getState();
+      // Appearance (theme/font/keybindings): reset to factory defaults, then
+      // apply any per-scenario override so theme + keybinding-conflict captures
+      // are deterministic regardless of the machine's saved config.
+      if (p.reset) s.setSettings(DEFAULT_RENDERER_SETTINGS);
+      if (p.settings) s.setSettings(p.settings);
       if (p.repos) s.setRepos(p.repos);
       if (p.worktreesByRepo) {
         for (const [path, wts] of Object.entries(p.worktreesByRepo)) {
@@ -224,6 +237,7 @@ export async function loadInitialState(): Promise<void> {
   const cfg = await api.config.get();
   useStore.getState().setRepos(cfg.repos);
   useStore.getState().setSidebarCollapsed(cfg.sidebarCollapsed);
+  useStore.getState().setSettings(cfg.settings);
 
   // Fetch worktrees for each repo in parallel.
   await Promise.all(

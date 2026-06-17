@@ -243,6 +243,38 @@ without alt-tabbing to Safari/Chrome and hunting for the port.
 This is the view-only first cut; a scriptable API to drive and inspect the page
 (e.g. so an agent can verify its own change) is planned as a follow-up.
 
+### Settings & theming
+
+![The Settings modal: an Appearance section with a Theme dropdown (Graphite Dark) and the note "Applies to the whole app — chrome and terminals", a Terminal section with font family and size, and a Keybindings section listing Toggle Sidebar, Toggle Browser and Open Settings with their accelerators](docs/img/28-settings-modal.png)
+
+Open **Settings** with `⌘,` (or the **treeline → Settings…** menu item). It's
+a single modal with three sections:
+
+- **Appearance — theme.** Pick a preset (**Graphite Dark**, **Graphite Light**,
+  **Midnight**). The theme drives the whole app, not just the terminals: the
+  nine palette slots resolve to CSS variables, so switching repaints the sidebar,
+  tabs, panels and badges *and* re-themes the xterm instances live — no reload.
+
+  ![The app under the Light theme — sidebar, background and text all repainted light](docs/img/30-theme-light.png)
+
+  ![The app under the Midnight theme — a deep blue-black chrome](docs/img/31-theme-midnight.png)
+
+- **Terminal — font.** Set the monospace **font family** and **size**; the whole
+  app renders in it (the UI is monospace by design) and the terminals re-fit in
+  place. Importing an external terminal config (Ghostty / iTerm2) is stubbed as
+  "coming soon".
+- **Keybindings.** Rebind the app's own accelerators in Electron accelerator
+  syntax. Bindings are validated as you type: a chord used by two commands, or
+  one that collides with a **reserved system shortcut** (Paste, Copy, Quit, …),
+  turns the field red, explains itself inline, and disables **Save** until you
+  fix it. Saving rebuilds the menu immediately, so a new accelerator works
+  without restarting.
+
+  ![The Settings modal with Toggle Sidebar bound to CmdOrCtrl+V: the field is outlined in red and an inline message reads "CmdOrCtrl+V is reserved by Paste — pick another", with Save disabled](docs/img/29-settings-keybind-conflict.png)
+
+Everything persists to the app config (`schemaVersion` 3); an older config is
+migrated forward with the new defaults filled in.
+
 ### Scriptable CLI
 
 The running app exposes a `treeline` CLI (and a raw socket API) so scripts and
@@ -335,9 +367,14 @@ Collapse state persists across launches via the app config.
 | `⌘⇧D`          | Split the focused pane down             |
 | `⌘⌥ ← → ↑ ↓`   | Move focus to the neighbouring pane     |
 | `⌘⇧W`          | Close the focused pane                  |
+| `⌘,`           | Open Settings                           |
 | `⌘W`           | Close active window                     |
 | `⌘Q`           | Quit (kills all PTYs)                   |
 | `⌘R`           | Reload renderer (dev)                   |
+
+The treeline-specific shortcuts (`⌘B` toggle sidebar, `⌘⇧B` toggle browser,
+`⌘,` open settings) are **rebindable** in **Settings → Keybindings**; the table
+above shows the defaults.
 
 xterm captures everything else and forwards it to the PTY, so editor
 shortcuts, ⌃C, vim modes, etc. all work as you'd expect inside a tab.

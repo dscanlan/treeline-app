@@ -9,33 +9,36 @@ import type { Config } from 'tailwindcss';
 //
 // Slot names (treeline-{green,cyan,magenta,…}) unchanged so component
 // classes don't move.
+//
+// App-wide theming (Settings): every token resolves to a CSS variable
+// (`var(--treeline-<slot>)`). The variables are seeded with the Graphite
+// values in src/renderer/styles/globals.css (:root) and reassigned at runtime
+// by `useAppTheme` from the selected preset's `app` palette
+// (src/shared/terminal-theme.ts). So one theme setting repaints both the
+// terminal panes (xterm ITheme) and the whole app chrome.
 export default {
   content: ['./src/renderer/**/*.{ts,tsx,html}'],
   theme: {
     extend: {
       colors: {
         treeline: {
-          green: '#4ade80',   // Tailwind green-400 — "running" status
-          cyan: '#7aa2f7',    // Tokyo Night blue — chrome / "idle"
-          magenta: '#b59cf5', // muted violet — Claude badge (intentionally quiet)
-          yellow: '#facc15',  // Tailwind yellow-400 — dirty
-          red: '#f87171',     // Tailwind red-400 — close / error
-          dim: '#7a7f8c',     // cool mid-grey — secondary text
-          surface: '#0e0f12', // near-black, not OLED black (Material 3 rule)
-          highlight: '#1c1e24', // one Radix step up from surface
-          text: '#e6e8ee',    // primary fg, slight cool tint
+          green: 'var(--treeline-green)',     // "running" status
+          cyan: 'var(--treeline-cyan)',       // chrome / "idle"
+          magenta: 'var(--treeline-magenta)', // Claude badge
+          yellow: 'var(--treeline-yellow)',   // dirty
+          red: 'var(--treeline-red)',         // close / error
+          dim: 'var(--treeline-dim)',         // secondary text
+          surface: 'var(--treeline-surface)', // base
+          highlight: 'var(--treeline-highlight)', // hover / selection / borders
+          text: 'var(--treeline-text)',       // primary fg
         },
       },
       fontFamily: {
-        mono: [
-          'ui-monospace',
-          'SFMono-Regular',
-          'Menlo',
-          'Monaco',
-          'Consolas',
-          'Liberation Mono',
-          'monospace',
-        ],
+        // The whole app (<body> carries `font-mono`) renders in this stack.
+        // It resolves to a CSS variable seeded in globals.css and overridden at
+        // runtime by `useAppTheme` from the user's font setting, so the Settings
+        // font applies app-wide, not just to the terminal panes.
+        mono: ['var(--treeline-font-mono)'],
       },
     },
   },

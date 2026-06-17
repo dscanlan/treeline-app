@@ -1,14 +1,28 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, basename } from 'node:path';
-import type { AppConfig, Repo } from '@shared/types';
+import type { AppConfig, Repo, SettingsConfig } from '@shared/types';
+import {
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_TERMINAL_THEME_ID,
+} from '@shared/terminal-theme';
+
+/** Factory-default settings, used by `migrate()` to fill schemaVersion < 3 configs. */
+const DEFAULT_SETTINGS: SettingsConfig = {
+  terminalTheme: DEFAULT_TERMINAL_THEME_ID,
+  fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+  fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  keybindings: {},
+};
 
 const DEFAULT_CONFIG: AppConfig = {
   repos: [],
   codeRoot: null,
   sidebarCollapsed: false,
   dismissedRepos: [],
-  schemaVersion: 2,
+  settings: { ...DEFAULT_SETTINGS },
+  schemaVersion: 3,
 };
 
 /**
@@ -83,6 +97,11 @@ export class ReposStore {
     await this.save({ ...this.get(), sidebarCollapsed: v });
   }
 
+  /** Replace the whole settings object (terminal theme/font + keybindings). */
+  async setSettings(settings: SettingsConfig): Promise<void> {
+    await this.save({ ...this.get(), settings });
+  }
+
   /**
    * Mark `absPath` as a repo the user does not want to be prompted about when
    * their cwd lands inside it. No-op if it's already on the list.
@@ -95,7 +114,9 @@ export class ReposStore {
 
   /** Coerce arbitrary disk content into a current-schema AppConfig. */
   private migrate(raw: Partial<AppConfig> | null): AppConfig {
-    const base: AppConfig = { ...DEFAULT_CONFIG };
+    // Fresh copy so the per-instance config never aliases DEFAULT_CONFIG
+    // (settings is a nested object — must be cloned, not shared by reference).
+    const base: AppConfig = { ...DEFAULT_CONFIG, settings: { ...DEFAULT_SETTINGS } };
     if (!raw || typeof raw !== 'object') return base;
 
     if (Array.isArray(raw.repos)) {
@@ -120,6 +141,28 @@ export class ReposStore {
       base.dismissedRepos = raw.dismissedRepos.filter(
         (p): p is string => typeof p === 'string',
       );
+    }
+    // settings — added in schemaVersion 3. Default-fill each field so a
+    // pre-v3 config (no `settings` key) lands on factory defaults, and a
+    // partial/corrupt settings object keeps whatever valid fields it has.
+    if (raw.settings && typeof raw.settings === 'object') {
+      const s = raw.settings as Partial<SettingsConfig>;
+      if (typeof s.terminalTheme === 'string') {
+        base.settings.terminalTheme = s.terminalTheme;
+      }
+      if (typeof s.fontFamily === 'string' && s.fontFamily.trim().length > 0) {
+        base.settings.fontFamily = s.fontFamily;
+      }
+      if (typeof s.fontSize === 'number' && Number.isFinite(s.fontSize)) {
+        base.settings.fontSize = s.fontSize;
+      }
+      if (s.keybindings && typeof s.keybindings === 'object') {
+        const kb: Record<string, string> = {};
+        for (const [k, v] of Object.entries(s.keybindings)) {
+          if (typeof v === 'string') kb[k] = v;
+        }
+        base.settings.keybindings = kb;
+      }
     }
     // schemaVersion is rewritten to current on every save — no need to read it.
     return base;

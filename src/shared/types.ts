@@ -67,6 +67,29 @@ export interface Tab {
   lastActiveAt: number;
 }
 
+/**
+ * User-customizable settings (terminal theming + keybindings). Persisted inside
+ * `AppConfig.settings`. Added in schemaVersion 3; older configs are
+ * default-filled by `ReposStore.migrate()`.
+ *
+ * - `terminalTheme` is a preset id from `shared/terminal-theme.ts`
+ *   (`TerminalThemeId`); stored loosely as a string so an unknown/legacy id
+ *   degrades to the default rather than failing to parse.
+ * - `keybindings` is a sparse override map keyed by `KeybindingCommand`
+ *   (`shared/keybindings.ts`); only commands the user has rebound appear here.
+ *   The effective map is computed via `resolveKeybindings(settings.keybindings)`.
+ */
+export interface SettingsConfig {
+  /** xterm theme preset id (see TerminalThemeId). */
+  terminalTheme: string;
+  /** Monospace font stack handed to xterm. */
+  fontFamily: string;
+  /** Terminal font size in px. */
+  fontSize: number;
+  /** Sparse command id → accelerator overrides over the factory defaults. */
+  keybindings: Record<string, string>;
+}
+
 export interface AppConfig {
   repos: Repo[];
   /** Optional: parent dir for future "discover under root" features. */
@@ -79,7 +102,12 @@ export interface AppConfig {
    * discovered-repo toast.
    */
   dismissedRepos: string[];
-  schemaVersion: 2;
+  /**
+   * User settings (terminal theme/font + keybinding overrides). Added in
+   * schemaVersion 3. Always present after migrate() default-fills it.
+   */
+  settings: SettingsConfig;
+  schemaVersion: 3;
 }
 
 export interface TerminalStatusUpdate {

@@ -9,6 +9,7 @@ import type {
   ProcessSnapshot,
   Repo,
   Scratch,
+  SettingsConfig,
   Tab,
   TabStatus,
   TerminalStatusUpdate,
@@ -29,10 +30,13 @@ export interface ScreenshotHydratePayload {
   pendingDiscoveries?: { repoPath: string; viaCwd: string }[];
   filter?: string;
   sidebarCollapsed?: boolean;
+  /** Override the persisted settings (theme/font/keybindings) for the capture. */
+  settings?: SettingsConfig;
   modal?:
     | { kind: 'create-worktree'; repoPath: string }
     | { kind: 'delete-worktree'; repoPath: string; worktreePath: string; branch: string }
     | { kind: 'create-repo' }
+    | { kind: 'settings' }
     | {
         kind: 'confirm-discard';
         filename: string;
@@ -190,6 +194,8 @@ export interface TreelineApi {
     get(): Promise<AppConfig>;
     setCodeRoot(p: string | null): Promise<void>;
     setSidebarCollapsed(v: boolean): Promise<void>;
+    /** Persist the whole settings object (terminal theme/font + keybindings). */
+    setSettings(settings: SettingsConfig): Promise<void>;
   };
 
   window: {
@@ -197,6 +203,8 @@ export interface TreelineApi {
     onSidebarToggle(cb: () => void): () => void;
     /** Subscribe to the ⌘⇧B accelerator that toggles the embedded browser pane. */
     onBrowserToggle(cb: () => void): () => void;
+    /** Subscribe to the "Open Settings" menu item / accelerator from main. */
+    onOpenSettings(cb: () => void): () => void;
   };
 
   /**

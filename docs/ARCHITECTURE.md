@@ -188,6 +188,41 @@ and agents can issue the same verbs a user would click.
    an internal `notify-hook`, which reads the hook's stdin JSON, derives a message,
    fires `notify`, and **always exits 0** so it can never disrupt a Claude turn.
 
+### Settings, theming & keybindings
+
+Settings (`SettingsConfig`: `terminalTheme`, `fontFamily`, `fontSize`,
+`keybindings`) live in `AppConfig` and persist through the same atomic
+`ReposStore`. The store is at `schemaVersion: 3`; `migrate()` default-fills the
+whole `settings` block for any pre-v3 config and sanitises a partial/corrupt one
+(wrong-typed fields dropped), so an older install upgrades silently.
+
+**App-wide theming runs on CSS variables.** The nine `treeline-*` Tailwind tokens
+(`tailwind.config.ts`) don't hold colors — each resolves to
+`var(--treeline-<slot>)`. `globals.css` seeds those variables with the Graphite
+palette so the very first paint is on-theme, and the `mono` font token resolves
+to `var(--treeline-font-mono)` (the whole app inherits `font-mono` from
+`<body>`). At runtime `useAppTheme` (mounted once in `App.tsx`) reads
+`settings.terminalTheme` / `fontFamily` and writes the selected preset's `app`
+palette + font onto `document.documentElement`, so a theme switch repaints the
+entire chrome **and** reflows the font instantly, no reload. The same preset's
+xterm `ITheme` is applied per-pane by `useXterm`, and `main` seeds the
+`BrowserWindow.backgroundColor` from the persisted theme so cold start doesn't
+flash the default. Presets are pure data in `shared/terminal-theme.ts` (one
+home for the id → xterm-theme + app-palette mapping, importable by both main and
+renderer).
+
+**Keybindings are one resolved map, two consumers.** `shared/keybindings.ts`
+holds the command table (`KEYBINDING_DEFS`) and `resolveKeybindings(overrides)`
+(user overrides merged over defaults). `main/menu.ts` builds its accelerators
+from that map, and the renderer reads the same map for non-menu handlers — a
+binding lives in exactly one place. The Settings modal validates as you type:
+`findKeybindingConflicts` catches two commands sharing a chord and
+`findReservedConflicts` catches a chord owned by a built-in menu role (Paste,
+Copy, Quit, …) — both normalise modifier order/aliases (`Cmd+V` ≡ `CmdOrCtrl+V`),
+flag the offending field, and block Save. On save, `config.setSettings` persists
+and fires `onSettingsChanged`, which rebuilds the menu (`buildAppMenu`) so a
+rebind takes effect without a restart.
+
 ### Live worktree updates
 
 1. `WorktreeWatcher` registers an `fs.watch` on each `<repo>/.git`
@@ -335,6 +370,8 @@ src/
 │   ├── ipc-contract.ts           # The TreelineApi interface (one source of truth).
 │   ├── cli-protocol.ts           # CLI socket protocol: verbs + NDJSON frames (no node imports).
 │   ├── browser-url.ts            # normalizeBrowserUrl() for the browser pane.
+│   ├── keybindings.ts            # Command table + resolve/conflict/reserved (pure).
+│   ├── terminal-theme.ts         # Theme presets: xterm ITheme + app palette + font.
 │   └── claude-detect.ts          # detectClaudeWorktree(path, branch).
 │
 ├── main/
@@ -342,7 +379,7 @@ src/
 │   ├── cli-server.ts             # CliServer: unix-socket NDJSON server (0600).
 │   ├── cli-handlers.ts           # CLI verb handlers + resolveWorktree.
 │   ├── cli-socket-path.ts        # cli.sock path under userData.
-│   ├── menu.ts                   # macOS menu template; ⌘B / ⌘⇧B accelerators.
+│   ├── menu.ts                   # macOS menu template; accelerators from the keybinding map.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.
 │   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing.
@@ -358,7 +395,7 @@ src/
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
 │   │   ├── files.ts             # files:readDir/read/changed/diff/write (validate → files-io/git).
-│   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot.
+│   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot/setSettings.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
 │       └── safe-path.ts          # Validate paths/branches from the renderer.
@@ -398,8 +435,10 @@ src/
     │       ├── ModalShell.tsx
     │       ├── CreateWorktreeModal.tsx
     │       ├── DeleteWorktreeModal.tsx
+    │       ├── SettingsModal.tsx # Appearance (theme/font) + keybindings editor.
     │       └── Modals.tsx        # Renders whichever modal is open.
     ├── hooks/useXterm.ts         # Owns the Terminal lifecycle for one tab.
+    ├── hooks/useAppTheme.ts      # Writes the theme palette + font onto :root.
     ├── store/
     │   ├── index.ts              # Composes the slices.
     │   ├── repos-slice.ts        # repos, worktreesByRepo, filter, collapsed.
@@ -407,6 +446,7 @@ src/
     │   ├── processes-slice.ts    # processes, processesByWorktreePath.
     │   ├── editor-slice.ts       # code panel: open file, tree expand/cache.
     │   ├── browser-slice.ts      # browser pane: open/width, src/address, nav state.
+    │   ├── settings-slice.ts     # settings + derived resolved keybinding map.
     │   └── modal-slice.ts        # which modal (if any) is open.
     ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id).
     ├── actions/editor.ts         # openFileInPanel(path), toggleDir(path).

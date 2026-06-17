@@ -24,7 +24,10 @@ describe('ReposStore', () => {
     expect(cfg.codeRoot).toBeNull();
     expect(cfg.sidebarCollapsed).toBe(false);
     expect(cfg.dismissedRepos).toEqual([]);
-    expect(cfg.schemaVersion).toBe(2);
+    expect(cfg.settings.terminalTheme).toBe('graphite');
+    expect(cfg.settings.fontSize).toBe(13);
+    expect(cfg.settings.keybindings).toEqual({});
+    expect(cfg.schemaVersion).toBe(3);
   });
 
   it('addRepo + removeRepo round-trips through disk', async () => {
@@ -64,12 +67,29 @@ describe('ReposStore', () => {
     expect(b.load().sidebarCollapsed).toBe(true);
   });
 
+  it('setSettings persists terminal theme/font + keybindings across reloads', async () => {
+    const a = new ReposStore(configPath);
+    a.load();
+    await a.setSettings({
+      terminalTheme: 'midnight',
+      fontFamily: 'Fira Code, monospace',
+      fontSize: 16,
+      keybindings: { toggleSidebar: 'CmdOrCtrl+Shift+B' },
+    });
+    const b = new ReposStore(configPath);
+    const cfg = b.load();
+    expect(cfg.settings.terminalTheme).toBe('midnight');
+    expect(cfg.settings.fontFamily).toBe('Fira Code, monospace');
+    expect(cfg.settings.fontSize).toBe(16);
+    expect(cfg.settings.keybindings).toEqual({ toggleSidebar: 'CmdOrCtrl+Shift+B' });
+  });
+
   it('survives a corrupt config file by falling back to defaults', () => {
     writeFileSync(configPath, '{not valid json');
     const store = new ReposStore(configPath);
     const cfg = store.load();
     expect(cfg.repos).toEqual([]);
-    expect(cfg.schemaVersion).toBe(2);
+    expect(cfg.schemaVersion).toBe(3);
   });
 
   it('migrates a partial config (missing keys) without losing data', () => {
@@ -86,7 +106,8 @@ describe('ReposStore', () => {
     expect(cfg.codeRoot).toBeNull();
     expect(cfg.sidebarCollapsed).toBe(false);
     expect(cfg.dismissedRepos).toEqual([]);
-    expect(cfg.schemaVersion).toBe(2);
+    expect(cfg.settings.terminalTheme).toBe('graphite');
+    expect(cfg.schemaVersion).toBe(3);
   });
 
   it('dismissRepo persists across reloads and is idempotent', async () => {
@@ -116,7 +137,9 @@ describe('ReposStore', () => {
     const cfg = store.load();
     expect(cfg.dismissedRepos).toEqual([]);
     expect(cfg.sidebarCollapsed).toBe(true);
-    expect(cfg.schemaVersion).toBe(2);
+    expect(cfg.settings.terminalTheme).toBe('graphite');
+    expect(cfg.settings.keybindings).toEqual({});
+    expect(cfg.schemaVersion).toBe(3);
   });
 
   it('writes atomically — the tmp file is never left behind on success', async () => {

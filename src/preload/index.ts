@@ -119,11 +119,14 @@ const api: TreelineApi = {
       ipcRenderer.invoke(Channels.ConfigSetCodeRoot, p) as Promise<void>,
     setSidebarCollapsed: (v) =>
       ipcRenderer.invoke(Channels.ConfigSetSidebarCollapsed, v) as Promise<void>,
+    setSettings: (settings) =>
+      ipcRenderer.invoke(Channels.ConfigSetSettings, settings) as Promise<void>,
   },
 
   window: {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
     onBrowserToggle: (cb) => listen<void>(Channels.BrowserToggle, () => cb()),
+    onOpenSettings: (cb) => listen<void>(Channels.SettingsOpen, () => cb()),
   },
 
   cli: {

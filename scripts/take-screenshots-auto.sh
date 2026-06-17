@@ -49,6 +49,10 @@ ALL_SCENARIOS=(
   "25-split-right"
   "26-split-grid"
   "27-browser"
+  "28-settings-modal"
+  "29-settings-keybind-conflict"
+  "30-theme-light"
+  "31-theme-midnight"
 )
 
 if [ $# -gt 0 ]; then

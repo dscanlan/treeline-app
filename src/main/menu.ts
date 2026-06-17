@@ -1,17 +1,28 @@
 import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
 import { Channels } from '@shared/ipc-channels';
+import { resolveKeybindings, type ResolvedKeybindings } from '@shared/keybindings';
 import { checkForUpdatesManual } from './updater';
 
-export function buildAppMenu(): void {
+/**
+ * Build the macOS app menu. Accelerators are driven by the resolved keybinding
+ * map (see `shared/keybindings.ts`) rather than hard-coded, so user rebindings
+ * in Settings take effect after `buildAppMenu()` is re-run with the new map.
+ * Defaults are used when no map is supplied (e.g. very first build before config
+ * has loaded).
+ */
+export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
   const isMac = process.platform === 'darwin';
   const appName = app.name;
+  const kb = keybindings ?? resolveKeybindings(undefined);
 
-  const sendSidebarToggle = () => {
+  const send = (channel: string) => () => {
     const win = BrowserWindow.getFocusedWindow();
     if (win && !win.isDestroyed()) {
-      win.webContents.send(Channels.SidebarToggle);
+      win.webContents.send(channel);
     }
   };
+  const sendSidebarToggle = send(Channels.SidebarToggle);
+  const sendOpenSettings = send(Channels.SettingsOpen);
 
   const sendBrowserToggle = () => {
     const win = BrowserWindow.getFocusedWindow();
@@ -30,6 +41,12 @@ export function buildAppMenu(): void {
               {
                 label: 'Check for Updates…',
                 click: () => void checkForUpdatesManual(),
+              },
+              { type: 'separator' as const },
+              {
+                label: 'Settings…',
+                accelerator: kb.openSettings,
+                click: sendOpenSettings,
               },
               { type: 'separator' as const },
               { role: 'services' as const },
@@ -64,12 +81,12 @@ export function buildAppMenu(): void {
       submenu: [
         {
           label: 'Toggle Sidebar',
-          accelerator: 'CmdOrCtrl+B',
+          accelerator: kb.toggleSidebar,
           click: sendSidebarToggle,
         },
         {
           label: 'Toggle Browser',
-          accelerator: 'CmdOrCtrl+Shift+B',
+          accelerator: kb.toggleBrowser,
           click: sendBrowserToggle,
         },
         { type: 'separator' as const },

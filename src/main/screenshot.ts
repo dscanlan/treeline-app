@@ -13,9 +13,15 @@ import type {
   FileDiff,
   Repo,
   Scratch,
+  SettingsConfig,
   Tab,
   Worktree,
 } from '@shared/types';
+import {
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_TERMINAL_THEME_ID,
+} from '@shared/terminal-theme';
 import type { PtyManager } from './pty-manager';
 
 /**
@@ -146,6 +152,17 @@ const ALL_WORKTREES = {
   [REPO_CGS.path]: WORKTREES_CGS,
   [REPO_DASHBOARD.path]: WORKTREES_DASHBOARD,
 };
+
+/** Build a SettingsConfig from factory defaults plus per-scenario overrides. */
+function settingsCfg(overrides: Partial<SettingsConfig> = {}): SettingsConfig {
+  return {
+    terminalTheme: DEFAULT_TERMINAL_THEME_ID,
+    fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+    fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+    keybindings: {},
+    ...overrides,
+  };
+}
 
 // Saved-on-disk content for the edit-mode scenarios, and the in-progress draft
 // (one extra line) so the unsaved-changes dot + Save button show.
@@ -808,6 +825,52 @@ const SCENARIOS: Record<string, Scenario> = {
     });
     await delay(150);
     await hoverElement(win, 'button[title^="Add an existing repo"]');
+  },
+
+  // Settings modal — Appearance (theme + font), Terminal, and the customizable
+  // Keybindings section, on factory-default settings.
+  '28-settings-modal': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      settings: settingsCfg(),
+      modal: { kind: 'settings' },
+    });
+  },
+
+  // Settings modal showing a rejected keybinding: Toggle Sidebar is bound to
+  // ⌘V, which is reserved by Paste — the field goes red, the inline message
+  // explains why, and Save is disabled.
+  '29-settings-keybind-conflict': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      settings: settingsCfg({ keybindings: { toggleSidebar: 'CmdOrCtrl+V' } }),
+      modal: { kind: 'settings' },
+    });
+  },
+
+  // App-wide theming: the Light preset repaints the whole chrome (sidebar,
+  // tabs, panels), not just the terminal.
+  '30-theme-light': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      settings: settingsCfg({ terminalTheme: 'graphite-light' }),
+    });
+  },
+
+  // App-wide theming: the Midnight preset.
+  '31-theme-midnight': async ({ win }) => {
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      settings: settingsCfg({ terminalTheme: 'midnight' }),
+    });
   },
 };
 

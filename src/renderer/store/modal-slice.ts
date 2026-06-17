@@ -16,6 +16,7 @@ export type Modal =
   | { kind: 'delete-worktree'; repoPath: string; worktreePath: string; branch: string }
   | { kind: 'create-repo' }
   | { kind: 'confirm-discard'; filename: string; then: DiscardThen }
+  | { kind: 'settings' }
   | null;
 
 export interface ModalSlice {

@@ -12,6 +12,8 @@ import {
 } from './pty-manager';
 import { ReposStore } from './repos-store';
 import { buildAppMenu } from './menu';
+import { resolveKeybindings } from '@shared/keybindings';
+import { appPaletteForId } from '@shared/terminal-theme';
 import { WorktreeWatcher } from './worktree-watcher';
 import { TerminalStatusMonitor } from './terminal-status';
 import { ProcessMonitor } from './process-monitor';
@@ -56,7 +58,7 @@ function sendCliCommand(cmd: CliRendererCommand): void {
   }
 }
 
-function createMainWindow(): BrowserWindow {
+function createMainWindow(backgroundColor = '#0e0f12'): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -64,7 +66,9 @@ function createMainWindow(): BrowserWindow {
     minHeight: 600,
     title: 'treeline',
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#0e0f12', // Graphite surface — must match tailwind treeline-surface
+    // Themed surface so cold start doesn't flash the default before React
+    // paints; defaults to Graphite surface (matches tailwind treeline-surface).
+    backgroundColor,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -203,7 +207,13 @@ app.whenReady().then(() => {
   registerWorktreesIpc();
   registerPtyIpc(ptyManager);
   registerProcessesIpc();
-  registerConfigIpc(reposStore);
+  registerConfigIpc(reposStore, {
+    // Rebuild the app menu when keybindings change so new accelerators apply
+    // without a restart.
+    onSettingsChanged: (settings) => {
+      buildAppMenu(resolveKeybindings(settings.keybindings));
+    },
+  });
   registerFilesIpc();
 
   // Scriptable CLI: listen on a user-scoped unix socket so the `treeline` CLI
@@ -241,8 +251,10 @@ app.whenReady().then(() => {
     console.error('failed to start CLI socket server:', err);
   });
 
-  buildAppMenu();
-  mainWindow = createMainWindow();
+  // Drive menu accelerators from the resolved keybinding map. Rebuilt below
+  // whenever settings change so user rebindings take effect without a restart.
+  buildAppMenu(resolveKeybindings(cfg.settings.keybindings));
+  mainWindow = createMainWindow(appPaletteForId(cfg.settings.terminalTheme).surface);
 
   // Wire auto-updates after the window exists so update dialogs can attach
   // to it as their parent. No-op in dev (electron-updater only works against

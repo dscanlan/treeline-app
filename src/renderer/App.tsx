@@ -8,9 +8,11 @@ import { DiscoveredRepoToast } from './components/DiscoveredRepoToast';
 import { ScreenshotForceTooltip } from './components/ScreenshotForceTooltip';
 import { attachIpc, loadInitialState } from './ipc/client';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
+import { useAppTheme } from './hooks/useAppTheme';
 
 export function App() {
   useGlobalShortcuts();
+  useAppTheme();
 
   useEffect(() => {
     const detach = attachIpc();

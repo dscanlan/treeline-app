@@ -3,6 +3,7 @@ import { CreateRepoModal } from './CreateRepoModal';
 import { CreateWorktreeModal } from './CreateWorktreeModal';
 import { DeleteWorktreeModal } from './DeleteWorktreeModal';
 import { ConfirmDiscardModal } from './ConfirmDiscardModal';
+import { SettingsModal } from './SettingsModal';
 
 export function Modals() {
   const modal = useStore((s) => s.modal);
@@ -24,6 +25,9 @@ export function Modals() {
   }
   if (modal.kind === 'confirm-discard') {
     return <ConfirmDiscardModal filename={modal.filename} then={modal.then} />;
+  }
+  if (modal.kind === 'settings') {
+    return <SettingsModal />;
   }
   return null;
 }
