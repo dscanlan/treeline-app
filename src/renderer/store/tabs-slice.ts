@@ -8,6 +8,7 @@ import {
   makeLeaf,
   mapLeaves,
   removePane as removePaneFromTree,
+  setSizes,
   splitPane,
 } from '@shared/pane-tree';
 import { basename } from '../util/path';
@@ -52,6 +53,8 @@ export interface TabsSlice {
   removePane: (tabId: string, paneId: string) => string | null;
   /** Focus a specific pane within a tab (e.g. on click or directional move). */
   setFocusedPane: (tabId: string, paneId: string) => void;
+  /** Set the fractional `sizes` of one split node (from a divider drag). */
+  setPaneSizes: (tabId: string, splitId: string, sizes: number[]) => void;
 
   /** Apply per-PTY status updates from the main process, per leaf. */
   applyStatusUpdates: (updates: TerminalStatusUpdate[]) => void;
@@ -199,6 +202,15 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
       if (!tab || !findLeaf(tab.root, paneId)) return s;
       if (tab.focusedPaneId === paneId) return s;
       const tabs = s.tabs.map((t) => (t.id === tabId ? { ...t, focusedPaneId: paneId } : t));
+      return { tabs };
+    }),
+
+  setPaneSizes: (tabId, splitId, sizes) =>
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === tabId);
+      if (!tab) return s;
+      const root = setSizes(tab.root, splitId, sizes);
+      const tabs = s.tabs.map((t) => (t.id === tabId ? { ...t, root } : t));
       return { tabs };
     }),
 

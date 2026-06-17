@@ -1,7 +1,17 @@
 import type { Tab } from '@shared/types';
+import type { TabStatus } from '@shared/types';
+import { leaves } from '@shared/pane-tree';
 import { useStore } from '../store';
 import { closeTab } from '../actions/tabs';
 import { TabStatusDot } from './TabStatusDot';
+
+/** Aggregate a tab's pane statuses for its strip dot: running → idle → exited. */
+function aggregateStatus(tab: Tab): TabStatus {
+  const statuses = leaves(tab.root).map((l) => l.status);
+  if (statuses.includes('running')) return 'running';
+  if (statuses.includes('idle')) return 'idle';
+  return 'exited';
+}
 
 interface Props {
   tab: Tab;
@@ -46,7 +56,7 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
       }`}
       title={tab.cwd}
     >
-      <TabStatusDot status={tab.status} />
+      <TabStatusDot status={aggregateStatus(tab)} />
       <span className="max-w-[160px] truncate">{tab.title}</span>
       <button
         type="button"

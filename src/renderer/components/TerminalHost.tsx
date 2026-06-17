@@ -1,5 +1,6 @@
+import { leaves } from '@shared/pane-tree';
 import { useStore } from '../store';
-import { TerminalView } from './TerminalView';
+import { PaneTreeView } from './PaneTreeView';
 
 export function TerminalHost() {
   const tabs = useStore((s) => s.tabs);
@@ -16,16 +17,33 @@ export function TerminalHost() {
     );
   }
 
+  // Every tab stays mounted (visibility-hidden when inactive) so each pane's
+  // xterm keeps consuming PTY data — the "hidden tabs stay mounted" rule, now
+  // per leaf. Only the active tab is visible and interactive.
   return (
     <div className="relative min-w-0 flex-1 bg-treeline-surface">
-      {tabs.map((tab) => (
-        <TerminalView
-          key={tab.id}
-          ptyId={tab.ptyId}
-          cwd={tab.cwd}
-          active={tab.id === activeTabId}
-        />
-      ))}
+      {tabs.map((tab) => {
+        const active = tab.id === activeTabId;
+        const multiPane = leaves(tab.root).length > 1;
+        return (
+          <div
+            key={tab.id}
+            className="absolute inset-0"
+            style={{
+              visibility: active ? 'visible' : 'hidden',
+              pointerEvents: active ? 'auto' : 'none',
+            }}
+          >
+            <PaneTreeView
+              node={tab.root}
+              tabId={tab.id}
+              focusedPaneId={tab.focusedPaneId}
+              tabActive={active}
+              multiPane={multiPane}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

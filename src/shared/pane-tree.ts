@@ -125,6 +125,21 @@ function evenSizes(n: number): number[] {
   return Array.from({ length: n }, () => 1 / n);
 }
 
+/**
+ * Return a new tree where the split node `splitId` has its `sizes` replaced.
+ * Sizes are normalised to sum to 1 and the array length is ignored if it
+ * doesn't match the child count (the caller is trusted to pass a parallel
+ * array). No-op clone if `splitId` isn't found.
+ */
+export function setSizes(node: PaneNode, splitId: string, sizes: number[]): PaneNode {
+  if (node.kind === 'leaf') return node;
+  if (node.id === splitId) {
+    const total = sizes.reduce((a, b) => a + b, 0) || 1;
+    return { ...node, sizes: sizes.map((s) => s / total) };
+  }
+  return { ...node, children: node.children.map((c) => setSizes(c, splitId, sizes)) };
+}
+
 /** The axis a direction lays its children out on: 'h' is horizontal. */
 function axisOf(direction: SplitDirection): 'x' | 'y' {
   return direction === 'h' ? 'x' : 'y';

@@ -317,11 +317,11 @@ const SCENARIOS: Record<string, Scenario> = {
   // the tabs hydrate, so subsequent `pty.write` calls render in the canvas.
 
   '03-terminal': async (ctx) => {
-    const { tab } = await spawnTabPty(ctx, 'main');
+    const { tab, ptyId } = await spawnTabPty(ctx, 'main');
     // Wait for the shell to finish sourcing rc files. Without this the
     // typed commands get echoed but never executed — the queued input
     // sits in the PTY buffer until init completes.
-    await waitForPtySettle(ctx, tab.ptyId);
+    await waitForPtySettle(ctx, ptyId);
     sendHydrate(ctx.win, {
       reset: true,
       repos: [REPO_TREELINE_APP],
@@ -332,7 +332,7 @@ const SCENARIOS: Record<string, Scenario> = {
     });
     // Let xterm mount and subscribe to PTY data before we write commands.
     await delay(400);
-    await typeAndSettle(ctx, tab.ptyId, [
+    await typeAndSettle(ctx, ptyId, [
       "clear\n",
       "echo 'treeline-app on main · ready'\n",
       "git --version\n",
@@ -344,8 +344,8 @@ const SCENARIOS: Record<string, Scenario> = {
     const a = await spawnTabPty(ctx, 'main');
     const b = await spawnTabPty(ctx, 'feat-auth');
     await Promise.all([
-      waitForPtySettle(ctx, a.tab.ptyId),
-      waitForPtySettle(ctx, b.tab.ptyId),
+      waitForPtySettle(ctx, a.ptyId),
+      waitForPtySettle(ctx, b.ptyId),
     ]);
     sendHydrate(ctx.win, {
       reset: true,
@@ -355,13 +355,13 @@ const SCENARIOS: Record<string, Scenario> = {
       activeTabId: b.tab.id,
       selected: REPO_TREELINE_APP.path,
       terminalStatus: [
-        { ptyId: a.tab.ptyId, status: 'idle', foregroundCmd: null },
-        { ptyId: b.tab.ptyId, status: 'running', foregroundCmd: 'npm test' },
+        { ptyId: a.ptyId, status: 'idle', foregroundCmd: null },
+        { ptyId: b.ptyId, status: 'running', foregroundCmd: 'npm test' },
       ],
     });
     await delay(400);
-    await typeAndSettle(ctx, a.tab.ptyId, ["clear\n", "echo 'main · idle prompt'\n"]);
-    await typeAndSettle(ctx, b.tab.ptyId, [
+    await typeAndSettle(ctx, a.ptyId, ["clear\n", "echo 'main · idle prompt'\n"]);
+    await typeAndSettle(ctx, b.ptyId, [
       "clear\n",
       "echo 'treeline-app on feat-auth'\n",
       "echo 'npm test  (4 of 32 suites)'\n",
@@ -370,8 +370,8 @@ const SCENARIOS: Record<string, Scenario> = {
 
   '11-claude-tab-running': async (ctx) => {
     const wt = WORKTREES_TREELINE_APP[2]!; // discovery-feat (Claude path)
-    const { tab } = await spawnTabPty(ctx, 'discovery-feat');
-    await waitForPtySettle(ctx, tab.ptyId);
+    const { tab, ptyId } = await spawnTabPty(ctx, 'discovery-feat');
+    await waitForPtySettle(ctx, ptyId);
     const fakeClaude: DetectedProcess = {
       pid: 31415,
       kind: 'claude',
@@ -387,11 +387,11 @@ const SCENARIOS: Record<string, Scenario> = {
       selected: wt.path,
       processesByWorktreePath: { [wt.path]: [fakeClaude] },
       terminalStatus: [
-        { ptyId: tab.ptyId, status: 'running', foregroundCmd: 'claude' },
+        { ptyId: ptyId, status: 'running', foregroundCmd: 'claude' },
       ],
     });
     await delay(400);
-    await typeAndSettle(ctx, tab.ptyId, [
+    await typeAndSettle(ctx, ptyId, [
       "clear\n",
       "printf '\\033[35m\\xe2\\x9c\\xa6 Claude Code session\\033[0m\\n'\n",
       "printf 'Worktree: discovery-feat\\n'\n",
@@ -403,8 +403,8 @@ const SCENARIOS: Record<string, Scenario> = {
     const a = await spawnTabPty(ctx, 'main'); // running
     const b = await spawnTabPty(ctx, 'feat-auth'); // idle
     await Promise.all([
-      waitForPtySettle(ctx, a.tab.ptyId),
-      waitForPtySettle(ctx, b.tab.ptyId),
+      waitForPtySettle(ctx, a.ptyId),
+      waitForPtySettle(ctx, b.ptyId),
     ]);
     sendHydrate(ctx.win, {
       reset: true,
@@ -414,12 +414,12 @@ const SCENARIOS: Record<string, Scenario> = {
       activeTabId: a.tab.id,
       selected: REPO_TREELINE_APP.path,
       terminalStatus: [
-        { ptyId: a.tab.ptyId, status: 'running', foregroundCmd: 'npm test' },
-        { ptyId: b.tab.ptyId, status: 'idle', foregroundCmd: null },
+        { ptyId: a.ptyId, status: 'running', foregroundCmd: 'npm test' },
+        { ptyId: b.ptyId, status: 'idle', foregroundCmd: null },
       ],
     });
     await delay(400);
-    await typeAndSettle(ctx, a.tab.ptyId, [
+    await typeAndSettle(ctx, a.ptyId, [
       "clear\n",
       "echo 'npm test' && echo '… 4 of 32 passing'\n",
     ]);
@@ -499,8 +499,8 @@ const SCENARIOS: Record<string, Scenario> = {
       ],
     };
 
-    const { tab } = await spawnTabPty(ctx, 'feat-auth');
-    await waitForPtySettle(ctx, tab.ptyId);
+    const { tab, ptyId } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, ptyId);
     sendHydrate(ctx.win, {
       reset: true,
       repos: [REPO_TREELINE_APP],
@@ -508,7 +508,7 @@ const SCENARIOS: Record<string, Scenario> = {
       tabs: [tab],
       activeTabId: tab.id,
       selected: wt.path,
-      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       // Code viewer: expand feat-auth's folder, show its Changed list, and open
       // login.ts as a diff in the panel.
       expandedDirs: { [wt.path]: true },
@@ -521,7 +521,7 @@ const SCENARIOS: Record<string, Scenario> = {
       openDiff: diff,
     });
     await delay(400);
-    await typeAndSettle(ctx, tab.ptyId, [
+    await typeAndSettle(ctx, ptyId, [
       'clear\n',
       "echo 'treeline-app on feat-auth'\n",
     ]);
@@ -532,8 +532,8 @@ const SCENARIOS: Record<string, Scenario> = {
   '22-file-editing': async (ctx) => {
     const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
     const file = `${wt.path}/src/auth/login.ts`;
-    const { tab } = await spawnTabPty(ctx, 'feat-auth');
-    await waitForPtySettle(ctx, tab.ptyId);
+    const { tab, ptyId } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, ptyId);
     sendHydrate(ctx.win, {
       reset: true,
       repos: [REPO_TREELINE_APP],
@@ -541,7 +541,7 @@ const SCENARIOS: Record<string, Scenario> = {
       tabs: [tab],
       activeTabId: tab.id,
       selected: wt.path,
-      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       expandedDirs: { [wt.path]: true },
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: {
@@ -561,14 +561,14 @@ const SCENARIOS: Record<string, Scenario> = {
       draft: LOGIN_TS_DRAFT,
     });
     await delay(400);
-    await typeAndSettle(ctx, tab.ptyId, ['clear\n', "echo 'editing login.ts'\n"]);
+    await typeAndSettle(ctx, ptyId, ['clear\n', "echo 'editing login.ts'\n"]);
   },
 
   '23-discard-modal': async (ctx) => {
     const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
     const file = `${wt.path}/src/auth/login.ts`;
-    const { tab } = await spawnTabPty(ctx, 'feat-auth');
-    await waitForPtySettle(ctx, tab.ptyId);
+    const { tab, ptyId } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, ptyId);
     sendHydrate(ctx.win, {
       reset: true,
       repos: [REPO_TREELINE_APP],
@@ -576,7 +576,7 @@ const SCENARIOS: Record<string, Scenario> = {
       tabs: [tab],
       activeTabId: tab.id,
       selected: wt.path,
-      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       expandedDirs: { [wt.path]: true },
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: {
@@ -633,8 +633,8 @@ const SCENARIOS: Record<string, Scenario> = {
       '> Tip: press the **Preview** tab to render markdown.',
     ].join('\n');
 
-    const { tab } = await spawnTabPty(ctx, 'feat-auth');
-    await waitForPtySettle(ctx, tab.ptyId);
+    const { tab, ptyId } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, ptyId);
     sendHydrate(ctx.win, {
       reset: true,
       repos: [REPO_TREELINE_APP],
@@ -642,7 +642,7 @@ const SCENARIOS: Record<string, Scenario> = {
       tabs: [tab],
       activeTabId: tab.id,
       selected: wt.path,
-      terminalStatus: [{ ptyId: tab.ptyId, status: 'idle', foregroundCmd: null }],
+      terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       expandedDirs: { [wt.path]: true },
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: {
@@ -657,7 +657,7 @@ const SCENARIOS: Record<string, Scenario> = {
       openFileText: md,
     });
     await delay(400);
-    await typeAndSettle(ctx, tab.ptyId, ['clear\n', "echo 'markdown preview'\n"]);
+    await typeAndSettle(ctx, ptyId, ['clear\n', "echo 'markdown preview'\n"]);
   },
 
   '18-add-button-tooltip': async ({ win }) => {
@@ -771,7 +771,7 @@ async function hoverElement(win: BrowserWindow, selector: string): Promise<void>
 async function spawnTabPty(
   ctx: ScenarioCtx,
   branchName: string,
-): Promise<{ tab: Tab; tmpDir: string }> {
+): Promise<{ tab: Tab; ptyId: string; tmpDir: string }> {
   if (!ctx.ptyManager) throw new Error('[screenshot] PtyManager not available');
 
   const tmpDir = await mkdtemp(join(tmpdir(), `treeline-ss-${branchName}-`));
@@ -816,7 +816,7 @@ async function spawnTabPty(
     });
   });
 
-  return { tab, tmpDir };
+  return { tab, ptyId, tmpDir };
 }
 
 /**
