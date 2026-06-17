@@ -46,6 +46,10 @@ export const Channels = {
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',
 
+  // main → renderer command forwarded from the scriptable CLI socket
+  // (see src/main/cli-server.ts). Today only carries `open`.
+  CliCommand: 'cli:command',
+
   // dev-only: hydration channel used by scripts/take-screenshots-auto.sh.
   // Main never sends to this channel in production builds — it's gated on
   // the TREELINE_SCREENSHOT_ID env var. The double-underscore prefix flags

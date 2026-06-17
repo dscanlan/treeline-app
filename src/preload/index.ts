@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import type { ScreenshotHydratePayload, TreelineApi } from '@shared/ipc-contract';
+import type { CliRendererCommand } from '@shared/cli-protocol';
 import type {
   AppConfig,
   ChangedFile,
@@ -122,6 +123,10 @@ const api: TreelineApi = {
 
   window: {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
+  },
+
+  cli: {
+    onCommand: (cb) => listen<CliRendererCommand>(Channels.CliCommand, cb),
   },
 
   // Snapshot of relevant system info. The value is baked into argv by main

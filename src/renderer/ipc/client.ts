@@ -2,6 +2,7 @@
 // `attachIpc(store)` once at startup; it returns an unsubscribe.
 import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
+import { openTabAt } from '../actions/tabs';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
@@ -52,6 +53,23 @@ export function attachIpc(): () => void {
   unsubs.push(
     api.repos.onDiscovered((e) => {
       useStore.getState().enqueueDiscovery(e);
+    }),
+  );
+
+  // Commands forwarded from the scriptable CLI socket (main resolves the verb
+  // to a concrete worktree cwd; here we open/focus its tab, reusing the same
+  // path a sidebar click takes so GUI and CLI behaviour stay identical).
+  unsubs.push(
+    api.cli.onCommand((cmd) => {
+      if (cmd.verb === 'open') {
+        void openTabAt(cmd.cwd);
+      } else if (cmd.verb === 'send') {
+        // Type into the focused terminal, reusing the same PTY write path as a
+        // keystroke. No-op if no tab is active.
+        const s = useStore.getState();
+        const tab = s.tabs.find((t) => t.id === s.activeTabId);
+        if (tab) api.pty.write(tab.ptyId, cmd.text);
+      }
     }),
   );
 

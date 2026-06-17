@@ -4,6 +4,9 @@
   "description": "Worktree-aware terminal multiplexer for git + Claude Code",
   "private": true,
   "main": "out/main/index.js",
+  "bin": {
+    "treeline": "bin/treeline.mjs"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

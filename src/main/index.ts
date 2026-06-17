@@ -1,6 +1,8 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, Notification, shell } from 'electron';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { Channels } from '@shared/ipc-channels';
+import type { CliRendererCommand } from '@shared/cli-protocol';
 import {
   defaultSpawn,
   PtyManager,
@@ -24,6 +26,10 @@ import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
 import { setupAutoUpdater } from './updater';
 import { isSafeExternalUrl } from './util/safe-url';
+import { listWorktreesIn } from './git';
+import { CliServer } from './cli-server';
+import { buildCliHandlers } from './cli-handlers';
+import { cliSocketPath } from './cli-socket-path';
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
@@ -32,7 +38,23 @@ let worktreeWatcher: WorktreeWatcher | null = null;
 let terminalStatusMonitor: TerminalStatusMonitor | null = null;
 let processMonitor: ProcessMonitor | null = null;
 let repoDiscovery: RepoDiscovery | null = null;
+let cliServer: CliServer | null = null;
 let isQuitting = false;
+
+/** Bring the app's window to the foreground (used by CLI `notify`/`open`). */
+function focusMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+/** Forward a resolved CLI command to the renderer (see ipc/client.ts). */
+function sendCliCommand(cmd: CliRendererCommand): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(Channels.CliCommand, cmd);
+  }
+}
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -152,6 +174,41 @@ app.whenReady().then(() => {
   registerConfigIpc(reposStore);
   registerFilesIpc();
 
+  // Scriptable CLI: listen on a user-scoped unix socket so the `treeline` CLI
+  // (and agents/hooks) can drive the running app. Verbs route through the same
+  // services the GUI uses, so behaviour can't drift. Failing to bind is
+  // non-fatal — the GUI still works without the socket.
+  cliServer = new CliServer(
+    cliSocketPath(app.getPath('userData')),
+    buildCliHandlers({
+      version: app.getVersion(),
+      listRepos: () => reposStore?.get().repos ?? [],
+      listWorktrees: (repoPath) => listWorktreesIn(repoPath),
+      notify: (text) => {
+        // Show a native notification but DON'T steal focus — a Claude Code Stop
+        // hook fires `notify` on every response, so force-focusing would yank
+        // the user's window away constantly. Clicking the notification focuses.
+        // (In `npm run dev` the unsigned Electron binary may be denied by macOS
+        // with UNError 1 — notifications are reliable only in a packaged build.)
+        if (Notification.isSupported()) {
+          const n = new Notification({ title: 'treeline', body: text });
+          n.on('click', () => focusMainWindow());
+          n.show();
+        }
+      },
+      openWorktree: (cwd) => {
+        focusMainWindow();
+        sendCliCommand({ verb: 'open', cwd });
+      },
+      // No focus-steal: scripts/agents type into the active pane in the
+      // background. The renderer no-ops if no terminal is focused.
+      sendKeys: (text) => sendCliCommand({ verb: 'send', text }),
+    }),
+  );
+  cliServer.start().catch((err) => {
+    console.error('failed to start CLI socket server:', err);
+  });
+
   buildAppMenu();
   mainWindow = createMainWindow();
 
@@ -181,6 +238,7 @@ app.on('before-quit', async (e) => {
   worktreeWatcher?.stop();
   terminalStatusMonitor?.stop();
   processMonitor?.stop();
+  void cliServer?.stop();
   if (!ptyManager) return;
   // Best-effort: SIGHUP every PTY, then SIGKILL any holdouts after the grace.
   e.preventDefault();

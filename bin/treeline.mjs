@@ -1,0 +1,297 @@
+#!/usr/bin/env node
+// treeline — scriptable CLI for the treeline-app desktop app.
+//
+// A thin client: connects to the running app's unix domain socket, sends one
+// newline-delimited-JSON command, prints the reply, and exits. The app's main
+// process is the server (src/main/cli-server.ts). Kept dependency-free and
+// self-contained so it can be symlinked onto PATH without a build step.
+//
+// Usage:
+//   treeline ping
+//   treeline repos
+//   treeline worktrees <repo>
+//   treeline open <repo> [branch]
+//   treeline send <text...>            keystrokes to the focused terminal
+//   treeline notify <text...>
+//   treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
+//   treeline hooks remove
+//
+// Socket: $TREELINE_SOCK, else the app's userData dir + /cli.sock.
+
+import { connect } from 'node:net';
+import { homedir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+
+const SELF = fileURLToPath(import.meta.url);
+
+function socketPath() {
+  if (process.env.TREELINE_SOCK) return process.env.TREELINE_SOCK;
+  const home = homedir();
+  const dir =
+    process.platform === 'darwin'
+      ? join(home, 'Library', 'Application Support', 'treeline-app')
+      : process.platform === 'win32'
+        ? join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'treeline-app')
+        : join(process.env.XDG_CONFIG_HOME || join(home, '.config'), 'treeline-app');
+  return join(dir, 'cli.sock');
+}
+
+const USAGE = `treeline — drive the running treeline-app
+  treeline ping
+  treeline repos
+  treeline worktrees <repo>
+  treeline open <repo> [branch]
+  treeline send <text...>            keystrokes to the focused terminal
+  treeline notify <text...>
+  treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
+  treeline hooks remove`;
+
+/** Decode the common backslash escapes so \`send "npm test\\n"\` runs the line. */
+function unescape(s) {
+  return s.replace(/\\([nrt\\])/g, (_, c) => ({ n: '\n', r: '\r', t: '\t', '\\': '\\' })[c]);
+}
+
+function buildRequest(argv) {
+  const [verb, ...rest] = argv;
+  switch (verb) {
+    case 'ping':
+    case 'repos':
+      return { verb };
+    case 'worktrees':
+      if (!rest[0]) fail('worktrees requires a <repo>');
+      return { verb, args: { repo: rest[0] } };
+    case 'open':
+      if (!rest[0]) fail('open requires a <repo> [branch]');
+      return { verb, args: { repo: rest[0], ...(rest[1] ? { branch: rest[1] } : {}) } };
+    case 'send': {
+      const text = rest.join(' ');
+      if (!text) fail('send requires <text>');
+      return { verb, args: { text: unescape(text) } };
+    }
+    case 'notify': {
+      const text = rest.join(' ').trim();
+      if (!text) fail('notify requires <text>');
+      return { verb, args: { text } };
+    }
+    default:
+      fail(verb ? `unknown command: ${verb}` : 'no command given');
+  }
+}
+
+function fail(msg) {
+  process.stderr.write(`treeline: ${msg}\n\n${USAGE}\n`);
+  process.exit(2);
+}
+
+function send(req) {
+  const path = socketPath();
+  const sock = connect(path);
+  let buf = '';
+  sock.setEncoding('utf8');
+  sock.on('connect', () => sock.write(JSON.stringify(req) + '\n'));
+  sock.on('data', (chunk) => {
+    buf += chunk;
+    const nl = buf.indexOf('\n');
+    if (nl === -1) return;
+    sock.end();
+    let res;
+    try {
+      res = JSON.parse(buf.slice(0, nl));
+    } catch {
+      process.stderr.write('treeline: malformed reply from app\n');
+      process.exit(1);
+    }
+    if (res.ok) {
+      if (res.data !== undefined) process.stdout.write(JSON.stringify(res.data, null, 2) + '\n');
+      process.exit(0);
+    } else {
+      process.stderr.write(`treeline: ${res.error}\n`);
+      process.exit(1);
+    }
+  });
+  sock.on('error', (err) => {
+    const hint =
+      err && err.code === 'ENOENT'
+        ? 'is treeline-app running? (no socket at ' + path + ')'
+        : err.message;
+    process.stderr.write(`treeline: cannot reach app — ${hint}\n`);
+    process.exit(1);
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Claude Code hook integration
+// ----------------------------------------------------------------------------
+
+/** Where Claude Code keeps settings.json (honours CLAUDE_CONFIG_DIR like the app does). */
+function claudeConfigDir() {
+  return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+}
+
+/** The two events worth a desktop ping: Claude finishing, and Claude asking for input. */
+const HOOK_EVENTS = ['Stop', 'Notification'];
+const HOOK_TAG = 'notify-hook'; // substring used to detect/remove our own hooks
+
+function readSettings(settingsPath) {
+  if (!existsSync(settingsPath)) return {};
+  try {
+    return JSON.parse(readFileSync(settingsPath, 'utf8'));
+  } catch {
+    fail(`could not parse ${settingsPath}; fix or move it, then retry`);
+  }
+}
+
+function writeSettings(settingsPath, settings) {
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  const tmp = settingsPath + '.tmp';
+  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n');
+  renameSync(tmp, settingsPath); // atomic
+}
+
+function hooksSetup(opts) {
+  const settingsPath = join(claudeConfigDir(), 'settings.json');
+  const settings = readSettings(settingsPath);
+  settings.hooks ??= {};
+
+  // Point the hook at this script by ABSOLUTE path so it works regardless of
+  // whether the symlink dir made it onto PATH.
+  const command = `${SELF} ${HOOK_TAG}`;
+  let added = 0;
+  for (const event of HOOK_EVENTS) {
+    const groups = (settings.hooks[event] ??= []);
+    const already = groups.some((g) =>
+      (g.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes(HOOK_TAG)),
+    );
+    if (already) continue;
+    groups.push({ hooks: [{ type: 'command', command }] });
+    added++;
+  }
+  writeSettings(settingsPath, settings);
+
+  console.log(
+    `hooks: ${added > 0 ? `added ${added}` : 'already present'} (${HOOK_EVENTS.join(', ')}) in ${settingsPath}`,
+  );
+  console.log(`  command: ${command}`);
+
+  // Best-effort: put `treeline` on PATH for interactive use.
+  const binDir = opts.binDir || join(homedir(), '.local', 'bin');
+  try {
+    mkdirSync(binDir, { recursive: true });
+    const link = join(binDir, 'treeline');
+    try {
+      lstatSync(link);
+      rmSync(link, { force: true });
+    } catch {
+      /* nothing to replace */
+    }
+    symlinkSync(SELF, link);
+    console.log(`  linked: ${link} -> ${SELF}`);
+    const onPath = (process.env.PATH || '').split(':').includes(binDir);
+    if (!onPath) console.log(`  note: ${binDir} is not on your PATH (add it to run \`treeline\` directly)`);
+  } catch (e) {
+    console.log(`  note: could not symlink into ${binDir}: ${e.message}`);
+  }
+
+  console.log('Run /hooks in Claude Code (or restart it) to load the new hooks.');
+  process.exit(0);
+}
+
+function hooksRemove() {
+  const settingsPath = join(claudeConfigDir(), 'settings.json');
+  const settings = readSettings(settingsPath);
+  let removed = 0;
+  for (const event of HOOK_EVENTS) {
+    const groups = settings.hooks?.[event];
+    if (!Array.isArray(groups)) continue;
+    const kept = groups.filter((g) => {
+      const ours = (g.hooks || []).some(
+        (h) => typeof h.command === 'string' && h.command.includes(HOOK_TAG),
+      );
+      if (ours) removed++;
+      return !ours;
+    });
+    if (kept.length > 0) settings.hooks[event] = kept;
+    else delete settings.hooks[event];
+  }
+  writeSettings(settingsPath, settings);
+  console.log(`hooks: removed ${removed} from ${settingsPath}`);
+  process.exit(0);
+}
+
+function hooksCmd(argv) {
+  const sub = argv[0];
+  if (sub === 'setup') {
+    const i = argv.indexOf('--bin-dir');
+    const binDir = i !== -1 ? argv[i + 1] : undefined;
+    return hooksSetup({ binDir });
+  }
+  if (sub === 'remove') return hooksRemove();
+  fail(`hooks: unknown subcommand "${sub ?? ''}" (expected setup|remove)`);
+}
+
+/**
+ * Internal verb wired into Claude Code settings.json. Reads the hook's JSON
+ * payload from stdin, derives a message, and fires `notify` over the socket.
+ * CRITICAL: this must NEVER fail the hook — it always exits 0, even if the app
+ * is down, so it can't disrupt Claude Code.
+ */
+function notifyHook() {
+  let done = false;
+  const exit0 = () => {
+    if (!done) {
+      done = true;
+      process.exit(0);
+    }
+  };
+  // Hard ceiling so a stuck stdin/socket never hangs a Claude Code turn.
+  setTimeout(exit0, 2000);
+
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => (input += d));
+  process.stdin.on('end', () => {
+    let text = 'Claude Code';
+    try {
+      const e = JSON.parse(input || '{}');
+      if (typeof e.message === 'string' && e.message) text = e.message;
+      else if (e.hook_event_name === 'Stop') text = 'Claude finished responding';
+      else if (e.hook_event_name === 'Notification') text = 'Claude needs your attention';
+      if (typeof e.cwd === 'string' && e.cwd) text += ` — ${basename(e.cwd)}`;
+    } catch {
+      /* fall back to the default text */
+    }
+    // Fire-and-forget: write the frame, then exit on first sign of completion.
+    try {
+      const sock = connect(socketPath());
+      sock.on('connect', () => sock.end(JSON.stringify({ verb: 'notify', args: { text } }) + '\n'));
+      sock.on('data', exit0);
+      sock.on('close', exit0);
+      sock.on('error', exit0);
+    } catch {
+      exit0();
+    }
+  });
+}
+
+// ----------------------------------------------------------------------------
+
+const args = process.argv.slice(2);
+const cmd = args[0];
+if (!cmd || cmd === '-h' || cmd === '--help') {
+  process.stdout.write(USAGE + '\n');
+  process.exit(0);
+}
+if (cmd === 'hooks') hooksCmd(args.slice(1));
+else if (cmd === HOOK_TAG) notifyHook();
+else send(buildRequest(args));

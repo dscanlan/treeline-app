@@ -1,3 +1,4 @@
+import type { CliRendererCommand } from './cli-protocol';
 import type {
   AppConfig,
   ChangedFile,
@@ -180,6 +181,16 @@ export interface TreelineApi {
   window: {
     /** Subscribe to the ⌘B accelerator from the main process. */
     onSidebarToggle(cb: () => void): () => void;
+  };
+
+  /**
+   * Commands forwarded from the scriptable CLI socket (see
+   * src/main/cli-server.ts). The socket server lives in main and has no store
+   * access, so verbs that need the UI — currently just `open` — are relayed
+   * here for the renderer to act on. Returns an unsubscribe fn.
+   */
+  cli: {
+    onCommand(cb: (cmd: CliRendererCommand) => void): () => void;
   };
 
   /**
