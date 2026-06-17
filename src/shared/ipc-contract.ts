@@ -181,6 +181,8 @@ export interface TreelineApi {
   window: {
     /** Subscribe to the ⌘B accelerator from the main process. */
     onSidebarToggle(cb: () => void): () => void;
+    /** Subscribe to the ⌘⇧B accelerator that toggles the embedded browser pane. */
+    onBrowserToggle(cb: () => void): () => void;
   };
 
   /**

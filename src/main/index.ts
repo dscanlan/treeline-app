@@ -71,6 +71,10 @@ function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Enables the <webview> tag used by the embedded browser pane
+      // (BrowserPane). Guests are hardened in `hardenWebviews()` below — own
+      // partition, no node integration, external links routed to the OS.
+      webviewTag: true,
       // Sandboxed preload can't import `node:os`, but it CAN read
       // `process.argv`. Bake homedir into the preload's argv at window
       // creation; the preload parses it and exposes it as
@@ -95,6 +99,8 @@ function createMainWindow(): BrowserWindow {
     return { action: 'deny' };
   });
 
+  hardenWebviews(win);
+
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
@@ -102,6 +108,32 @@ function createMainWindow(): BrowserWindow {
   }
 
   return win;
+}
+
+/**
+ * Lock down the <webview> guests hosted by the embedded browser pane. Unlike
+ * the read-only code viewer (`files.*`, explicitly *not* a trust boundary),
+ * this is a real network-capable browser, so it widens the app's trust
+ * surface — keep the guest stripped of any privileged config:
+ *
+ * - `will-attach-webview`: no preload, no node integration, isolation on —
+ *   the page is plain web content with no bridge into the app.
+ * - guest `setWindowOpenHandler`: `window.open` / target=_blank don't spawn
+ *   uncontrolled child windows; safe web/mail links go to the OS browser
+ *   (same posture as the main window), everything else is dropped.
+ */
+function hardenWebviews(win: BrowserWindow): void {
+  win.webContents.on('will-attach-webview', (_e, webPreferences) => {
+    delete webPreferences.preload;
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
+  });
+  win.webContents.on('did-attach-webview', (_e, guest) => {
+    guest.setWindowOpenHandler(({ url }) => {
+      if (isSafeExternalUrl(url)) void shell.openExternal(url);
+      return { action: 'deny' };
+    });
+  });
 }
 
 app.whenReady().then(() => {

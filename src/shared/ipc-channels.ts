@@ -45,6 +45,7 @@ export const Channels = {
 
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',
+  BrowserToggle: 'browser:toggle',
 
   // main → renderer command forwarded from the scriptable CLI socket
   // (see src/main/cli-server.ts). Today only carries `open`.

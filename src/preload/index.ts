@@ -123,6 +123,7 @@ const api: TreelineApi = {
 
   window: {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
+    onBrowserToggle: (cb) => listen<void>(Channels.BrowserToggle, () => cb()),
   },
 
   cli: {

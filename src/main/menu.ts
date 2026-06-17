@@ -13,6 +13,13 @@ export function buildAppMenu(): void {
     }
   };
 
+  const sendBrowserToggle = () => {
+    const win = BrowserWindow.getFocusedWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(Channels.BrowserToggle);
+    }
+  };
+
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
       ? [
@@ -59,6 +66,11 @@ export function buildAppMenu(): void {
           label: 'Toggle Sidebar',
           accelerator: 'CmdOrCtrl+B',
           click: sendSidebarToggle,
+        },
+        {
+          label: 'Toggle Browser',
+          accelerator: 'CmdOrCtrl+Shift+B',
+          click: sendBrowserToggle,
         },
         { type: 'separator' as const },
         { role: 'reload' as const },

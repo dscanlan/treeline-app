@@ -49,6 +49,13 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // Embedded browser pane toggle from the macOS menu (CmdOrCtrl+Shift+B).
+  unsubs.push(
+    api.window.onBrowserToggle(() => {
+      useStore.getState().toggleBrowserPanel();
+    }),
+  );
+
   // Untracked repos noticed via PTY cwds — surfaced as a toast.
   unsubs.push(
     api.repos.onDiscovered((e) => {
