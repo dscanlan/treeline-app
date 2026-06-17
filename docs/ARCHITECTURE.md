@@ -157,6 +157,37 @@ The renderer CSP gains `frame-src http: https:` so the frame can load. A
 scriptable IPC surface (drive/inspect the page so an agent can verify its own
 change) is a planned follow-up, deliberately deferred from this view-only cut.
 
+### Scriptable CLI (socket → app)
+
+The app is driveable from outside the GUI over a unix domain socket, so scripts
+and agents can issue the same verbs a user would click.
+
+1. In `app.whenReady` (alongside the monitors), `main/index.ts` starts a
+   `CliServer` (`main/cli-server.ts`) listening on `cliSocketPath(userData)` —
+   `…/Application Support/treeline-app/cli.sock`. The socket is `chmod 0600` and
+   never network-bound: it grants control of the app (and thus its PTYs), so it's
+   user-scoped by construction. A stale socket from an unclean exit is unlinked
+   before `listen`; `before-quit` closes it.
+2. The protocol is newline-delimited JSON (`shared/cli-protocol.ts`, kept free of
+   node imports so the sandboxed preload can share its types). A client writes one
+   `{verb,args}` line and reads one `{ok,…}` line.
+3. `CliServer` dispatches against a handler map built by `buildCliHandlers(deps)`
+   (`main/cli-handlers.ts`). The deps are the *same* services the IPC layer calls
+   (`ReposStore`, `git.listWorktreesIn`, a notify fn, a renderer-command fn), so a
+   socket verb and a GUI action can't diverge. `resolveWorktree` maps a
+   `{repo, branch?}` selector to a concrete worktree path.
+4. Verbs that need the UI are forwarded to the renderer over a `cli:command`
+   channel: `open` focuses the window and calls the same `openTabAt(cwd)` a sidebar
+   click takes; `send` writes its text to the *focused* tab's PTY (`pty.write`).
+   `notify` shows an Electron `Notification` (click-to-focus, no focus-steal —
+   important since a Claude `Stop` hook fires it on every turn).
+5. `bin/treeline.mjs` is the standalone client — dependency-free Node, symlinkable
+   onto `PATH`. Beyond the socket verbs it carries the Claude Code glue:
+   `hooks setup` atomically merges `Stop`/`Notification` hooks into
+   `~/.claude/settings.json` (idempotent; honours `CLAUDE_CONFIG_DIR`) pointing at
+   an internal `notify-hook`, which reads the hook's stdin JSON, derives a message,
+   fires `notify`, and **always exits 0** so it can never disrupt a Claude turn.
+
 ### Live worktree updates
 
 1. `WorktreeWatcher` registers an `fs.watch` on each `<repo>/.git`
@@ -296,16 +327,21 @@ toggle live inside it.
 ## File layout (annotated)
 
 ```
+bin/treeline.mjs                  # Standalone CLI client (socket verbs + Claude Code hooks).
 src/
 ├── shared/                       # Pure code; imported by main AND renderer.
 │   ├── types.ts                  # Repo, Worktree, Tab, ProcessSnapshot…
 │   ├── ipc-channels.ts           # `repos:list` etc. — string constants.
 │   ├── ipc-contract.ts           # The TreelineApi interface (one source of truth).
+│   ├── cli-protocol.ts           # CLI socket protocol: verbs + NDJSON frames (no node imports).
 │   ├── browser-url.ts            # normalizeBrowserUrl() for the browser pane.
 │   └── claude-detect.ts          # detectClaudeWorktree(path, branch).
 │
 ├── main/
 │   ├── index.ts                  # app.whenReady wiring.
+│   ├── cli-server.ts             # CliServer: unix-socket NDJSON server (0600).
+│   ├── cli-handlers.ts           # CLI verb handlers + resolveWorktree.
+│   ├── cli-socket-path.ts        # cli.sock path under userData.
 │   ├── menu.ts                   # macOS menu template; ⌘B / ⌘⇧B accelerators.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.

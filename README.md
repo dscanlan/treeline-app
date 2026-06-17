@@ -215,6 +215,35 @@ without alt-tabbing to Safari/Chrome and hunting for the port.
 This is the view-only first cut; a scriptable API to drive and inspect the page
 (e.g. so an agent can verify its own change) is planned as a follow-up.
 
+### Scriptable CLI
+
+The running app exposes a `treeline` CLI (and a raw socket API) so scripts and
+agents — not just the mouse — can drive it. The app's main process listens on a
+**user-scoped unix domain socket** (under its `userData` dir, `0600`, never bound
+to a network interface); the CLI is a thin client that sends one newline-delimited
+-JSON command and prints the reply. Verbs route through the same services the GUI
+uses, so behaviour can't drift between mouse and script.
+
+```bash
+treeline ping                      # health check
+treeline repos                     # tracked repos (JSON)
+treeline worktrees <repo>          # a repo's worktrees (JSON)
+treeline open <repo> [branch]      # focus, or open, that worktree's terminal tab
+treeline send 'npm test\n'         # type keystrokes into the focused terminal
+treeline notify "build finished"   # native desktop notification from the app
+```
+
+The CLI ships as a self-contained Node script (`bin/treeline.mjs`) you can symlink
+onto your `PATH`. `treeline hooks setup` does that and wires **Claude Code** hooks:
+it adds `Stop` and `Notification` entries to `~/.claude/settings.json` that call an
+internal `notify-hook`, turning *"Claude finished / Claude needs input"* into a
+desktop ping from the running app (`treeline hooks remove` reverses it). The hook
+never blocks Claude — if the app is down it exits cleanly without a notification.
+
+> Notifications are delivered by macOS only from a **signed packaged build**; the
+> unsigned `npm run dev` binary is denied by the OS (`UNError 1`). The socket,
+> `open`, and `send` work in dev regardless.
+
 ### Scratch terminals
 
 ![Two auto-numbered scratch terminals pinned above the repo list with a divider; the first is selected and highlighted](docs/img/19-scratch-terminals.png)
@@ -318,6 +347,10 @@ The short version:
 - **`src/renderer/`** — React UI; gets data from main only via the
   preload bridge. `contextIsolation: true`, `nodeIntegration: false`,
   `sandbox: true`.
+- **Scriptable CLI** — `src/main/cli-server.ts` (a `CliServer` that listens on a
+  `0600` unix socket) dispatches verbs built in `cli-handlers.ts` against the same
+  services the GUI uses. Verbs needing the UI (`open`, `send`) are forwarded to the
+  renderer over a `cli:command` channel; `bin/treeline.mjs` is the standalone client.
 
 ## Testing
 
@@ -342,6 +375,9 @@ The suites:
 | `pty-manager`        | Chunk coalescing, SIGHUP→SIGKILL escalation             |
 | `terminal-status`    | `running` / `idle` / `exited` deltas                    |
 | `process-monitor`    | cputime parsing, longest-prefix attribution, idle ≥10 s |
+| `cli-server`         | Socket dispatch: NDJSON framing, unknown-verb/error replies, `0600` perms, stale-socket restart |
+| `cli-handlers`       | Verb handlers + `resolveWorktree` (repo/branch → worktree path) |
+| `cli-bin`            | `treeline` binary: `hooks setup/remove` settings merge (idempotent), `notify-hook` payload → message |
 
 Tests that touch git use `GIT_CONFIG_GLOBAL=/dev/null` so they don't
 inherit your machine's commit-signing config (1Password, GPG, etc.).
@@ -364,15 +400,20 @@ node-pty stays matched to Electron's ABI. If you ever see
 ## Layout
 
 ```
+bin/treeline.mjs          # standalone CLI client (socket + Claude Code hooks)
 src/
 ├── shared/               # types + IPC contract (used by main and renderer)
 │   ├── types.ts
 │   ├── ipc-channels.ts
 │   ├── ipc-contract.ts
+│   ├── cli-protocol.ts   # CLI socket protocol: verbs, NDJSON frames (no node imports)
 │   ├── browser-url.ts    # address-bar URL normalisation for the browser pane
 │   └── claude-detect.ts
 ├── main/                 # privileged code; runs in Node
 │   ├── index.ts          # whenReady wiring
+│   ├── cli-server.ts     # CliServer: unix-socket NDJSON server (0600)
+│   ├── cli-handlers.ts   # CLI verb handlers + resolveWorktree
+│   ├── cli-socket-path.ts        # socket path under userData
 │   ├── menu.ts           # macOS app menu (⌘B accelerator etc.)
 │   ├── git.ts            # execFile wrappers around git CLI
 │   ├── git-porcelain.ts  # pure parser of `git worktree list --porcelain`
@@ -410,6 +451,9 @@ src/
   packaging config are mac-specific.
 - **Tabs are session-only.** Quitting kills all PTYs. Repos and the
   sidebar collapse state persist; tab state does not.
+- **CLI notifications need a signed build.** `treeline notify` reaches the app
+  and runs in `npm run dev`, but macOS only *displays* the banner from a signed
+  packaged `.app` — the unsigned dev binary is denied (`UNError 1`).
 - **`postcss.config.js` MODULE_TYPELESS_PACKAGE_JSON warning** is
   harmless. Setting `"type": "module"` on `package.json` would silence
   it but force renames elsewhere; not worth it for v1.
