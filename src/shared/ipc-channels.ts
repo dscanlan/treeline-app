@@ -45,6 +45,7 @@ export const Channels = {
 
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',
+  BrowserToggle: 'browser:toggle',
 
   // dev-only: hydration channel used by scripts/take-screenshots-auto.sh.
   // Main never sends to this channel in production builds — it's gated on

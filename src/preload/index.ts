@@ -122,6 +122,7 @@ const api: TreelineApi = {
 
   window: {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
+    onBrowserToggle: (cb) => listen<void>(Channels.BrowserToggle, () => cb()),
   },
 
   // Snapshot of relevant system info. The value is baked into argv by main
