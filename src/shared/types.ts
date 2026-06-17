@@ -1,5 +1,7 @@
 // Shared types — imported by main, preload, and renderer.
 
+import type { PaneNode } from './pane-tree';
+
 export interface Repo {
   /** Absolute, canonicalized repo root path. */
   path: string;
@@ -46,15 +48,21 @@ export interface ProcessSnapshot {
 
 export type TabStatus = 'running' | 'idle' | 'exited';
 
+/**
+ * A tab hosts a *tree* of terminal panes (see `shared/pane-tree.ts`), not a
+ * single PTY. `root` is the pane tree; `focusedPaneId` points at the leaf that
+ * has keyboard focus. Per-PTY status / process metadata lives on each
+ * {@link PaneLeaf}; the tab-level `cwd` is the worktree the tab is bound to and
+ * still drives the `tabsByCwd` MRU index.
+ */
 export interface Tab {
   id: string;
-  ptyId: string;
   /** Worktree path the tab is bound to (the cwd it was spawned in). */
   cwd: string;
   title: string;
-  status: TabStatus;
-  /** Basename of the foreground child if status === 'running'. */
-  foregroundCmd: string | null;
+  root: PaneNode;
+  /** Pane id of the focused leaf within `root`. */
+  focusedPaneId: string;
   createdAt: number;
   lastActiveAt: number;
 }
