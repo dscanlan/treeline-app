@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Channels } from '@shared/ipc-channels';
-import { makeLeaf } from '@shared/pane-tree';
+import { makeLeaf, makeNodeId } from '@shared/pane-tree';
+import type { PaneLeaf, PaneNode } from '@shared/pane-tree';
 import type { ScreenshotHydratePayload } from '@shared/ipc-contract';
 import type {
   ChangedFile,
@@ -660,6 +662,138 @@ const SCENARIOS: Record<string, Scenario> = {
     await typeAndSettle(ctx, ptyId, ['clear\n', "echo 'markdown preview'\n"]);
   },
 
+  // ── split panes: two terminals side-by-side in one tab ──────────────────
+  // Splits the focused pane to the right (⌘D): two live PTYs share the tab,
+  // each its own xterm with a status dot + badge. The focused (right) pane
+  // shows the cyan focus ring.
+
+  '25-split-right': async (ctx) => {
+    const a = await spawnLeafPty(ctx, 'main', { status: 'idle' });
+    const b = await spawnLeafPty(ctx, 'feat-auth', {
+      status: 'running',
+      foregroundCmd: 'npm test',
+    });
+    await Promise.all([
+      waitForPtySettle(ctx, a.ptyId),
+      waitForPtySettle(ctx, b.ptyId),
+    ]);
+    const root = split('h', [a.leaf, b.leaf]);
+    const now = Date.now();
+    const tab: Tab = {
+      id: a.ptyId,
+      cwd: a.leaf.cwd,
+      title: 'main',
+      root,
+      focusedPaneId: b.leaf.id,
+      createdAt: now,
+      lastActiveAt: now,
+    };
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: REPO_TREELINE_APP.path,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, a.ptyId, [
+      'clear\n',
+      "echo 'main · editing'\n",
+      'git status -sb 2>/dev/null | head -4\n',
+    ]);
+    await typeAndSettle(ctx, b.ptyId, [
+      'clear\n',
+      "echo 'feat-auth · npm test'\n",
+      "echo 'PASS  src/auth/login.test.ts (12)'\n",
+      "echo 'Tests: 12 passed, running…'\n",
+    ]);
+  },
+
+  // ── split panes: a three-pane layout (split right, then down) ───────────
+  // Left pane full-height; the right column split into two stacked panes
+  // (⌘⇧D). Demonstrates the cmux-style nesting and ⌘⌥-arrow directional
+  // focus; the bottom-right pane holds the focus ring.
+
+  '26-split-grid': async (ctx) => {
+    const a = await spawnLeafPty(ctx, 'main', { status: 'idle' });
+    const b = await spawnLeafPty(ctx, 'feat-auth', {
+      status: 'running',
+      foregroundCmd: 'claude',
+    });
+    const c = await spawnLeafPty(ctx, 'feat-auth', {
+      status: 'running',
+      foregroundCmd: 'npm run dev',
+    });
+    await Promise.all([
+      waitForPtySettle(ctx, a.ptyId),
+      waitForPtySettle(ctx, b.ptyId),
+      waitForPtySettle(ctx, c.ptyId),
+    ]);
+    const root = split('h', [a.leaf, split('v', [b.leaf, c.leaf])]);
+    const now = Date.now();
+    const tab: Tab = {
+      id: a.ptyId,
+      cwd: a.leaf.cwd,
+      title: 'main',
+      root,
+      focusedPaneId: c.leaf.id,
+      createdAt: now,
+      lastActiveAt: now,
+    };
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: REPO_TREELINE_APP.path,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, a.ptyId, ['clear\n', "echo 'main · shell'\n", 'ls -1 src 2>/dev/null | head -6\n']);
+    await typeAndSettle(ctx, b.ptyId, ['clear\n', "echo 'feat-auth · claude'\n", "echo '✦ working on the diff…'\n"]);
+    await typeAndSettle(ctx, c.ptyId, [
+      'clear\n',
+      "echo 'feat-auth · npm run dev'\n",
+      "echo '  VITE ready in 312 ms'\n",
+      "echo '  ➜  Local: http://localhost:3000/'\n",
+    ]);
+  },
+
+  // ── embedded browser pane beside a terminal ─────────────────────────────
+  // Opens BrowserPane (⌘⇧B) pointed at a local fake dev server so the webview
+  // renders a real page — address bar, back/forward/reload, and the running
+  // app side-by-side with the terminal.
+
+  '27-browser': async (ctx) => {
+    const url = await startFakeServer(ctx);
+    const { tab, ptyId } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: REPO_TREELINE_APP.path,
+      terminalStatus: [{ ptyId, status: 'running', foregroundCmd: 'npm run dev' }],
+      browserPanelOpen: true,
+      browserPanelWidth: 640,
+      browserSrc: url,
+      browserAddress: url,
+      browserTitle: 'Acme Dashboard · dev',
+    });
+    await delay(400);
+    await typeAndSettle(ctx, ptyId, [
+      'clear\n',
+      "echo 'feat-auth · npm run dev'\n",
+      "echo '  ➜  Local: http://localhost:3000/'\n",
+    ]);
+    // The <webview> loads asynchronously; give it time to fetch + paint the
+    // page before capturePage() so the shot shows rendered content.
+    await delay(1800);
+  },
+
   '18-add-button-tooltip': async ({ win }) => {
     sendHydrate(win, {
       reset: true,
@@ -772,6 +906,32 @@ async function spawnTabPty(
   ctx: ScenarioCtx,
   branchName: string,
 ): Promise<{ tab: Tab; ptyId: string; tmpDir: string }> {
+  const { leaf, ptyId, tmpDir } = await spawnLeafPty(ctx, branchName);
+  const now = leaf.createdAt;
+  const tab: Tab = {
+    id: ptyId,
+    cwd: leaf.cwd,
+    title: branchName,
+    root: leaf,
+    focusedPaneId: leaf.id,
+    createdAt: now,
+    lastActiveAt: now,
+  };
+  return { tab, ptyId, tmpDir };
+}
+
+/**
+ * Spawn one real PTY (in a fresh mkdtemp dir, clean PS1) and wrap it in a
+ * {@link PaneLeaf}. The split-pane scenarios call this several times to build a
+ * multi-leaf tree under a single tab. `status`/`foregroundCmd` are baked onto
+ * the leaf so PaneView renders the right status dot + badge without needing a
+ * separate terminalStatus batch.
+ */
+async function spawnLeafPty(
+  ctx: ScenarioCtx,
+  branchName: string,
+  opts: { status?: PaneLeaf['status']; foregroundCmd?: string | null } = {},
+): Promise<{ leaf: PaneLeaf; ptyId: string; tmpDir: string }> {
   if (!ctx.ptyManager) throw new Error('[screenshot] PtyManager not available');
 
   const tmpDir = await mkdtemp(join(tmpdir(), `treeline-ss-${branchName}-`));
@@ -796,16 +956,14 @@ async function spawnTabPty(
 
   const now = Date.now();
   const cwd = `/Users/example/code/treeline-app/${branchName}`;
-  const leaf = makeLeaf({ ptyId, cwd, title: branchName, createdAt: now });
-  const tab: Tab = {
-    id: ptyId,
+  const leaf = makeLeaf({
+    ptyId,
     cwd,
     title: branchName,
-    root: leaf,
-    focusedPaneId: leaf.id,
     createdAt: now,
-    lastActiveAt: now,
-  };
+    status: opts.status,
+    foregroundCmd: opts.foregroundCmd,
+  });
 
   ctx.cleanups.push(async () => {
     await ctx.ptyManager?.kill(ptyId).catch(() => {
@@ -816,7 +974,117 @@ async function spawnTabPty(
     });
   });
 
-  return { tab, ptyId, tmpDir };
+  return { leaf, ptyId, tmpDir };
+}
+
+/** Wrap pane children in a split node with even sizes. */
+function split(direction: 'h' | 'v', children: PaneNode[]): PaneNode {
+  return {
+    kind: 'split',
+    id: makeNodeId('split'),
+    direction,
+    children,
+    sizes: children.map(() => 1 / children.length),
+  };
+}
+
+/**
+ * Serve a small, self-contained "dev server" page over HTTP so the embedded
+ * browser scenario captures rendered content (not a connection-refused error).
+ * Tries port 3000 first so the address bar reads like a real local dev server,
+ * falling back to an ephemeral port if it's taken. Registers a cleanup that
+ * closes the server after capture.
+ */
+function startFakeServer(ctx: ScenarioCtx): Promise<string> {
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Acme Dashboard · dev</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         color: #0f172a; background: #f8fafc; }
+  header { display: flex; align-items: center; gap: 10px; padding: 14px 22px;
+           background: #4f46e5; color: #fff; }
+  header .logo { width: 26px; height: 26px; border-radius: 7px; background: #fff;
+                 color: #4f46e5; font-weight: 700; display: grid; place-items: center; }
+  header strong { font-size: 16px; }
+  header .badge { margin-left: auto; font-size: 12px; background: rgba(255,255,255,.18);
+                  padding: 3px 9px; border-radius: 999px; }
+  main { max-width: 920px; margin: 0 auto; padding: 26px 22px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 22px; color: #64748b; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+  .card .k { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  .card .v { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .card .d { font-size: 12px; margin-top: 4px; color: #16a34a; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+          border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 14px; font-size: 14px; border-bottom: 1px solid #eef2f7; }
+  th { background: #f1f5f9; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:last-child td { border-bottom: none; }
+  .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .ok { background: #dcfce7; color: #166534; }
+  .run { background: #dbeafe; color: #1e40af; }
+</style>
+</head>
+<body>
+  <header>
+    <span class="logo">A</span>
+    <strong>Acme Dashboard</strong>
+    <span class="badge">localhost:3000 · dev</span>
+  </header>
+  <main>
+    <h1>Welcome back 👋</h1>
+    <p class="sub">Vite dev server running — hot reload enabled.</p>
+    <section class="cards">
+      <div class="card"><div class="k">Active users</div><div class="v">1,284</div><div class="d">▲ 12% this week</div></div>
+      <div class="card"><div class="k">Requests / min</div><div class="v">9.4k</div><div class="d">▲ 3% vs avg</div></div>
+      <div class="card"><div class="k">Error rate</div><div class="v">0.21%</div><div class="d">▼ 0.05%</div></div>
+    </section>
+    <table>
+      <thead><tr><th>Service</th><th>Region</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>api-gateway</td><td>us-east-1</td><td><span class="pill ok">healthy</span></td></tr>
+        <tr><td>worker-queue</td><td>us-east-1</td><td><span class="pill run">deploying</span></td></tr>
+        <tr><td>auth-service</td><td>eu-west-2</td><td><span class="pill ok">healthy</span></td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>`;
+
+  const server = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  });
+
+  ctx.cleanups.push(
+    () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      }),
+  );
+
+  return new Promise<string>((resolve) => {
+    const onListening = (s: Server, port: number) => {
+      void s;
+      resolve(`http://localhost:${port}`);
+    };
+    server.once('error', () => {
+      // Port 3000 taken — retry on an ephemeral port.
+      server.listen(0, '127.0.0.1', () =>
+        onListening(server, (server.address() as { port: number }).port),
+      );
+    });
+    server.listen(3000, '127.0.0.1', () =>
+      onListening(server, (server.address() as { port: number }).port),
+    );
+  });
 }
 
 /**

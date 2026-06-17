@@ -82,6 +82,20 @@ export interface ScreenshotHydratePayload {
    * literally cannot see it.
    */
   forceTooltipNear?: { selector: string; text: string };
+  /**
+   * Embedded-browser pane state (BrowserPane). Lets the harness open the
+   * `<webview>` beside a terminal and seed the address bar / nav buttons so the
+   * Browser scenario can be captured without driving the UI. `browserSrc` is the
+   * URL committed into the webview's `src`; the scenario serves a local page at
+   * that URL so the capture shows rendered content rather than a load error.
+   */
+  browserPanelOpen?: boolean;
+  browserPanelWidth?: number;
+  browserSrc?: string;
+  browserAddress?: string;
+  browserTitle?: string | null;
+  browserCanGoBack?: boolean;
+  browserCanGoForward?: boolean;
 }
 
 /**

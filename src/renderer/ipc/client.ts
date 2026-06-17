@@ -121,6 +121,7 @@ export function attachIpc(): () => void {
           draft: null,
           saving: false,
           saveError: null,
+          browserPanelOpen: false,
         });
       }
       const s = useStore.getState();
@@ -192,6 +193,22 @@ export function attachIpc(): () => void {
       if (p.draft !== undefined) editor.draft = p.draft;
       if (p.saveError !== undefined) editor.saveError = p.saveError;
       if (Object.keys(editor).length > 0) useStore.setState(editor);
+
+      // Embedded-browser pane — set directly so the harness can open the
+      // <webview> and seed its address bar / nav state for the Browser shot.
+      const browser: Record<string, unknown> = {};
+      if (p.browserPanelOpen !== undefined) browser.browserPanelOpen = p.browserPanelOpen;
+      if (p.browserPanelWidth !== undefined) browser.browserPanelWidth = p.browserPanelWidth;
+      if (p.browserSrc !== undefined) {
+        browser.browserSrc = p.browserSrc;
+        // Default the address bar to the committed src unless overridden below.
+        browser.browserAddress = p.browserSrc;
+      }
+      if (p.browserAddress !== undefined) browser.browserAddress = p.browserAddress;
+      if (p.browserTitle !== undefined) browser.browserTitle = p.browserTitle;
+      if (p.browserCanGoBack !== undefined) browser.browserCanGoBack = p.browserCanGoBack;
+      if (p.browserCanGoForward !== undefined) browser.browserCanGoForward = p.browserCanGoForward;
+      if (Object.keys(browser).length > 0) useStore.setState(browser);
     }),
   );
 

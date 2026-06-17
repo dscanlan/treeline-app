@@ -46,6 +46,9 @@ ALL_SCENARIOS=(
   "22-file-editing"
   "23-discard-modal"
   "24-markdown-preview"
+  "25-split-right"
+  "26-split-grid"
+  "27-browser"
 )
 
 if [ $# -gt 0 ]; then

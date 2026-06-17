@@ -131,6 +131,32 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
 Terminals stay mounted (consuming PTY data into their scrollback) when
 not visible, so switching back is instant — no replay flicker.
 
+### Split panes
+
+![A tab split into two terminals side-by-side: main on the left, feat-auth running npm test on the right, with the focused right pane outlined by a cyan ring and each pane showing its own status dot + badge](docs/img/25-split-right.png)
+
+A single tab isn't one terminal — it's a *tree* of terminal panes, so you
+can watch `claude` work, tail `npm run dev`, and keep a free shell side by
+side without juggling tabs. Each pane is its own PTY with its own xterm,
+status dot, and process badge; splitting never reshuffles what's already
+running.
+
+- **`⌘D`** splits the focused pane to the **right**; **`⌘⇧D`** splits it
+  **down**. Splitting along the axis a pane is already arranged on slices the
+  new pane in beside its siblings; splitting across the axis wraps the focused
+  pane in a fresh nested split (the cmux model), so any grid is reachable.
+- **`⌘⌥ + ← / → / ↑ / ↓`** moves keyboard focus to the neighbouring pane in
+  that direction (the bare arrows still go to the shell). The focused pane is
+  the one with the cyan ring; it's where new splits and keystrokes land.
+- **`⌘⇧W`** closes the focused pane, kills its PTY, and collapses the split —
+  a split that drops to a single child becomes that child again, and closing
+  the last pane closes the tab.
+- **Drag a divider** between panes to resize; the terminals re-fit to their new
+  rectangles. Panes — like tabs — stay mounted when their tab is hidden, so
+  output keeps flowing into the scrollback.
+
+![A three-pane layout: a full-height shell on the left and the right column split into two stacked panes — claude above, npm run dev below — with the focused bottom-right pane ringed](docs/img/26-split-grid.png)
+
 ### Code viewer
 
 ![A worktree expanded to its Changed list in the sidebar, with the split code panel showing a file's diff (working tree vs HEAD) beside the terminal](docs/img/21-code-viewer-diff.png)
@@ -196,6 +222,8 @@ placeholder instead of mojibake.
 ![The unsaved-changes modal — Keep editing or Discard — shown when navigating away mid-edit](docs/img/23-discard-modal.png)
 
 ### Browser
+
+![The embedded browser pane open beside a terminal: the left tab shows a worktree running npm run dev, and the right pane is a real Chromium webview with an address bar (http://localhost:3000), back/forward/reload controls, and a rendered dashboard page](docs/img/27-browser.png)
 
 Press `⌘⇧B` (or **View → Toggle Browser**) to split an **embedded browser**
 in beside the terminal — view the dev server you're running in a worktree
@@ -299,13 +327,17 @@ Collapse state persists across launches via the app config.
 
 ## Keyboard shortcuts
 
-| Shortcut | Action                       |
-| -------- | ---------------------------- |
-| `⌘B`     | Toggle sidebar               |
-| `⌘⇧B`    | Toggle browser pane          |
-| `⌘W`     | Close active window          |
-| `⌘Q`     | Quit (kills all PTYs)        |
-| `⌘R`     | Reload renderer (dev)        |
+| Shortcut       | Action                                  |
+| -------------- | --------------------------------------- |
+| `⌘B`           | Toggle sidebar                          |
+| `⌘⇧B`          | Toggle browser pane                     |
+| `⌘D`           | Split the focused pane right            |
+| `⌘⇧D`          | Split the focused pane down             |
+| `⌘⌥ ← → ↑ ↓`   | Move focus to the neighbouring pane     |
+| `⌘⇧W`          | Close the focused pane                  |
+| `⌘W`           | Close active window                     |
+| `⌘Q`           | Quit (kills all PTYs)                   |
+| `⌘R`           | Reload renderer (dev)                   |
 
 xterm captures everything else and forwards it to the PTY, so editor
 shortcuts, ⌃C, vim modes, etc. all work as you'd expect inside a tab.
