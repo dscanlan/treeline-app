@@ -3,6 +3,7 @@
 import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
 import { openTabAt } from '../actions/tabs';
+import { findLeaf } from '@shared/pane-tree';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
@@ -75,7 +76,9 @@ export function attachIpc(): () => void {
         // keystroke. No-op if no tab is active.
         const s = useStore.getState();
         const tab = s.tabs.find((t) => t.id === s.activeTabId);
-        if (tab) api.pty.write(tab.ptyId, cmd.text);
+        // A tab is now a pane tree; write to the focused pane's PTY.
+        const leaf = tab ? findLeaf(tab.root, tab.focusedPaneId) : null;
+        if (leaf) api.pty.write(leaf.ptyId, cmd.text);
       }
     }),
   );
