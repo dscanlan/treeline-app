@@ -95,6 +95,39 @@ back is instant.
 
 ---
 
+## Knowing when an agent needs you
+
+![A waiting agent — the tab, the sidebar row, and the pane all light up magenta](img/36-agent-notifications.png)
+
+When an agent (Claude Code, or any tool) running in a terminal wants your
+attention — it finished a task, or it's asking a question or for permission —
+treeline surfaces it so you don't have to babysit every pane:
+
+- The **tab** turns into a pulsing magenta *waiting* tab.
+- That worktree's **sidebar row** gets a magenta unread dot.
+- The **pane** itself gets a magenta ring with a short message.
+- If the window is in the background, you also get a **native macOS notification**
+  (click it to focus the app).
+
+The signal clears the instant you focus the pane — click it, switch to its tab,
+or jump to it.
+
+**Jump to the waiting agent.** Press **⌘⇧U** (*View → Jump to Unread Agent*) to
+focus the most-recently-waiting pane, wherever it is. Like every shortcut, it's
+rebindable in [Settings](#settings--theming).
+
+**How treeline learns an agent is waiting** — two complementary paths:
+
+1. **Terminal escape codes.** Any program that emits an OSC&nbsp;9 / 99 / 777
+   desktop-notification sequence lights the pane it ran in. Nothing to set up.
+2. **Claude Code hooks.** Claude Code doesn't emit those codes itself, so run
+   `treeline hooks setup` once (see the
+   [CLI guide](./CLI.md#claude-code-hooks)). It wires Claude Code's *Stop* and
+   *Notification* events to treeline, which maps them back to the exact pane the
+   agent is running in.
+
+---
+
 ## Dev servers & the browser pane
 
 When a server, test runner, or preview starts listening inside a worktree, a

@@ -103,7 +103,14 @@ describe('buildCliHandlers', () => {
     const notify = vi.fn();
     const h = buildCliHandlers(makeDeps({ notify }));
     await h.notify({ text: 'build done' });
-    expect(notify).toHaveBeenCalledWith('build done');
+    expect(notify).toHaveBeenCalledWith('build done', undefined);
+  });
+
+  it('notify forwards an optional cwd so it can be tied to a pane', async () => {
+    const notify = vi.fn();
+    const h = buildCliHandlers(makeDeps({ notify }));
+    await h.notify({ text: 'Claude needs input', cwd: '/code/my-app' });
+    expect(notify).toHaveBeenCalledWith('Claude needs input', '/code/my-app');
   });
 
   it('notify rejects empty text', () => {

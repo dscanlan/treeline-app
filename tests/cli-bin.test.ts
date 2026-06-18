@@ -230,7 +230,10 @@ describe('treeline notify-hook', () => {
     });
     expect(res.code).toBe(0);
     const frame = await received;
-    expect(frame).toEqual({ verb: 'notify', args: { text: 'Claude finished responding — my-app' } });
+    expect(frame).toEqual({
+      verb: 'notify',
+      args: { text: 'Claude finished responding — my-app', cwd: '/code/my-app' },
+    });
   });
 
   it('prefers an explicit message field from the payload', async () => {

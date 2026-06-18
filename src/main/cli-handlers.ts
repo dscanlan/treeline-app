@@ -15,8 +15,13 @@ export interface CliDeps {
   listRepos(): Repo[];
   /** Worktrees of a repo, from git.ts listWorktreesIn — the same call the IPC layer makes. */
   listWorktrees(repoPath: string): Promise<Worktree[]>;
-  /** Surface a notification (native toast + window focus). Feeds agent notifications. */
-  notify(text: string): void;
+  /**
+   * Surface an agent-attention notification. When `cwd` is given (the Claude
+   * Code hook passes the agent's working dir), the app ties it to the PTY(s)
+   * running there and lights that pane's in-app ring/badge; otherwise it falls
+   * back to a plain native toast.
+   */
+  notify(text: string, cwd?: string): void;
   /** Focus the window and open/focus the tab for `cwd` (drives the renderer). */
   openWorktree(cwd: string): void;
   /** Type `text` into the focused terminal pane (drives the renderer). */
@@ -105,7 +110,8 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
 
     notify: (args) => {
       const text = reqString(args, 'text');
-      deps.notify(text);
+      const cwd = typeof args['cwd'] === 'string' && args['cwd'] ? args['cwd'] : undefined;
+      deps.notify(text, cwd);
     },
 
     open: async (args) => {

@@ -9,6 +9,7 @@ import {
   setManagedBinDir,
   type PtyCwdChangedEvent,
   type PtyExitEvent,
+  type PtyNotificationEvent,
   type PtySpawnedEvent,
 } from './pty-manager';
 import { materializeCliShim } from './cli-install';
@@ -262,6 +263,19 @@ app.whenReady().then(() => {
     void repoDiscovery?.onCwd(cwd);
     worktreeDrift?.onCwd(id, cwd);
   });
+
+  // An agent inside a terminal raised an attention notification (OSC 9/99/777).
+  // The in-app ring/badge is driven by registerPtyIpc broadcasting this same
+  // event to the renderer; here we *also* raise a native OS toast, but only when
+  // the window is in the background — when it's focused the in-app ring is enough
+  // and a toast would just be noise. Clicking the toast focuses the app.
+  ptyManager.on('notification', ({ text }: PtyNotificationEvent) => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) return;
+    if (!Notification.isSupported()) return;
+    const n = new Notification({ title: 'treeline', body: text });
+    n.on('click', () => focusMainWindow());
+    n.show();
+  });
   repoDiscovery.on('discovered-repo', (e: DiscoveredRepoEvent) => {
     broadcastDiscoveredRepo(e);
   });
@@ -317,13 +331,37 @@ app.whenReady().then(() => {
       version: app.getVersion(),
       listRepos: () => reposStore?.get().repos ?? [],
       listWorktrees: (repoPath) => listWorktreesIn(repoPath),
-      notify: (text) => {
-        // Show a native notification but DON'T steal focus — a Claude Code Stop
-        // hook fires `notify` on every response, so force-focusing would yank
-        // the user's window away constantly. Clicking the notification focuses.
-        // (In `npm run dev` the unsigned Electron binary may be denied by macOS
-        // with UNError 1 — notifications are reliable only in a packaged build.)
-        if (Notification.isSupported()) {
+      notify: (text, cwd) => {
+        // Tie the notification to the pane(s) running at `cwd` (the Claude Code
+        // hook passes its working dir, since it has no controlling tty to emit an
+        // OSC into). Re-emitting the same 'notification' event the OSC scanner
+        // raises lights the in-app ring/badge (via registerPtyIpc) and the native
+        // toast when unfocused (via the ptyManager 'notification' handler above).
+        let matched = 0;
+        const mgr = ptyManager;
+        if (cwd && mgr) {
+          const ids = mgr.shellPids().map((p) => p.id);
+          const exact = ids.filter((id) => mgr.cwdOf(id) === cwd);
+          // Fall back to a containment match (shell in the worktree root, agent in
+          // a subdir, or vice-versa) so a not-pixel-identical cwd still resolves.
+          const targets =
+            exact.length > 0
+              ? exact
+              : ids.filter((id) => {
+                  const pc = mgr.cwdOf(id);
+                  return !!pc && (cwd.startsWith(pc + '/') || pc.startsWith(cwd + '/'));
+                });
+          for (const id of targets) {
+            mgr.emit('notification', { id, text } satisfies PtyNotificationEvent);
+            matched++;
+          }
+        }
+        // Couldn't tie it to a pane (no cwd, or the agent isn't in a tracked
+        // pane): fall back to a plain native toast so the signal isn't lost.
+        // DON'T steal focus — a Stop hook fires on every response. Clicking the
+        // toast focuses. (In `npm run dev` the unsigned Electron binary may be
+        // denied by macOS with UNError 1 — toasts are reliable only when packaged.)
+        if (matched === 0 && Notification.isSupported()) {
           const n = new Notification({ title: 'treeline', body: text });
           n.on('click', () => focusMainWindow());
           n.show();

@@ -3,6 +3,7 @@ import type { Tab, TabStatus, TerminalStatusUpdate } from '@shared/types';
 import type { PaneLeaf, SplitDirection } from '@shared/pane-tree';
 import {
   findLeaf,
+  findLeafByPty,
   focusAfterRemoval,
   leaves,
   makeLeaf,
@@ -13,11 +14,27 @@ import {
 } from '@shared/pane-tree';
 import { basename } from '../util/path';
 
+/** An agent-attention notification awaiting acknowledgement, keyed by pty id. */
+export interface UnreadNotification {
+  /** The notification text the agent raised (latest wins for a given pty). */
+  text: string;
+  /** epoch ms it arrived — drives "jump to most recent unread". */
+  at: number;
+}
+
 export interface TabsSlice {
   tabs: Tab[];
   activeTabId: string | null;
   /** cwd → tab IDs in MRU order (index 0 = most recently active). */
   tabsByCwd: Record<string, string[]>;
+  /**
+   * Pending agent-attention notifications, keyed by the raising pane's pty id.
+   * Deliberately **transient** (never persisted/restored): a stale "needs
+   * attention" flag from a previous session would be a lie. Set by
+   * `markNotification` (OSC 9/99/777 or the `treeline notify` CLI) and cleared
+   * when the human looks at the pane (focus) or the tab/pane goes away.
+   */
+  unreadByPtyId: Record<string, UnreadNotification>;
 
   /**
    * Append a new tab seeded with a single pane around the freshly-spawned
@@ -63,6 +80,39 @@ export interface TabsSlice {
    * running → idle → exited. Null if no panes.
    */
   worktreeStatus: (cwd: string) => TabStatus | null;
+
+  /**
+   * Record an attention notification for the pane hosting `ptyId`. No-op (the
+   * human is already looking) when that pane is the focused pane of the active
+   * tab and the window itself is focused.
+   */
+  markNotification: (ptyId: string, text: string) => void;
+  /** Clear the unread flag for a single pane (e.g. it just gained focus). */
+  clearUnread: (ptyId: string) => void;
+  /** True if any pane of any tab bound to `cwd` is unread (sidebar badge). */
+  cwdHasUnread: (cwd: string) => boolean;
+  /** True if any pane of the tab `tabId` is unread (tab-strip indicator). */
+  tabHasUnread: (tabId: string) => boolean;
+  /**
+   * The most-recently-raised unread pane still present in a live tab, or null.
+   * Drives the ⌘⇧U jump-to-unread accelerator.
+   */
+  mostRecentUnread: () => { ptyId: string; tabId: string; paneId: string } | null;
+}
+
+/** Drop every entry of `unread` whose pty id is in `ptyIds`. Returns same ref if unchanged. */
+function clearUnreadFor(
+  unread: Record<string, UnreadNotification>,
+  ptyIds: Iterable<string>,
+): Record<string, UnreadNotification> {
+  let next: Record<string, UnreadNotification> | null = null;
+  for (const id of ptyIds) {
+    if (id in (next ?? unread)) {
+      next ??= { ...unread };
+      delete next[id];
+    }
+  }
+  return next ?? unread;
 }
 
 /** All leaves across every tab bound to `cwd`. */
@@ -74,6 +124,7 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
   tabs: [],
   activeTabId: null,
   tabsByCwd: {},
+  unreadByPtyId: {},
 
   addTab: ({ ptyId, cwd, title }) => {
     const id = ptyId; // ptyId is already a uuid; reuse as tab id.
@@ -117,7 +168,11 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
         activeTabId = cwdList[0] ?? tabs[0]?.id ?? null;
       }
       nextActive = activeTabId;
-      return { tabs, tabsByCwd, activeTabId };
+      const unreadByPtyId = clearUnreadFor(
+        s.unreadByPtyId,
+        leaves(removed.root).map((l) => l.ptyId),
+      );
+      return { tabs, tabsByCwd, activeTabId, unreadByPtyId };
     });
     return nextActive;
   },
@@ -130,10 +185,16 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
       const tabs = s.tabs.map((t) => (t.id === id ? { ...t, lastActiveAt: now } : t));
       const cwdList = s.tabsByCwd[tab.cwd] ?? [];
       const reordered = [id, ...cwdList.filter((x) => x !== id)];
+      // Focusing a tab acknowledges every notification on it.
+      const unreadByPtyId = clearUnreadFor(
+        s.unreadByPtyId,
+        leaves(tab.root).map((l) => l.ptyId),
+      );
       return {
         tabs,
         activeTabId: id,
         tabsByCwd: { ...s.tabsByCwd, [tab.cwd]: reordered },
+        unreadByPtyId,
       };
     }),
 
@@ -170,6 +231,7 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId);
       if (!tab) return s;
+      const removedPty = findLeaf(tab.root, paneId)?.ptyId;
       const nextRoot = removePaneFromTree(tab.root, paneId);
 
       // Tab emptied: fall through to whole-tab removal semantics.
@@ -182,7 +244,11 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
         let activeTabId = s.activeTabId;
         if (s.activeTabId === tabId) activeTabId = cwdList[0] ?? tabs[0]?.id ?? null;
         nextActive = activeTabId;
-        return { tabs, tabsByCwd, activeTabId };
+        const unreadByPtyId = clearUnreadFor(
+          s.unreadByPtyId,
+          leaves(tab.root).map((l) => l.ptyId),
+        );
+        return { tabs, tabsByCwd, activeTabId, unreadByPtyId };
       }
 
       // Pane removed but tab survives: re-focus a neighbour of the removed pane.
@@ -191,7 +257,10 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
       const tabs = s.tabs.map((t) =>
         t.id === tabId ? { ...t, root: nextRoot, focusedPaneId } : t,
       );
-      return { tabs };
+      const unreadByPtyId = removedPty
+        ? clearUnreadFor(s.unreadByPtyId, [removedPty])
+        : s.unreadByPtyId;
+      return { tabs, unreadByPtyId };
     });
     return nextActive;
   },
@@ -199,10 +268,15 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
   setFocusedPane: (tabId, paneId) =>
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId);
-      if (!tab || !findLeaf(tab.root, paneId)) return s;
-      if (tab.focusedPaneId === paneId) return s;
+      const leaf = tab ? findLeaf(tab.root, paneId) : null;
+      if (!tab || !leaf) return s;
+      // Even when focus doesn't move, looking at the pane clears its unread.
+      const unreadByPtyId = clearUnreadFor(s.unreadByPtyId, [leaf.ptyId]);
+      if (tab.focusedPaneId === paneId) {
+        return unreadByPtyId === s.unreadByPtyId ? s : { unreadByPtyId };
+      }
       const tabs = s.tabs.map((t) => (t.id === tabId ? { ...t, focusedPaneId: paneId } : t));
-      return { tabs };
+      return { tabs, unreadByPtyId };
     }),
 
   setPaneSizes: (tabId, splitId, sizes) =>
@@ -241,5 +315,52 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
     if (statuses.includes('idle')) return 'idle';
     if (statuses.includes('exited')) return 'exited';
     return null;
+  },
+
+  markNotification: (ptyId, text) =>
+    set((s) => {
+      // Always register: the signal means "this agent is waiting on you", so it
+      // should light up even on the pane you're watching. It reads as a "your
+      // turn" cue and clears the moment you engage the pane (setFocusedPane).
+      // Ignored only if the pane no longer exists.
+      if (!s.tabs.some((t) => findLeafByPty(t.root, ptyId))) return s;
+      return {
+        unreadByPtyId: { ...s.unreadByPtyId, [ptyId]: { text, at: Date.now() } },
+      };
+    }),
+
+  clearUnread: (ptyId) =>
+    set((s) => {
+      const unreadByPtyId = clearUnreadFor(s.unreadByPtyId, [ptyId]);
+      return unreadByPtyId === s.unreadByPtyId ? s : { unreadByPtyId };
+    }),
+
+  cwdHasUnread: (cwd) => {
+    const { unreadByPtyId } = get();
+    if (Object.keys(unreadByPtyId).length === 0) return false;
+    return leavesForCwd(get().tabs, cwd).some((l) => l.ptyId in unreadByPtyId);
+  },
+
+  tabHasUnread: (tabId) => {
+    const { unreadByPtyId, tabs } = get();
+    if (Object.keys(unreadByPtyId).length === 0) return false;
+    const tab = tabs.find((t) => t.id === tabId);
+    return tab ? leaves(tab.root).some((l) => l.ptyId in unreadByPtyId) : false;
+  },
+
+  mostRecentUnread: () => {
+    const { unreadByPtyId, tabs } = get();
+    let best: { ptyId: string; tabId: string; paneId: string; at: number } | null = null;
+    for (const [ptyId, info] of Object.entries(unreadByPtyId)) {
+      for (const tab of tabs) {
+        const leaf = findLeafByPty(tab.root, ptyId);
+        if (!leaf) continue;
+        if (!best || info.at > best.at) {
+          best = { ptyId, tabId: tab.id, paneId: leaf.id, at: info.at };
+        }
+        break;
+      }
+    }
+    return best ? { ptyId: best.ptyId, tabId: best.tabId, paneId: best.paneId } : null;
   },
 });

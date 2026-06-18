@@ -187,8 +187,11 @@ and agents can issue the same verbs a user would click.
 4. Verbs that need the UI are forwarded to the renderer over a `cli:command`
    channel: `open` focuses the window and calls the same `openTabAt(cwd)` a sidebar
    click takes; `send` writes its text to the *focused* tab's PTY (`pty.write`).
-   `notify` shows an Electron `Notification` (click-to-focus, no focus-steal —
-   important since a Claude `Stop` hook fires it on every turn).
+   `notify` feeds the **agent-attention notifications** below: with a `cwd`
+   (the Claude Code hook passes one) main maps it to the PTY(s) running there and
+   re-emits `PtyManager`'s `notification` event so the right pane lights up;
+   without one it falls back to a plain Electron `Notification` (click-to-focus,
+   no focus-steal — important since a Claude `Stop` hook fires it on every turn).
 5. The `browser` verbs drive the embedded pane (the **agent act-then-verify loop**:
    `navigate` / `snapshot` / `query` / `eval` / `click` / `fill` / `screenshot`).
    They run mostly **main-direct**, not renderer-forwarded: `main/browser-guest.ts`
@@ -206,8 +209,11 @@ and agents can issue the same verbs a user would click.
    onto `PATH`. Beyond the socket verbs it carries the Claude Code glue:
    `hooks setup` atomically merges `Stop`/`Notification` hooks into
    `~/.claude/settings.json` (idempotent; honours `CLAUDE_CONFIG_DIR`) pointing at
-   an internal `notify-hook`, which reads the hook's stdin JSON, derives a message,
-   fires `notify`, and **always exits 0** so it can never disrupt a Claude turn.
+   an internal `notify-hook`, which reads the hook's stdin JSON, derives a message
+   **and the agent's cwd**, fires `notify` with that cwd, and **always exits 0** so
+   it can never disrupt a Claude turn. (It reports the cwd over the socket rather
+   than emitting an OSC escape because Claude Code runs hooks with no controlling
+   terminal — `/dev/tty` is `ENXIO`.)
 
 ### Settings, theming & keybindings
 
@@ -355,6 +361,29 @@ this tab's shell have a foreground process running right now?"
 3. Maintain per-PTY last-emitted state; only emit deltas.
 4. Renderer detects the `running → idle` transition itself and pulses
    the row green for 800 ms ("just finished" feedback).
+
+### Agent attention notifications (rings, badges, jump-to-unread)
+
+A *deliberate* "needs you" signal, distinct from the inferred running/idle state
+above (a blocked agent and a finished one look identical to `ps`). Two ingest
+paths converge on a single `PtyManager` `notification` event `{ id, text }`:
+
+1. **OSC scan.** `PtyManager`'s existing per-PTY output scanner (the one that
+   parses OSC 7 cwd) also matches **OSC 9 / 99 / 777** desktop-notification
+   sequences and emits `notification`. Any terminal program can trigger it.
+2. **Claude Code hook → cwd.** Claude Code hooks have no controlling terminal, so
+   the `notify-hook` reports the agent's cwd over the socket; the `notify` dep
+   maps cwd → the PTY(s) there (`PtyManager.cwdOf`) and re-emits the *same*
+   `notification` event, reusing everything downstream.
+
+`registerPtyIpc` broadcasts `notification` to the renderer over `pty:notification`;
+`markNotification(ptyId, text)` records it in a **transient, never-persisted**
+`unreadByPtyId` map in the tabs slice. From there: the pane gets a magenta ring
+(`PaneView`), the tab a pulsing magenta "waiting" style (`TabItem`), and the
+worktree row an unread dot (`WorktreeRow`, cwd-keyed). The same event also raises
+a native `Notification` when the window is unfocused. Focusing a pane/tab clears
+its entry; **⌘⇧U** (`jumpToUnread` keybinding → menu → renderer) focuses the
+most-recently-unread pane.
 
 ### Quit
 

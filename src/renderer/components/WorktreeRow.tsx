@@ -19,6 +19,9 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const wtStatus = useStore((s) => s.worktreeStatus(worktree.path));
   const procs = useStore((s) => s.processesByWorktreePath[worktree.path] ?? []);
   const ports = useStore((s) => s.portsByWorktreePath[worktree.path] ?? []);
+  // An agent in one of this worktree's terminals raised an unacknowledged
+  // notification — surface a magenta unread dot next to the branch name.
+  const hasUnread = useStore((s) => s.cwdHasUnread(worktree.path));
   const pr = useStore((s) => s.prByRepoBranch[repoPath]?.[worktree.branch]);
   const openModal = useStore((s) => s.openModal);
   const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
@@ -64,6 +67,13 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
             <span className={`truncate ${labelColor}`}>
               {worktree.branch || basename(worktree.path)}
             </span>
+            {hasUnread && (
+              <span
+                className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-treeline-magenta"
+                title="An agent here needs your attention"
+                aria-label="needs attention"
+              />
+            )}
           </button>
           <button
             type="button"

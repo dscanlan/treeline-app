@@ -7,6 +7,7 @@ import {
   type PtyCwdChangedEvent,
   type PtyDataEvent,
   type PtyExitEvent,
+  type PtyNotificationEvent,
   type PtySpawnedEvent,
   type SpawnFn,
 } from '../src/main/pty-manager';
@@ -306,6 +307,92 @@ describe('PtyManager', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ── agent-attention notifications (OSC 9 / 99 / 777) ───────────────────────
+
+  const collectNotifications = (mgr: PtyManager): PtyNotificationEvent[] => {
+    const out: PtyNotificationEvent[] = [];
+    mgr.on('notification', (e) => out.push(e as PtyNotificationEvent));
+    return out;
+  };
+
+  it('emits a notification for an OSC 9 (iTerm growl) sequence', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitData('\x1b]9;Build finished\x07');
+    expect(notes).toEqual([{ id, text: 'Build finished' }]);
+  });
+
+  it('ignores ConEmu OSC 9 progress subcommands (9;<digit>;…)', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitData('\x1b]9;4;1;50\x07'); // progress, not a notification
+    expect(notes).toEqual([]);
+  });
+
+  it('parses an OSC 777 notify;title;body sequence', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitData('\x1b]777;notify;Claude;needs your input\x07');
+    expect(notes).toEqual([{ id, text: 'Claude: needs your input' }]);
+  });
+
+  it('ignores non-notify OSC 777 subcommands', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitData('\x1b]777;precmd\x07');
+    expect(notes).toEqual([]);
+  });
+
+  it('parses an OSC 99 (kitty) notification payload with the ST terminator', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitData('\x1b]99;i=1:d=0;Done\x1b\\');
+    expect(notes).toEqual([{ id, text: 'Done' }]);
+  });
+
+  it('decodes a base64 OSC 99 payload when metadata says e=1', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    const b64 = Buffer.from('Ready for review', 'utf8').toString('base64');
+    fake.emitData(`\x1b]99;e=1;${b64}\x07`);
+    expect(notes).toEqual([{ id, text: 'Ready for review' }]);
+  });
+
+  it('reassembles a notification split across two chunks', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitData('logs\x1b]9;Tests ');
+    fake.emitData('passed\x07more');
+    expect(notes).toEqual([{ id, text: 'Tests passed' }]);
+  });
+
+  it('does not treat window-title (OSC 0/2) sequences as notifications', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const notes = collectNotifications(mgr);
+    const cwds: PtyCwdChangedEvent[] = [];
+    mgr.on('cwd-changed', (e) => cwds.push(e as PtyCwdChangedEvent));
+    const { id } = mgr.spawn({ cwd: '/start', cols: 80, rows: 24 });
+    // A title set, then a real cwd OSC 7 — the title must not pollute the tail.
+    fake.emitData('\x1b]0;my-shell\x07\x1b]7;file://h/Users/me/x\x07');
+    expect(notes).toEqual([]);
+    expect(cwds.at(-1)).toEqual({ id, cwd: '/Users/me/x' });
   });
 
   it('clears the cwd-poll timer on natural exit', async () => {

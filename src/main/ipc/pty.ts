@@ -4,6 +4,7 @@ import type {
   PtyDataEvent,
   PtyExitEvent,
   PtyManager,
+  PtyNotificationEvent,
   SpawnOpts,
 } from '../pty-manager';
 import { validateAbsPath } from '../util/safe-path';
@@ -39,8 +40,11 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
   // pre-filters by id so each subscriber only fires for its tab.
   const onData = (e: PtyDataEvent) => broadcast(Channels.PtyData, e);
   const onExit = (e: PtyExitEvent) => broadcast(Channels.PtyExit, e);
+  const onNotification = (e: PtyNotificationEvent) =>
+    broadcast(Channels.PtyNotification, e);
   mgr.on('data', onData);
   mgr.on('exit', onExit);
+  mgr.on('notification', onNotification);
 
   return () => {
     ipcMain.removeHandler(Channels.PtySpawn);
@@ -49,6 +53,7 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
     ipcMain.removeHandler(Channels.PtyKill);
     mgr.off('data', onData);
     mgr.off('exit', onExit);
+    mgr.off('notification', onNotification);
   };
 }
 

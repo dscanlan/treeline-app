@@ -29,6 +29,9 @@ export const Channels = {
   PtyKill: 'pty:kill',
   PtyData: 'pty:data',
   PtyExit: 'pty:exit',
+  // Agent-attention notification raised by a terminal (OSC 9/99/777) — see
+  // src/main/pty-manager.ts. Carries { id, text }; renderer marks the tab unread.
+  PtyNotification: 'pty:notification',
 
   // processes
   ProcessesSnapshot: 'processes:snapshot',
@@ -61,6 +64,9 @@ export const Channels = {
   SidebarToggle: 'sidebar:toggle',
   BrowserToggle: 'browser:toggle',
   SettingsOpen: 'settings:open',
+  // Jump to the most-recently-notified (unread) terminal — menu accelerator
+  // (default ⌘⇧U), handled in the renderer.
+  JumpToUnread: 'window:jumpToUnread',
 
   // main → renderer command forwarded from the scriptable CLI socket
   // (see src/main/cli-server.ts). Today only carries `open`.

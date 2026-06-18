@@ -65,6 +65,22 @@ function leavesPtyIds(tab: { root: import('@shared/pane-tree').PaneNode }): stri
 }
 
 /**
+ * Focus the most-recently-notified (unread) terminal: activate its tab, focus
+ * its pane, and select its worktree in the sidebar. Both store actions clear the
+ * pane's unread flag as a side effect. No-op when nothing is unread. Drives the
+ * ⌘⇧U accelerator.
+ */
+export function jumpToMostRecentUnread(): void {
+  const s = useStore.getState();
+  const target = s.mostRecentUnread();
+  if (!target) return;
+  s.setActive(target.tabId);
+  s.setFocusedPane(target.tabId, target.paneId);
+  const tab = s.tabs.find((t) => t.id === target.tabId);
+  if (tab) s.setSelected(tab.cwd);
+}
+
+/**
  * Split the focused pane of the active tab in `dir`. Spawns a new PTY that
  * inherits the focused pane's cwd (cmux-style), then wires it into the tree as
  * the new focused pane. No-op if there's no active tab.

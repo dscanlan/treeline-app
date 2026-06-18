@@ -219,6 +219,20 @@ running.
 
 ![A three-pane layout: a full-height shell on the left and the right column split into two stacked panes — claude above, npm run dev below — with the focused bottom-right pane ringed](docs/img/26-split-grid.png)
 
+### Agent attention notifications
+
+![A waiting Claude agent: its tab is a pulsing magenta "waiting" tab, the discovery-feat worktree row has a magenta unread dot, and the pane shows the agent's prompt](docs/img/36-agent-notifications.png)
+
+When an agent in a terminal needs you — it finished, or it's asking for input —
+the pane gets a magenta ring, its **tab** turns into a pulsing magenta *waiting*
+tab, and the worktree's **sidebar row** gets an unread dot (plus a native
+notification when the window is backgrounded). **`⌘⇧U`** jumps to the
+most-recently-waiting pane; focusing a pane clears it. treeline picks this up
+from **OSC&nbsp;9 / 99 / 777** terminal escape codes, or — for Claude Code, which
+emits none — from its `Stop`/`Notification` hooks via
+[`treeline hooks setup`](docs/CLI.md#claude-code-hooks). See the
+[User Guide](docs/USER_GUIDE.md#knowing-when-an-agent-needs-you).
+
 ### Code viewer
 
 ![A worktree expanded to its Changed list in the sidebar, with the split code panel showing a file's diff (working tree vs HEAD) beside the terminal](docs/img/21-code-viewer-diff.png)

@@ -57,6 +57,7 @@ ALL_SCENARIOS=(
   "33-open-folder"
   "34-pr-status"
   "35-worktree-open-toast"
+  "36-agent-notifications"
 )
 
 if [ $# -gt 0 ]; then

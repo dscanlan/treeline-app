@@ -41,8 +41,9 @@ interface PtyEntry {
   /** Last-known cwd. Seeded with opts.cwd at spawn; updated by OSC 7 + lsof. */
   cwd: string;
   /**
-   * Tail of recent output retained so an OSC 7 sequence that straddles two
-   * chunk boundaries still parses on the next chunk. Capped at OSC_TAIL_MAX.
+   * Tail of recent output retained so an OSC sequence (cwd OSC 7 or a
+   * notification OSC 9/99/777) that straddles two chunk boundaries still parses
+   * on the next chunk. Capped at OSC_TAIL_MAX.
    */
   oscScanTail: string;
   /** epoch ms of the most recent OSC 7 observation (0 if never). */
@@ -71,6 +72,12 @@ export interface PtyCwdChangedEvent {
   cwd: string;
 }
 
+export interface PtyNotificationEvent {
+  id: string;
+  /** Human-readable notification text the agent raised. */
+  text: string;
+}
+
 /**
  * Owns node-pty processes. Coalesces high-frequency data chunks into one event
  * per microtask tick so the IPC layer relays a manageable number of messages
@@ -86,12 +93,18 @@ export interface PtyCwdChangedEvent {
  *      within the last 2 intervals (so OSC-7-enabled shells pay zero lsof
  *      cost in steady state).
  *
+ * The same inline OSC scanner also watches for desktop-notification escapes
+ * (OSC 9 / 99 / 777) that agents emit when they need the human's attention,
+ * and re-emits them as 'notification' events — the explicit "needs attention"
+ * signal the renderer turns into pane rings + sidebar unread badges.
+ *
  * Emits:
  *   - 'spawned'      { id, shellPid }
  *   - 'data'         { id, chunk }
  *   - 'exit'         { id, code, signal }
  *   - 'cwd-changed'  { id, cwd }   — fires once on spawn with opts.cwd, then
  *                                    only on transitions
+ *   - 'notification' { id, text }  — an OSC 9/99/777 desktop notification
  */
 export class PtyManager extends EventEmitter {
   private readonly ptys = new Map<string, PtyEntry>();
@@ -211,7 +224,7 @@ export class PtyManager extends EventEmitter {
   private queueChunk(id: string, chunk: string): void {
     const entry = this.ptys.get(id);
     if (!entry) return;
-    this.scanForOsc7(id, entry, chunk);
+    this.scanForOsc(id, entry, chunk);
     entry.pendingChunks.push(chunk);
     if (!entry.flushScheduled) {
       entry.flushScheduled = true;
@@ -220,39 +233,55 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Inspect a chunk (concatenated with the prior scan tail) for OSC 7 cwd
-   * notifications. Updates `entry.cwd` and emits `cwd-changed` on transitions.
+   * Inspect a chunk (concatenated with the prior scan tail) for OSC sequences:
+   *   - OSC 7 cwd notifications → update `entry.cwd`, emit 'cwd-changed'.
+   *   - OSC 9/99/777 desktop notifications → emit 'notification' (once per
+   *     sequence, in stream order).
    * Retains a bounded suffix as the next scan tail so a sequence split across
    * chunks still resolves on the following call.
    */
-  private scanForOsc7(id: string, entry: PtyEntry, chunk: string): void {
+  private scanForOsc(id: string, entry: PtyEntry, chunk: string): void {
     const buf = entry.oscScanTail + chunk;
     let lastEnd = 0;
     let foundCwd: string | null = null;
+    const notifications: string[] = [];
 
-    OSC7_RE.lastIndex = 0;
+    OSC_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
-    while ((match = OSC7_RE.exec(buf)) !== null) {
-      const decoded = decodeOsc7Body(match[1]!);
-      if (decoded) foundCwd = decoded;
-      lastEnd = OSC7_RE.lastIndex;
+    while ((match = OSC_RE.exec(buf)) !== null) {
+      const code = match[1]!;
+      const body = match[2]!;
+      if (code === '7') {
+        const decoded = decodeOsc7Body(body);
+        if (decoded) foundCwd = decoded;
+      } else {
+        const text = parseOscNotification(code, body);
+        if (text) notifications.push(text);
+      }
+      lastEnd = OSC_RE.lastIndex;
     }
 
     // Tail = anything after the last fully-matched sequence that still might
     // contain the start of a new (partial) one. Capped so a malformed stream
     // missing its terminator doesn't grow the buffer without bound.
     const after = buf.slice(lastEnd);
-    const partialStart = after.lastIndexOf(OSC7_PREFIX);
+    const partialStart = after.lastIndexOf(OSC_PREFIX);
     entry.oscScanTail = partialStart === -1
       ? ''
       : after.slice(partialStart, partialStart + OSC_TAIL_MAX);
 
     if (foundCwd !== null) {
+      // Only a genuine cwd observation refreshes the lsof-poll backoff clock —
+      // a notification says nothing about where the shell is.
       entry.lastOscAt = Date.now();
       if (foundCwd !== entry.cwd) {
         entry.cwd = foundCwd;
         this.emit('cwd-changed', { id, cwd: foundCwd } satisfies PtyCwdChangedEvent);
       }
+    }
+
+    for (const text of notifications) {
+      this.emit('notification', { id, text } satisfies PtyNotificationEvent);
     }
   }
 
@@ -309,18 +338,75 @@ export class PtyManager extends EventEmitter {
   }
 }
 
-// ── OSC 7 parsing ───────────────────────────────────────────────────────────
+// ── OSC parsing ─────────────────────────────────────────────────────────────
 
-const OSC7_PREFIX = '\x1b]7;';
-/** Body must not contain BEL (terminator) or ESC (start of ST terminator). */
-// eslint-disable-next-line no-control-regex
-const OSC7_RE = /\x1b\]7;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+/** Start of any OSC sequence; used to find a partial straddling a chunk edge. */
+const OSC_PREFIX = '\x1b]';
 /**
- * Cap on the bytes carried over between chunks while waiting for an OSC 7
+ * Match any `ESC ] <code> ; <body> (BEL | ST)` OSC sequence. The body must not
+ * contain BEL (terminator) or ESC (start of the ST terminator). We dispatch on
+ * `<code>`: 7 is cwd, 9/99/777 are notifications, everything else is ignored
+ * (and consumed, so window-title/colour OSCs don't pollute the carry-over tail).
+ */
+// eslint-disable-next-line no-control-regex
+const OSC_RE = /\x1b\]([0-9]{1,4});([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+/**
+ * Cap on the bytes carried over between chunks while waiting for an OSC
  * terminator. 4 KB comfortably exceeds any plausible cwd path even with
  * percent-encoding; anything longer is malformed and gets truncated.
  */
 const OSC_TAIL_MAX = 4096;
+
+/**
+ * Extract human-readable text from a desktop-notification OSC body. Supports
+ * the three escape codes cmux-style agents emit:
+ *
+ *   - OSC 9   `ESC ] 9 ; <text> BEL`                       — iTerm2 growl.
+ *   - OSC 777 `ESC ] 777 ; notify ; <title> ; <body> BEL`  — urxvt/notify-send.
+ *   - OSC 99  `ESC ] 99 ; <metadata> ; <payload> ST`       — kitty desktop-notify.
+ *
+ * Returns the text to surface, or null when the body isn't a notification we
+ * recognise (ConEmu's OSC 9 progress subcommands, empty bodies, etc.).
+ */
+function parseOscNotification(code: string, body: string): string | null {
+  switch (code) {
+    case '9': {
+      // ConEmu overloads OSC 9 for progress/other subcommands of the form
+      // `9;<digit>;…`; those aren't notifications. iTerm2's growl form is free
+      // text right after the code.
+      if (body.length === 0 || /^\d;/.test(body)) return null;
+      return body;
+    }
+    case '777': {
+      // `notify;<title>;<body>` (body optional). Other 777 subcommands (urxvt
+      // font/colour) aren't notifications.
+      const parts = body.split(';');
+      if (parts[0] !== 'notify') return null;
+      const [, title, ...rest] = parts;
+      const text = [title, rest.join(';')].filter((p) => p && p.length > 0).join(': ');
+      return text.length > 0 ? text : null;
+    }
+    case '99': {
+      // kitty: `<metadata>;<payload>`. metadata is `:`/`,`-separated k=v pairs;
+      // we only need the payload (the notification text). `e=1` marks it base64.
+      const semi = body.indexOf(';');
+      if (semi === -1) return null; // metadata-only chunk (e.g. a close marker)
+      const meta = body.slice(0, semi);
+      let payload = body.slice(semi + 1);
+      if (payload.length === 0) return null;
+      if (/(^|[,:])e=1([,:]|$)/.test(meta)) {
+        try {
+          payload = Buffer.from(payload, 'base64').toString('utf8');
+        } catch {
+          /* leave as-is */
+        }
+      }
+      return payload.length > 0 ? payload : null;
+    }
+    default:
+      return null;
+  }
+}
 
 /**
  * Decode an OSC 7 body of the form `file://[host]/percent-encoded-path`.

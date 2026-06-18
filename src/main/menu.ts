@@ -61,6 +61,7 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
   };
   const sendSidebarToggle = send(Channels.SidebarToggle);
   const sendOpenSettings = send(Channels.SettingsOpen);
+  const sendJumpToUnread = send(Channels.JumpToUnread);
 
   const sendBrowserToggle = () => {
     const win = BrowserWindow.getFocusedWindow();
@@ -130,6 +131,11 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
           label: 'Toggle Browser',
           accelerator: kb.toggleBrowser,
           click: sendBrowserToggle,
+        },
+        {
+          label: 'Jump to Unread Agent',
+          accelerator: kb.jumpToUnread,
+          click: sendJumpToUnread,
         },
         { type: 'separator' as const },
         { role: 'reload' as const },

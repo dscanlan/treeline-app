@@ -2,7 +2,7 @@
 // `attachIpc(store)` once at startup; it returns an unsubscribe.
 import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
-import { openTabAt } from '../actions/tabs';
+import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
 import { findLeaf } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
 
@@ -51,6 +51,14 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // Agent-attention notifications (OSC 9/99/777 from a terminal): mark the
+  // raising pane unread so its ring/badge lights up.
+  unsubs.push(
+    api.pty.onNotification(({ id, text }) => {
+      useStore.getState().markNotification(id, text);
+    }),
+  );
+
   // Sidebar toggle from the macOS menu (CmdOrCtrl+B).
   unsubs.push(
     api.window.onSidebarToggle(() => {
@@ -72,6 +80,13 @@ export function attachIpc(): () => void {
   unsubs.push(
     api.window.onOpenSettings(() => {
       useStore.getState().openModal({ kind: 'settings' });
+    }),
+  );
+
+  // "Jump to Unread Agent" menu item / accelerator (⌘⇧U) from the macOS menu.
+  unsubs.push(
+    api.window.onJumpToUnread(() => {
+      jumpToMostRecentUnread();
     }),
   );
 
@@ -151,6 +166,7 @@ export function attachIpc(): () => void {
           tabs: [],
           activeTabId: null,
           tabsByCwd: {},
+          unreadByPtyId: {},
           processes: [],
           processesByWorktreePath: {},
           portsByWorktreePath: {},
@@ -224,6 +240,9 @@ export function attachIpc(): () => void {
       }
       if (p.activeTabId !== undefined) {
         useStore.setState({ activeTabId: p.activeTabId });
+      }
+      if (p.unreadByPtyId !== undefined) {
+        useStore.setState({ unreadByPtyId: p.unreadByPtyId });
       }
       if (p.processesByWorktreePath !== undefined) {
         const flat = Object.values(p.processesByWorktreePath).flat();

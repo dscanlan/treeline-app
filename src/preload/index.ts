@@ -98,6 +98,10 @@ const api: TreelineApi = {
         (p) => cb({ code: p.code, signal: p.signal }),
         (p) => p.id === id,
       ),
+    // Unfiltered: a single store-level subscriber routes each event to the
+    // right tab by its pty id (unlike onData/onExit, which are per-tab).
+    onNotification: (cb) =>
+      listen<{ id: string; text: string }>(Channels.PtyNotification, cb),
   },
 
   processes: {
@@ -148,6 +152,7 @@ const api: TreelineApi = {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
     onBrowserToggle: (cb) => listen<void>(Channels.BrowserToggle, () => cb()),
     onOpenSettings: (cb) => listen<void>(Channels.SettingsOpen, () => cb()),
+    onJumpToUnread: (cb) => listen<void>(Channels.JumpToUnread, () => cb()),
   },
 
   cli: {

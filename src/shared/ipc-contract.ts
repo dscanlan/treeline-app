@@ -68,6 +68,12 @@ export interface ScreenshotHydratePayload {
    */
   tabs?: Tab[];
   activeTabId?: string | null;
+  /**
+   * Seed the transient agent-attention unread map (pty id → {text, at}) so the
+   * harness can capture the pane ring + tab/sidebar "waiting" badges without an
+   * agent actually firing a notification.
+   */
+  unreadByPtyId?: Record<string, { text: string; at: number }>;
   /** Replace processesByWorktreePath wholesale — drives the magenta `claude`/`opencode`/`aider` badges in WorktreeRow. */
   processesByWorktreePath?: Record<string, DetectedProcess[]>;
   /** Replace portsByWorktreePath wholesale — drives the listening-port chips in WorktreeRow. */
@@ -197,6 +203,12 @@ export interface TreelineApi {
       id: string,
       cb: (info: { code: number; signal: number | null }) => void,
     ): () => void;
+    /**
+     * Agent-attention notifications raised by a terminal via an OSC 9/99/777
+     * desktop-notification escape. Unfiltered — the callback receives the
+     * raising pty's id so the renderer can mark the right tab unread.
+     */
+    onNotification(cb: (e: { id: string; text: string }) => void): () => void;
   };
 
   processes: {
@@ -260,6 +272,8 @@ export interface TreelineApi {
     onBrowserToggle(cb: () => void): () => void;
     /** Subscribe to the "Open Settings" menu item / accelerator from main. */
     onOpenSettings(cb: () => void): () => void;
+    /** Subscribe to the ⌘⇧U accelerator that jumps to the most-recent unread. */
+    onJumpToUnread(cb: () => void): () => void;
   };
 
   /**

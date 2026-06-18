@@ -17,7 +17,8 @@
 export type KeybindingCommand =
   | 'toggleSidebar'
   | 'toggleBrowser'
-  | 'openSettings';
+  | 'openSettings'
+  | 'jumpToUnread';
 
 /** One row of the central command table. */
 export interface KeybindingDef {
@@ -49,6 +50,11 @@ export const KEYBINDING_DEFS: readonly KeybindingDef[] = [
     command: 'openSettings',
     label: 'Open Settings',
     defaultAccelerator: 'CmdOrCtrl+,',
+  },
+  {
+    command: 'jumpToUnread',
+    label: 'Jump to Unread Agent',
+    defaultAccelerator: 'CmdOrCtrl+Shift+U',
   },
 ] as const;
 

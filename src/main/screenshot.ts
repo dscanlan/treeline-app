@@ -500,6 +500,45 @@ const SCENARIOS: Record<string, Scenario> = {
     ]);
   },
 
+  '36-agent-notifications': async (ctx) => {
+    // A Claude agent in a background-capable pane has raised an attention
+    // notification (OSC 9/99/777, or its Claude Code Stop/Notification hook).
+    // The pane gets a magenta ring + text badge, the tab turns into a pulsing
+    // magenta "waiting" tab, and the worktree row gets an unread dot.
+    const wt = WORKTREES_TREELINE_APP[2]!; // discovery-feat (Claude path)
+    const spawned = await spawnTabPty(ctx, 'discovery-feat');
+    const ptyId = spawned.ptyId;
+    // Pin the tab's cwd to the fixture worktree path (spawnTabPty runs the real
+    // PTY in a temp dir) so the sidebar's cwd-keyed unread badge resolves to the
+    // discovery-feat worktree row. xterm still subscribes by ptyId, so the pane
+    // shows live content regardless.
+    const tab: Tab = { ...spawned.tab, cwd: wt.path };
+    await waitForPtySettle(ctx, ptyId);
+    const fakeClaude: DetectedProcess = {
+      pid: 31415,
+      kind: 'claude',
+      cwd: wt.path,
+      idle: true,
+    };
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      processesByWorktreePath: { [wt.path]: [fakeClaude] },
+      terminalStatus: [{ ptyId, status: 'idle', foregroundCmd: null }],
+      unreadByPtyId: { [ptyId]: { text: 'Claude needs your input', at: Date.now() } },
+    });
+    await delay(400);
+    await typeAndSettle(ctx, ptyId, [
+      "clear\n",
+      "printf '\\033[35m\\xe2\\x9c\\xa6 Claude Code session\\033[0m\\n'\n",
+      "printf 'Counted to 10. What would you like me to do next?\\n'\n",
+    ]);
+  },
+
   '14-status-dots': async (ctx) => {
     const a = await spawnTabPty(ctx, 'main'); // running
     const b = await spawnTabPty(ctx, 'feat-auth'); // idle

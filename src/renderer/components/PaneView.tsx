@@ -23,6 +23,10 @@ export function PaneView({ leaf, tabId, active, showChrome }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const handle = useXterm(containerRef, { ptyId: leaf.ptyId, cwd: leaf.cwd });
   const setFocusedPane = useStore((s) => s.setFocusedPane);
+  // Agent raised an attention notification on this pane and the human hasn't
+  // looked yet — light up a ring (independent of focus chrome, so it shows even
+  // in a single-pane tab).
+  const unread = useStore((s) => s.unreadByPtyId[leaf.ptyId]);
 
   // When this pane becomes the active focused pane, its container may have just
   // been revealed or resized: refit and pull keyboard focus into the terminal.
@@ -40,6 +44,19 @@ export function PaneView({ leaf, tabId, active, showChrome }: Props) {
       onPointerDown={() => setFocusedPane(tabId, leaf.id)}
     >
       <div ref={containerRef} className="absolute inset-0" />
+      {/* Attention ring — agent on this pane is waiting on the human. Drawn
+        * above the focus ring and pulsing so it's noticeable across many panes. */}
+      {unread && (
+        <>
+          <div className="pointer-events-none absolute inset-0 z-20 animate-pulse ring-2 ring-inset ring-treeline-magenta" />
+          <div
+            className="pointer-events-none absolute bottom-1 left-1 z-20 max-w-[60%] truncate rounded bg-treeline-magenta/90 px-1.5 py-0.5 text-[10px] text-treeline-surface"
+            title={unread.text}
+          >
+            ✦ {unread.text}
+          </div>
+        </>
+      )}
       {showChrome && (
         <>
           {/* Focus ring — only on the focused pane of a multi-pane tab. */}

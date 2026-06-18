@@ -20,7 +20,7 @@
 //   treeline browser query <selector>  inspect the first match of a CSS selector
 //   treeline browser click <selector>  synthetic-click the element (local origins only)
 //   treeline browser fill <selector> <text...>  type into the element (local origins only)
-//   treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
+//   treeline hooks setup [--bin-dir D] wire Claude Code Stop/Notification hooks → in-app rings
 //   treeline hooks remove
 //
 // Socket: $TREELINE_SOCK, else the app's userData dir + /cli.sock.
@@ -73,7 +73,7 @@ const USAGE = `treeline — drive the running treeline-app
   treeline browser query <selector>  inspect the first match of a CSS selector
   treeline browser click <selector>  synthetic-click the element (local origins only)
   treeline browser fill <selector> <text...>  type into the element (local origins only)
-  treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
+  treeline hooks setup [--bin-dir D] wire Claude Code Stop/Notification hooks → in-app rings
   treeline hooks remove`;
 
 /** Decode the common backslash escapes so \`send "npm test\\n"\` runs the line. */
@@ -310,7 +310,17 @@ function hooksCmd(argv) {
 
 /**
  * Internal verb wired into Claude Code settings.json. Reads the hook's JSON
- * payload from stdin, derives a message, and fires `notify` over the socket.
+ * payload from stdin, derives a message + the agent's cwd, and reports it to the
+ * running app over the socket as a `notify` with `cwd`.
+ *
+ * Why the socket and not an OSC escape: Claude Code runs hooks *without a
+ * controlling terminal* (opening `/dev/tty` fails with ENXIO), so we can't
+ * inject an OSC 9 into the pane the way an interactive shell could. The app
+ * instead maps the reported cwd → the PTY(s) running there and lights that
+ * pane's in-app ring/badge (plus a native toast when the window is unfocused).
+ * Direct OSC 9/99/777 from a terminal still works too — that path is handled by
+ * PtyManager's output scanner and is what non-Claude agents can use.
+ *
  * CRITICAL: this must NEVER fail the hook — it always exits 0, even if the app
  * is down, so it can't disrupt Claude Code.
  */
@@ -322,7 +332,7 @@ function notifyHook() {
       process.exit(0);
     }
   };
-  // Hard ceiling so a stuck stdin/socket never hangs a Claude Code turn.
+  // Hard ceiling so a stuck stdin never hangs a Claude Code turn.
   setTimeout(exit0, 2000);
 
   let input = '';
@@ -330,19 +340,27 @@ function notifyHook() {
   process.stdin.on('data', (d) => (input += d));
   process.stdin.on('end', () => {
     let text = 'Claude Code';
+    let cwd;
     try {
       const e = JSON.parse(input || '{}');
+      if (typeof e.cwd === 'string' && e.cwd) cwd = e.cwd;
       if (typeof e.message === 'string' && e.message) text = e.message;
       else if (e.hook_event_name === 'Stop') text = 'Claude finished responding';
       else if (e.hook_event_name === 'Notification') text = 'Claude needs your attention';
-      if (typeof e.cwd === 'string' && e.cwd) text += ` — ${basename(e.cwd)}`;
+      if (cwd) text += ` — ${basename(cwd)}`;
     } catch {
       /* fall back to the default text */
     }
-    // Fire-and-forget: write the frame, then exit on first sign of completion.
+    // Claude Code runs hooks WITHOUT a controlling terminal (/dev/tty is ENXIO),
+    // so we can't emit an OSC escape into the pane. Instead tell the app over the
+    // socket, passing the hook's cwd; the app maps cwd → the PTY(s) running there
+    // and lights that pane's in-app ring/badge (and a native toast when the
+    // window is unfocused). Fire-and-forget; never fail the hook.
     try {
       const sock = connect(socketPath());
-      sock.on('connect', () => sock.end(JSON.stringify({ verb: 'notify', args: { text } }) + '\n'));
+      sock.on('connect', () =>
+        sock.end(JSON.stringify({ verb: 'notify', args: { text, ...(cwd ? { cwd } : {}) } }) + '\n'),
+      );
       sock.on('data', exit0);
       sock.on('close', exit0);
       sock.on('error', exit0);

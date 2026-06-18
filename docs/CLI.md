@@ -178,15 +178,23 @@ treeline browser screenshot ./after.png         # verify
 
 ## Claude Code hooks
 
-`treeline hooks setup` wires desktop notifications for Claude Code and installs
-the CLI symlink in one step:
+`treeline hooks setup` wires agent-attention notifications for Claude Code and
+installs the CLI symlink in one step:
 
 - Adds `Stop` and `Notification` hook entries to Claude Code's `settings.json`
-  that call this script's internal `notify-hook`. *"Claude finished"* /
-  *"Claude needs input"* then becomes a desktop ping from the running app. The
-  hook is wired by **absolute path**, so it works even if the symlink dir isn't
-  on `PATH`, and it **never blocks Claude** — if the app is down it exits
-  cleanly with no notification.
+  that call this script's internal `notify-hook`. When Claude finishes or asks
+  for input, the hook reports its working directory to the running app over the
+  socket; the app maps that cwd back to the **exact pane** the agent is in and
+  lights that pane's [waiting indicators](./USER_GUIDE.md#knowing-when-an-agent-needs-you)
+  — the magenta tab, the sidebar unread dot, and the pane ring — plus a native
+  desktop notification when the window is in the background. The hook is wired by
+  **absolute path**, so it works even if the symlink dir isn't on `PATH`, and it
+  **never blocks Claude** — if the app is down it exits cleanly.
+  - Why the socket and not a terminal escape code: Claude Code runs hooks
+    *without a controlling terminal*, so the hook can't emit an OSC sequence into
+    the pane the way a normal shell command can. (Tools that *do* run in the
+    terminal can emit **OSC&nbsp;9 / 99 / 777** directly and treeline will pick
+    them up with no hook at all.)
   - In a **packaged build**, the hook points at the app's launcher
     (`<userData>/bin/treeline`, via `TREELINE_CLI_BIN`) rather than the raw
     `.mjs`, so it runs through the app's bundled Node (no system Node needed)
@@ -211,9 +219,11 @@ These are **separate**:
   auto-injected launcher under `<userData>/bin` only exists inside the app's own
   terminals and is rewritten each launch — nothing to uninstall there.
 
-> Notifications are delivered by macOS only from a **signed packaged build**;
-> the unsigned `npm run dev` binary is denied by the OS. The socket, `open`, and
-> `send` work in dev regardless.
+> The **in-app** waiting indicators (tab, sidebar dot, pane ring) work
+> everywhere, including `npm run dev`. The extra **native macOS notification**
+> is delivered only from a **signed packaged build** — the unsigned `npm run dev`
+> binary is denied by the OS. The socket, `open`, and `send` work in dev
+> regardless.
 
 ---
 

@@ -33,6 +33,9 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
   // user activates it, highlight the matching scratch row in the sidebar
   // instead of a (non-existent) worktree row at the cwd.
   const isScratch = useStore((s) => s.scratches.some((sc) => sc.id === tab.id));
+  // An agent on one of this tab's panes raised a notification that's not yet
+  // acknowledged — show a magenta unread dot before the title.
+  const unread = useStore((s) => s.tabHasUnread(tab.id));
   // A drift exists when one of this tab's panes cd'd into a different worktree.
   // Show a chip linking to that worktree (the first one, if several panes drift).
   const drift = useStore((s) => {
@@ -58,18 +61,27 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
         else setSelected(tab.cwd);
       }}
       className={`group flex h-7 cursor-pointer items-center gap-2 rounded-t border-x border-t px-2 text-xs ${
-        isActive
-          ? 'border-treeline-highlight bg-treeline-highlight text-treeline-text'
-          : 'border-transparent text-treeline-dim hover:text-treeline-text'
-      } ${
+        // Precedence: dragging > waiting-on-you > active > idle. The waiting
+        // state deliberately overrides active styling so it's unmissable.
         isDragging
           ? 'z-10 bg-treeline-cyan/20 text-treeline-text shadow-lg ring-1 ring-treeline-cyan'
-          : ''
+          : unread
+            ? 'animate-pulse border-treeline-magenta bg-treeline-magenta/20 text-treeline-magenta ring-1 ring-treeline-magenta'
+            : isActive
+              ? 'border-treeline-highlight bg-treeline-highlight text-treeline-text'
+              : 'border-transparent text-treeline-dim hover:text-treeline-text'
       }`}
-      title={tab.cwd}
+      title={unread ? 'An agent here is waiting for you' : tab.cwd}
     >
-      <TabStatusDot status={aggregateStatus(tab)} />
-      <span className="max-w-[160px] truncate">{tab.title}</span>
+      {unread ? (
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full bg-treeline-magenta ring-2 ring-treeline-magenta/40"
+          aria-label="needs attention"
+        />
+      ) : (
+        <TabStatusDot status={aggregateStatus(tab)} />
+      )}
+      <span className={`max-w-[160px] truncate ${unread ? 'font-semibold' : ''}`}>{tab.title}</span>
       {drift && (
         <button
           type="button"
