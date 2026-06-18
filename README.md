@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.13.0 — feature-complete for v1: macOS only, repos managed manually,
+v0.14.0 — feature-complete for v1: macOS only, repos managed manually,
 tabs are session-only (no restore across launches).
 
 ## Install
