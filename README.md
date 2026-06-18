@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.14.0 — feature-complete for v1: macOS only, repos managed manually,
+v0.14.1 — feature-complete for v1: macOS only, repos managed manually,
 tabs are session-only (no restore across launches).
 
 ## Install
@@ -411,7 +411,7 @@ treeline browser fill  <selector> <text…>  # type into a field         (local 
 treeline browser screenshot [path]         # capture the pane (PNG file, else data URL)
 ```
 
-The CLI is a self-contained Node script (`bin/treeline.mjs`) and, as of v0.13.0,
+The CLI is a self-contained Node script (`bin/treeline.mjs`) that
 **ships inside the packaged `.app`** — no source checkout needed:
 
 - **Inside Treeline's own terminals**, nothing to install. On startup the app writes
@@ -627,7 +627,7 @@ The short version:
   services the GUI uses (`ping`/`repos`/`worktrees`/`open`/`send`/`notify`/`browser`).
   Verbs needing the UI (`open`, `send`, `browser navigate`) are forwarded to the
   renderer over a `cli:command` channel; `bin/treeline.mjs` is the standalone client.
-  As of v0.13.0 the client ships in the packaged app: `cli-install.ts` writes a
+  The client ships in the packaged app: `cli-install.ts` writes a
   `treeline` shim under `userData/bin` and prepends it to every spawned terminal's
   `PATH`, so agents inside the app get the CLI with no install (see [docs/CLI.md](docs/CLI.md)).
 

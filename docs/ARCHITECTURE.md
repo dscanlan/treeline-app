@@ -66,7 +66,7 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 4. Main's `PtyManager.spawn()` calls `node-pty.spawn(SHELL, ['-l'],
    { name: 'xterm-256color', cwd, env: sanitized })`. Returns a UUID.
 5. Renderer adds a `Tab` to the store whose `root` is a single-leaf pane
-   tree holding that UUID (since v0.8.0 a tab is a tree of panes —
+   tree holding that UUID (a tab is a tree of panes —
    `root: PaneNode` + `focusedPaneId` — not one `ptyId`).
 6. Main emits `'spawned'`, which routes to the
    `TerminalStatusMonitor.register(id, shellPid)` so the foreground-
@@ -510,7 +510,7 @@ src/
 │   ├── cli-server.ts             # CliServer: unix-socket NDJSON server (0600).
 │   ├── cli-handlers.ts           # CLI verb handlers + resolveWorktree.
 │   ├── cli-socket-path.ts        # cli.sock path under userData.
-│   ├── cli-install.ts            # Writes the `treeline` shim + global-install symlink (v0.13.0).
+│   ├── cli-install.ts            # Writes the `treeline` shim + global-install symlink.
 │   ├── browser-guest.ts          # Guest <webview> WebContents + scriptable ops (CDP snapshot/click/fill; localhost guard).
 │   ├── menu.ts                   # macOS menu template; accelerators from the keybinding map.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
@@ -584,7 +584,7 @@ src/
     │   ├── ScratchRow.tsx
     │   ├── ScratchTerminalButton.tsx
     │   ├── DiscoveredRepoToast.tsx # "Add this untracked repo?" toast.
-    │   ├── WorktreeDriftToast.tsx  # "Open a terminal in this worktree?" toast (v0.11.0).
+    │   ├── WorktreeDriftToast.tsx  # "Open a terminal in this worktree?" toast.
     │   ├── ScreenshotForceTooltip.tsx # Dev-only screenshot-harness helper.
     │   └── modals/
     │       ├── ModalShell.tsx
@@ -608,7 +608,7 @@ src/
     │   ├── modal-slice.ts        # which modal (if any) is open.
     │   ├── scratch-slice.ts      # repo-less scratch terminals.
     │   ├── discoveries-slice.ts  # untracked-repo discovery suggestions.
-    │   ├── drift-slice.ts        # worktree-drift / -created open suggestions (v0.11.0).
+    │   ├── drift-slice.ts        # worktree-drift / -created open suggestions.
     │   └── screenshot-slice.ts   # dev-only screenshot-mode flags.
     ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id), split/close pane.
     ├── actions/editor.ts         # openFileInPanel(path), toggleDir(path).
