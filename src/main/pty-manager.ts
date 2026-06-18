@@ -370,6 +370,19 @@ export const defaultCwdProbe: CwdProbe = async (pid) => {
 // ── default node-pty bridge ─────────────────────────────────────────────────
 
 /**
+ * Dir prepended to every spawned shell's PATH so the `treeline` CLI is reachable
+ * from agents running inside the app — even in a downloaded build with no source
+ * checkout. Set once at startup via `setManagedBinDir` (see `cli-install.ts`);
+ * null in tests and until startup wires it.
+ */
+let managedBinDir: string | null = null;
+
+/** Register the bin dir prepended to spawned-terminal PATHs. Idempotent. */
+export function setManagedBinDir(dir: string | null): void {
+  managedBinDir = dir;
+}
+
+/**
  * Default spawn function — lazy-requires node-pty so a vitest run that injects
  * a fake never tries to load the .node addon.
  */
@@ -382,11 +395,14 @@ export function defaultSpawn(opts: SpawnOpts): IPtyLike {
     cols: Math.max(1, opts.cols | 0),
     rows: Math.max(1, opts.rows | 0),
     cwd: opts.cwd,
-    env: sanitizeEnv(process.env),
+    env: sanitizeEnv(process.env, managedBinDir),
   }) as IPtyLike;
 }
 
-function sanitizeEnv(env: NodeJS.ProcessEnv): { [k: string]: string } {
+export function sanitizeEnv(
+  env: NodeJS.ProcessEnv,
+  binDir: string | null = null,
+): { [k: string]: string } {
   const out: { [k: string]: string } = {};
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) continue;
@@ -397,5 +413,13 @@ function sanitizeEnv(env: NodeJS.ProcessEnv): { [k: string]: string } {
   }
   out['TERM'] = 'xterm-256color';
   out['COLORTERM'] = 'truecolor';
+  // Prepend the managed bin dir (holding the `treeline` shim) unless it's
+  // already on PATH, so the CLI resolves first without duplicating entries.
+  if (binDir) {
+    const parts = (out['PATH'] ?? '').split(':');
+    if (!parts.includes(binDir)) {
+      out['PATH'] = out['PATH'] ? `${binDir}:${out['PATH']}` : binDir;
+    }
+  }
   return out;
 }

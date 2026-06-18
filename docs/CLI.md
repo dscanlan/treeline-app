@@ -14,12 +14,40 @@ and script.
 
 ## Installation
 
-The CLI is a self-contained, dependency-free Node script at
-[`bin/treeline.mjs`](../bin/treeline.mjs). It is **not bundled into the packaged
-`.app`** (the build ships only `out/**` + `package.json`), so using it requires
-a **source checkout** of this repo.
+The CLI is a self-contained, dependency-free Node script
+([`bin/treeline.mjs`](../bin/treeline.mjs)). The packaged `.app` ships it and
+runs it via the app's own bundled Node — **so you don't need Node installed**,
+and you don't need a source checkout. How you reach it depends on where you're
+calling from.
 
-Put it on your `PATH` by symlinking it:
+### Inside the app's terminals — nothing to install
+
+Every terminal Treeline spawns has `treeline` on its `PATH` automatically. The
+app writes a small launcher at `<userData>/bin/treeline` on startup and prepends
+that dir to each terminal's `PATH`. So an agent running in a Treeline tab can
+just call it:
+
+```bash
+treeline ping
+# { "ok": true, "app": "treeline", "version": "0.12.0" }
+```
+
+This is the common case — agents driving the app live in its terminals.
+
+### Outside the app — install once
+
+To use `treeline` from a terminal *not* spawned by Treeline (e.g. Terminal.app),
+install it globally from the app menu:
+
+> **Treeline → Install Command Line Tool…**
+
+That symlinks the launcher into `/usr/local/bin/treeline`. If that dir isn't
+writable, the dialog shows a copy-pasteable `sudo ln -sf …` command to finish it
+by hand.
+
+### From a source checkout (development)
+
+Running from the repo (`npm run dev`), symlink the script onto your `PATH`:
 
 ```bash
 ln -sf "$(pwd)/bin/treeline.mjs" ~/.local/bin/treeline   # from the repo root
@@ -36,14 +64,8 @@ node bin/treeline.mjs hooks setup --bin-dir ~/bin   # … or a dir you choose
 
 `hooks setup` warns if the chosen bin dir isn't on your `PATH`.
 
-Check it works (the app must be running):
-
-```bash
-treeline ping
-# { "ok": true, "app": "treeline", "version": "0.12.0" }
-```
-
-`treeline`, `treeline -h`, and `treeline --help` all print usage and exit `0`.
+> `treeline`, `treeline -h`, and `treeline --help` all print usage and exit `0`.
+> Every verb **requires the app to be running** (see [Troubleshooting](#troubleshooting)).
 
 ---
 
@@ -165,6 +187,11 @@ the CLI symlink in one step:
   hook is wired by **absolute path**, so it works even if the symlink dir isn't
   on `PATH`, and it **never blocks Claude** — if the app is down it exits
   cleanly with no notification.
+  - In a **packaged build**, the hook points at the app's launcher
+    (`<userData>/bin/treeline`, via `TREELINE_CLI_BIN`) rather than the raw
+    `.mjs`, so it runs through the app's bundled Node (no system Node needed)
+    and keeps working across app updates. From a **source checkout** it points
+    at `bin/treeline.mjs` directly.
 - Symlinks `treeline` into `~/.local/bin` (override with `--bin-dir <dir>`),
   replacing any existing link there.
 - After running it, run `/hooks` in Claude Code (or restart it) to load the new
@@ -178,9 +205,11 @@ the CLI symlink in one step:
 These are **separate**:
 
 - `treeline hooks remove` strips only the hook entries this tool added (it
-  matches the `notify-hook` tag). It does **not** touch the symlink.
-- To uninstall the CLI itself, delete the symlink you (or `hooks setup`)
-  created, e.g. `rm ~/.local/bin/treeline`.
+  matches the `notify-hook` tag). It does **not** touch any symlink.
+- To uninstall the global CLI, delete the symlink: `rm /usr/local/bin/treeline`
+  (menu install) or `rm ~/.local/bin/treeline` (`hooks setup` / manual). The
+  auto-injected launcher under `<userData>/bin` only exists inside the app's own
+  terminals and is rewritten each launch — nothing to uninstall there.
 
 > Notifications are delivered by macOS only from a **signed packaged build**;
 > the unsigned `npm run dev` binary is denied by the OS. The socket, `open`, and

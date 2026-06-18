@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   PtyManager,
+  sanitizeEnv,
   type CwdProbe,
   type IPtyLike,
   type PtyCwdChangedEvent,
@@ -325,5 +326,42 @@ describe('PtyManager', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('sanitizeEnv', () => {
+  it('strips Electron-only vars and forces a truecolor TERM', () => {
+    const out = sanitizeEnv({
+      PATH: '/usr/bin',
+      ELECTRON_RUN_AS_NODE: '1',
+      ELECTRON_NO_ATTACH_CONSOLE: '1',
+      NODE_OPTIONS: '--foo',
+      KEEP: 'yes',
+    });
+    expect(out.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(out.NODE_OPTIONS).toBeUndefined();
+    expect(out.KEEP).toBe('yes');
+    expect(out.TERM).toBe('xterm-256color');
+    expect(out.COLORTERM).toBe('truecolor');
+  });
+
+  it('prepends the managed bin dir to PATH', () => {
+    const out = sanitizeEnv({ PATH: '/usr/bin:/bin' }, '/tl/bin');
+    expect(out.PATH).toBe('/tl/bin:/usr/bin:/bin');
+  });
+
+  it('does not duplicate the bin dir if already on PATH', () => {
+    const out = sanitizeEnv({ PATH: '/tl/bin:/usr/bin' }, '/tl/bin');
+    expect(out.PATH).toBe('/tl/bin:/usr/bin');
+  });
+
+  it('sets PATH to the bin dir when PATH is empty', () => {
+    const out = sanitizeEnv({}, '/tl/bin');
+    expect(out.PATH).toBe('/tl/bin');
+  });
+
+  it('leaves PATH untouched when no bin dir is given', () => {
+    const out = sanitizeEnv({ PATH: '/usr/bin' });
+    expect(out.PATH).toBe('/usr/bin');
   });
 });

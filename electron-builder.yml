@@ -6,6 +6,12 @@ directories:
 files:
   - 'out/**/*'
   - 'package.json'
+  # The scriptable CLI client. asarUnpack keeps it a real on-disk file so the
+  # generated shim can exec it via ELECTRON_RUN_AS_NODE (you can't run a script
+  # that lives inside the asar archive). See src/main/cli-install.ts.
+  - 'bin/**'
+asarUnpack:
+  - 'bin/**'
 extraMetadata:
   main: out/main/index.js
 mac:

@@ -1,7 +1,38 @@
-import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  Menu,
+  shell,
+  type MenuItemConstructorOptions,
+} from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { resolveKeybindings, type ResolvedKeybindings } from '@shared/keybindings';
 import { checkForUpdatesManual } from './updater';
+import { cliShimPath, GLOBAL_CLI_PATH, installGlobalCli } from './cli-install';
+
+/**
+ * Symlink the `treeline` shim into a global PATH dir so it's usable from
+ * terminals outside the app, then report the outcome. (Agents *inside* the app
+ * already get it auto-injected — see `cli-install.ts`.)
+ */
+async function installCli(): Promise<void> {
+  const res = installGlobalCli();
+  const win = BrowserWindow.getFocusedWindow();
+  const opts = res.ok
+    ? {
+        type: 'info' as const,
+        message: 'Installed the treeline CLI',
+        detail: `\`treeline\` is now available at ${res.path}. Open a new terminal, then run \`treeline ping\`.`,
+      }
+    : {
+        type: 'error' as const,
+        message: 'Could not install the treeline CLI',
+        detail: `${res.error}\n\nInstall it manually (copy/paste):\n  sudo ln -sf "${cliShimPath()}" ${GLOBAL_CLI_PATH}`,
+      };
+  if (win) await dialog.showMessageBox(win, opts);
+  else await dialog.showMessageBox(opts);
+}
 
 /** Docs on GitHub, opened from the Help menu so packaged-app users can find them. */
 const DOCS = {
@@ -48,6 +79,10 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
               {
                 label: 'Check for Updates…',
                 click: () => void checkForUpdatesManual(),
+              },
+              {
+                label: 'Install Command Line Tool…',
+                click: () => void installCli(),
               },
               { type: 'separator' as const },
               {

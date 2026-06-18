@@ -6,10 +6,12 @@ import type { CliRendererCommand } from '@shared/cli-protocol';
 import {
   defaultSpawn,
   PtyManager,
+  setManagedBinDir,
   type PtyCwdChangedEvent,
   type PtyExitEvent,
   type PtySpawnedEvent,
 } from './pty-manager';
+import { materializeCliShim } from './cli-install';
 import { ReposStore } from './repos-store';
 import { buildAppMenu } from './menu';
 import { resolveKeybindings } from '@shared/keybindings';
@@ -181,6 +183,15 @@ app.whenReady().then(() => {
 
   reposStore = new ReposStore(join(app.getPath('userData'), 'config.json'));
   const cfg = reposStore.load();
+
+  // Make the `treeline` CLI reachable from agents in spawned terminals: write
+  // the shim, then prepend its dir to every shell's PATH. Best-effort — a
+  // failure here must not block the GUI, so the terminals just lack the shim.
+  try {
+    setManagedBinDir(materializeCliShim());
+  } catch (err) {
+    console.error('failed to materialize treeline CLI shim:', err);
+  }
 
   ptyManager = new PtyManager(defaultSpawn);
 

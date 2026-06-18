@@ -41,6 +41,11 @@ import {
 } from 'node:fs';
 
 const SELF = fileURLToPath(import.meta.url);
+// Stable, Node-free entrypoint to invoke. When launched via the app-generated
+// shim (a downloaded build), TREELINE_CLI_BIN is the shim path — prefer it for
+// hook commands and the PATH symlink so they survive app updates and don't
+// require a system `node`. Falls back to this script in a source checkout.
+const ENTRY = process.env.TREELINE_CLI_BIN || SELF;
 
 function socketPath() {
   if (process.env.TREELINE_SOCK) return process.env.TREELINE_SOCK;
@@ -227,9 +232,9 @@ function hooksSetup(opts) {
   const settings = readSettings(settingsPath);
   settings.hooks ??= {};
 
-  // Point the hook at this script by ABSOLUTE path so it works regardless of
+  // Point the hook at the CLI by ABSOLUTE path so it works regardless of
   // whether the symlink dir made it onto PATH.
-  const command = `${SELF} ${HOOK_TAG}`;
+  const command = `${ENTRY} ${HOOK_TAG}`;
   let added = 0;
   for (const event of HOOK_EVENTS) {
     const groups = (settings.hooks[event] ??= []);
@@ -258,8 +263,8 @@ function hooksSetup(opts) {
     } catch {
       /* nothing to replace */
     }
-    symlinkSync(SELF, link);
-    console.log(`  linked: ${link} -> ${SELF}`);
+    symlinkSync(ENTRY, link);
+    console.log(`  linked: ${link} -> ${ENTRY}`);
     const onPath = (process.env.PATH || '').split(':').includes(binDir);
     if (!onPath) console.log(`  note: ${binDir} is not on your PATH (add it to run \`treeline\` directly)`);
   } catch (e) {
