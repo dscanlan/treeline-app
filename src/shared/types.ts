@@ -53,6 +53,44 @@ export interface ProcessSnapshot {
   portsByWorktreePath: Record<string, number[]>;
 }
 
+/**
+ * GitHub pull-request state for a worktree's branch, surfaced in the sidebar.
+ * `draft` is split out from `open` (gh reports it via a separate `isDraft`
+ * flag) so the badge can dim it; `merged`/`closed` are terminal states.
+ */
+export type PrState = 'open' | 'draft' | 'merged' | 'closed';
+
+/** Rolled-up CI status across a PR's checks (gh's `statusCheckRollup`). */
+export type PrChecks = 'passing' | 'failing' | 'pending';
+
+/**
+ * Pull-request metadata for a single branch, sourced from the `gh` CLI (see
+ * `src/main/gh.ts`). Lives in a side map keyed by repo+branch
+ * (`prByRepoBranch` in the renderer store) rather than on {@link Worktree}, so
+ * `git-porcelain.ts` and the worktree list stay pure and network-free.
+ */
+export interface PrInfo {
+  /** PR number, e.g. 482. */
+  number: number;
+  state: PrState;
+  /** Web URL, opened on badge click via `system.openExternal`. */
+  url: string;
+  /** CI rollup; null when the PR has no checks. */
+  checks: PrChecks | null;
+}
+
+/**
+ * One PR-monitor broadcast (see `src/main/pr-monitor.ts`): the full
+ * branch→PR map for a single repo. Sent on the `pr:update` channel whenever a
+ * repo's PR set changes, and held as the latest-per-repo snapshot served by
+ * `pr:snapshot`.
+ */
+export interface PrSnapshot {
+  repoPath: string;
+  /** Keyed by branch name (`headRefName`). */
+  prByBranch: Record<string, PrInfo>;
+}
+
 export type TabStatus = 'running' | 'idle' | 'exited';
 
 /**

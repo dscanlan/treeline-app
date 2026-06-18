@@ -28,6 +28,10 @@ export const Channels = {
   ProcessesSnapshot: 'processes:snapshot',
   ProcessesUpdate: 'processes:update',
 
+  // pull-request status (gh CLI, see src/main/pr-monitor.ts)
+  PrSnapshot: 'pr:snapshot',
+  PrUpdate: 'pr:update',
+
   // terminal status
   TerminalStatusUpdate: 'terminalStatus:update',
 
@@ -43,6 +47,9 @@ export const Channels = {
   ConfigSetCodeRoot: 'config:setCodeRoot',
   ConfigSetSidebarCollapsed: 'config:setSidebarCollapsed',
   ConfigSetSettings: 'config:setSettings',
+
+  // system (open external URLs via the safe-url allowlist)
+  SystemOpenExternal: 'system:openExternal',
 
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',

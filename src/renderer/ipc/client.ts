@@ -36,6 +36,14 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // GitHub PR status deltas, per repo — main polls `gh` and ships the full
+  // branch→PR map for a repo whenever it changes.
+  unsubs.push(
+    api.pr.subscribe(({ repoPath, prByBranch }) => {
+      useStore.getState().setPrInfo(repoPath, prByBranch);
+    }),
+  );
+
   // Per-PTY status deltas.
   unsubs.push(
     api.terminalStatus.subscribe((updates) => {
@@ -119,6 +127,7 @@ export function attachIpc(): () => void {
           processes: [],
           processesByWorktreePath: {},
           portsByWorktreePath: {},
+          prByRepoBranch: {},
           forceTooltip: null,
           scratches: [],
           expandedDirs: {},
@@ -187,6 +196,9 @@ export function attachIpc(): () => void {
         const flat = Object.values(p.processesByWorktreePath).flat();
         s.setProcesses(flat, p.processesByWorktreePath, p.portsByWorktreePath ?? {});
       }
+      if (p.prByRepoBranch !== undefined) {
+        s.setAllPrInfo(p.prByRepoBranch);
+      }
       if (p.terminalStatus) {
         s.applyStatusUpdates(p.terminalStatus);
       }
@@ -241,6 +253,15 @@ export async function loadInitialState(): Promise<void> {
   useStore.getState().setRepos(cfg.repos);
   useStore.getState().setSidebarCollapsed(cfg.sidebarCollapsed);
   useStore.getState().setSettings(cfg.settings);
+
+  // Seed PR status from the monitor's latest-known snapshot so a reload paints
+  // badges immediately rather than waiting for the next poll. Best-effort.
+  api.pr
+    .snapshot()
+    .then((prByRepoBranch) => useStore.getState().setAllPrInfo(prByRepoBranch))
+    .catch(() => {
+      /* gh unavailable / no data — badges just stay absent */
+    });
 
   // Fetch worktrees for each repo in parallel.
   await Promise.all(

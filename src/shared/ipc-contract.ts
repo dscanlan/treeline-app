@@ -6,6 +6,8 @@ import type {
   DirEntry,
   FileContents,
   FileDiff,
+  PrInfo,
+  PrSnapshot,
   ProcessSnapshot,
   Repo,
   Scratch,
@@ -61,6 +63,8 @@ export interface ScreenshotHydratePayload {
   processesByWorktreePath?: Record<string, DetectedProcess[]>;
   /** Replace portsByWorktreePath wholesale — drives the listening-port chips in WorktreeRow. */
   portsByWorktreePath?: Record<string, number[]>;
+  /** Replace prByRepoBranch wholesale — drives the PR-status badge in WorktreeRow. */
+  prByRepoBranch?: Record<string, Record<string, PrInfo>>;
   /** Synthesised TerminalStatusUpdate batch — drives the green/cyan/dim status dots. */
   terminalStatus?: TerminalStatusUpdate[];
   /**
@@ -172,6 +176,17 @@ export interface TreelineApi {
     subscribe(cb: (snapshot: ProcessSnapshot) => void): () => void;
   };
 
+  /**
+   * GitHub pull-request status per branch, sourced from the `gh` CLI (see
+   * src/main/pr-monitor.ts). `snapshot` returns the latest-known map per repo
+   * (`{ [repoPath]: { [branch]: PrInfo } }`) for first paint; `subscribe`
+   * streams per-repo deltas. Empty/absent when `gh` is unavailable.
+   */
+  pr: {
+    snapshot(): Promise<Record<string, Record<string, PrInfo>>>;
+    subscribe(cb: (snapshot: PrSnapshot) => void): () => void;
+  };
+
   terminalStatus: {
     subscribe(cb: (updates: TerminalStatusUpdate[]) => void): () => void;
   };
@@ -226,6 +241,12 @@ export interface TreelineApi {
    */
   system: {
     homeDir: string;
+    /**
+     * Open an external URL in the OS default browser (today: clicking a PR
+     * badge). Validated in main against the same web/mail allowlist as
+     * terminal links (`isSafeExternalUrl`); non-web schemes are dropped.
+     */
+    openExternal(url: string): Promise<void>;
   };
 
   /**

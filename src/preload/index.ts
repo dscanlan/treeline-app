@@ -8,6 +8,8 @@ import type {
   DirEntry,
   FileContents,
   FileDiff,
+  PrInfo,
+  PrSnapshot,
   ProcessSnapshot,
   Repo,
   TerminalStatusUpdate,
@@ -98,6 +100,14 @@ const api: TreelineApi = {
     subscribe: (cb) => listen<ProcessSnapshot>(Channels.ProcessesUpdate, cb),
   },
 
+  pr: {
+    snapshot: () =>
+      ipcRenderer.invoke(Channels.PrSnapshot) as Promise<
+        Record<string, Record<string, PrInfo>>
+      >,
+    subscribe: (cb) => listen<PrSnapshot>(Channels.PrUpdate, cb),
+  },
+
   terminalStatus: {
     subscribe: (cb) => listen<TerminalStatusUpdate[]>(Channels.TerminalStatusUpdate, cb),
   },
@@ -138,6 +148,8 @@ const api: TreelineApi = {
   // synchronously without an IPC round-trip.
   system: {
     homeDir: homeDirFromArgv(),
+    openExternal: (url) =>
+      ipcRenderer.invoke(Channels.SystemOpenExternal, url) as Promise<void>,
   },
 
   screenshot: {
