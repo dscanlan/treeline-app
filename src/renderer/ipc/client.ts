@@ -82,6 +82,27 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // A terminal's cwd drifted into a different worktree than its tab is rooted
+  // in (manual `cd` in the shell) — offer to open a terminal there.
+  unsubs.push(
+    api.worktrees.onDrift((e) => {
+      useStore
+        .getState()
+        .enqueueWorktreeOpen({ toWorktree: e.toWorktree, reason: 'drift', ptyId: e.ptyId });
+    }),
+  );
+
+  // A new worktree was just created (e.g. an agent ran `git worktree add`) —
+  // offer to open a terminal in it. This is the reliable signal for the
+  // agent flow, where no shell cwd actually changes.
+  unsubs.push(
+    api.worktrees.onCreated((path) => {
+      useStore
+        .getState()
+        .enqueueWorktreeOpen({ toWorktree: path, reason: 'created' });
+    }),
+  );
+
   // Commands forwarded from the scriptable CLI socket (main resolves the verb
   // to a concrete worktree cwd; here we open/focus its tab, reusing the same
   // path a sidebar click takes so GUI and CLI behaviour stay identical).
@@ -123,6 +144,7 @@ export function attachIpc(): () => void {
           selectedSidebarPath: null,
           selectedScratchId: null,
           pendingDiscoveries: [],
+          driftByWorktree: {},
           filter: '',
           sidebarCollapsed: false,
           modal: null,
@@ -169,6 +191,11 @@ export function attachIpc(): () => void {
         // Bypass enqueueDiscovery's persistence — the harness wants a clean
         // single-toast state, not whatever was saved last session.
         useStore.setState({ pendingDiscoveries: p.pendingDiscoveries });
+      }
+      if (p.driftByWorktree) {
+        // Bypass enqueueWorktreeOpen's tab-exists suppression — the harness
+        // controls the exact toast state directly.
+        useStore.setState({ driftByWorktree: p.driftByWorktree });
       }
       if (p.selected !== undefined) s.setSelected(p.selected);
       if (p.filter !== undefined) s.setFilter(p.filter);

@@ -411,6 +411,28 @@ The delete dialog warns you about open tabs that will close, then runs
 `git worktree remove --force <path>`. Tabs are closed before the path
 disappears so xterm doesn't keep talking to a vanished cwd.
 
+### Worktree handoff prompt
+
+![Bottom-right toast reading "Open a terminal in feat-auth? A new worktree was created." with Open and Dismiss buttons, beside the sidebar where the feat-auth worktree has just appeared](docs/img/35-worktree-open-toast.png)
+
+When a new worktree appears — typically because an agent ran
+`git worktree add` from inside a hosted terminal — treeline offers to
+open a terminal in it. Without this, the original tab keeps running in
+`main` and the work _looks_ like it's happening there, even though the
+new branch lives elsewhere. **Open** spawns a terminal in the new
+worktree (or focuses the existing one if you already have a tab there);
+**Dismiss** clears the prompt. The trigger is worktree _creation_, so it
+fires for the agent flow where no shell `cd` ever actually happens — the
+`claude` process stays rooted in `main` the whole time.
+
+The same prompt also appears (with a `↗` chip on the affected tab) when a
+terminal's working directory _drifts_ into a different worktree from the
+one it started in — e.g. you type `cd ../other-worktree` in the shell
+yourself. A worktree you already have a terminal open in is never
+prompted about. First sighting of each worktree at launch is seeded
+silently, so neither startup nor adding a repo nags you — only worktrees
+that appear mid-session do.
+
 ### Sidebar collapse
 
 ![Sidebar collapsed — the terminal occupies the full window width](docs/img/06-collapsed.png)

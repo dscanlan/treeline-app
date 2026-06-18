@@ -5,6 +5,7 @@ import { SidebarResizer } from './components/SidebarResizer';
 import { MainArea } from './components/MainArea';
 import { Modals } from './components/modals/Modals';
 import { DiscoveredRepoToast } from './components/DiscoveredRepoToast';
+import { WorktreeDriftToast } from './components/WorktreeDriftToast';
 import { ScreenshotForceTooltip } from './components/ScreenshotForceTooltip';
 import { attachIpc, loadInitialState } from './ipc/client';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
@@ -38,6 +39,7 @@ export function App() {
       </div>
       <Modals />
       <DiscoveredRepoToast />
+      <WorktreeDriftToast />
       <ScreenshotForceTooltip />
     </>
   );

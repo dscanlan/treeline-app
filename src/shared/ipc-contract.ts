@@ -34,6 +34,11 @@ export interface ScreenshotHydratePayload {
   worktreesByRepo?: Record<string, Worktree[]>;
   selected?: string | null;
   pendingDiscoveries?: { repoPath: string; viaCwd: string }[];
+  /** Seed the "open a terminal in this worktree?" toast (drift slice). */
+  driftByWorktree?: Record<
+    string,
+    { toWorktree: string; reason: 'drift' | 'created'; ptyId?: string }
+  >;
   filter?: string;
   sidebarCollapsed?: boolean;
   /** Override the persisted settings (theme/font/keybindings) for the capture. */
@@ -162,6 +167,19 @@ export interface TreelineApi {
     remove(path: string): Promise<void>;
     /** Subscribe to worktree-changed events. Returns an unsubscribe fn. */
     onChange(cb: (repoPath: string) => void): () => void;
+    /**
+     * Subscribe to "a terminal's cwd drifted into a different worktree" events
+     * (e.g. `git worktree add` + `cd`). The handler is invoked per PTY when its
+     * cwd moves into a known worktree other than the one it spawned in.
+     * Returns an unsubscribe fn.
+     */
+    onDrift(cb: (e: { ptyId: string; toWorktree: string }) => void): () => void;
+    /**
+     * Subscribe to "a new worktree was just created" events (e.g. an agent ran
+     * `git worktree add`). The handler is invoked once per newly-appeared
+     * worktree path during the session. Returns an unsubscribe fn.
+     */
+    onCreated(cb: (path: string) => void): () => void;
   };
 
   pty: {

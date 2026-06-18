@@ -19,8 +19,17 @@ import { TerminalStatusMonitor } from './terminal-status';
 import { ProcessMonitor } from './process-monitor';
 import { PrMonitor } from './pr-monitor';
 import { RepoDiscovery, type DiscoveredRepoEvent } from './repo-discovery';
+import {
+  WorktreeDriftMonitor,
+  type WorktreeDriftEvent,
+} from './worktree-drift-monitor';
 import { broadcastDiscoveredRepo, registerReposIpc } from './ipc/repos';
-import { registerWorktreesIpc, broadcastWorktreesChanged } from './ipc/worktrees';
+import {
+  registerWorktreesIpc,
+  broadcastWorktreesChanged,
+  broadcastWorktreeDrift,
+  broadcastWorktreeCreated,
+} from './ipc/worktrees';
 import { registerPtyIpc } from './ipc/pty';
 import { registerProcessesIpc, broadcastProcesses } from './ipc/processes';
 import { registerPrIpc, broadcastPr } from './ipc/pr';
@@ -52,6 +61,7 @@ let terminalStatusMonitor: TerminalStatusMonitor | null = null;
 let processMonitor: ProcessMonitor | null = null;
 let prMonitor: PrMonitor | null = null;
 let repoDiscovery: RepoDiscovery | null = null;
+let worktreeDrift: WorktreeDriftMonitor | null = null;
 let cliServer: CliServer | null = null;
 let isQuitting = false;
 
@@ -176,6 +186,7 @@ app.whenReady().then(() => {
   });
   ptyManager.on('exit', ({ id }: PtyExitEvent) => {
     terminalStatusMonitor?.unregister(id);
+    worktreeDrift?.release(id);
   });
   terminalStatusMonitor.on('updates', (updates) => broadcastTerminalStatus(updates));
   terminalStatusMonitor.start();
@@ -192,13 +203,36 @@ app.whenReady().then(() => {
   void prMonitor.start();
 
   worktreeWatcher = new WorktreeWatcher();
-  worktreeWatcher.on('change', ({ repoPath }: { repoPath: string }) => {
-    broadcastWorktreesChanged(repoPath);
-    processMonitor?.setWorktreePaths(worktreeWatcher?.allWorktreePaths() ?? []);
-    // A new/removed worktree may add or retire a branch with a PR — refresh
-    // this repo's PR map off the same debounced signal rather than per-render.
-    void prMonitor?.refreshRepo(repoPath);
-  });
+  // Per-repo set of worktree paths we've already seen, so we can tell a
+  // genuinely *new* worktree (created this session) from the ones present at
+  // startup. The first `change` for a repo seeds it silently — so neither app
+  // launch nor adding a repo prompts; only worktrees that appear afterward do.
+  const knownWorktreesByRepo = new Map<string, Set<string>>();
+  worktreeWatcher.on(
+    'change',
+    ({ repoPath, worktrees }: { repoPath: string; worktrees: { path: string }[] }) => {
+      broadcastWorktreesChanged(repoPath);
+      const wtPaths = worktreeWatcher?.allWorktreePaths() ?? [];
+      processMonitor?.setWorktreePaths(wtPaths);
+      // Keep cwd-drift detection's target set current so a just-created
+      // worktree is recognised if a shell later `cd`s into it.
+      worktreeDrift?.setWorktreePaths(wtPaths);
+
+      // Surface newly-created worktrees as "open a terminal?" prompts. This is
+      // the reliable trigger for the agent flow (`git worktree add`), where no
+      // shell cwd ever actually changes.
+      const repoPaths = worktrees.map((w) => w.path);
+      const seen = knownWorktreesByRepo.get(repoPath);
+      knownWorktreesByRepo.set(repoPath, new Set(repoPaths));
+      if (seen) {
+        for (const p of repoPaths) if (!seen.has(p)) broadcastWorktreeCreated(p);
+      }
+
+      // A new/removed worktree may add or retire a branch with a PR — refresh
+      // this repo's PR map off the same debounced signal rather than per-render.
+      void prMonitor?.refreshRepo(repoPath);
+    },
+  );
   for (const repo of cfg.repos) worktreeWatcher.add(repo.path);
   // Initial seed for the process monitor so prefix matching works on tick #1.
   processMonitor.setWorktreePaths(worktreeWatcher.allWorktreePaths());
@@ -209,11 +243,22 @@ app.whenReady().then(() => {
   repoDiscovery = new RepoDiscovery();
   repoDiscovery.setTrackedRepos(cfg.repos.map((r) => r.path));
   repoDiscovery.setDismissedRepos(cfg.dismissedRepos);
-  ptyManager.on('cwd-changed', ({ cwd }: PtyCwdChangedEvent) => {
+  ptyManager.on('cwd-changed', ({ id, cwd }: PtyCwdChangedEvent) => {
     void repoDiscovery?.onCwd(cwd);
+    worktreeDrift?.onCwd(id, cwd);
   });
   repoDiscovery.on('discovered-repo', (e: DiscoveredRepoEvent) => {
     broadcastDiscoveredRepo(e);
+  });
+
+  // Notices when a terminal's cwd moves into a *different* worktree than it
+  // spawned in (the `git worktree add ../feat && cd ../feat` flow) and offers
+  // to open a terminal there. Seeded with the same worktree set as the process
+  // monitor; refreshed on every worktree change above.
+  worktreeDrift = new WorktreeDriftMonitor();
+  worktreeDrift.setWorktreePaths(worktreeWatcher.allWorktreePaths());
+  worktreeDrift.on('worktree-drift', (e: WorktreeDriftEvent) => {
+    broadcastWorktreeDrift({ ptyId: e.ptyId, toWorktree: e.toWorktree });
   });
 
   // Register all IPC handlers before the window loads, so the renderer never

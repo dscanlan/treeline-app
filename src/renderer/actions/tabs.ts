@@ -24,10 +24,21 @@ export async function openTabAt(cwd: string, opts: OpenOpts = {}): Promise<void>
   s.setSelected(cwd);
 }
 
+/**
+ * Open (or focus) a terminal in a worktree a tab drifted into, then clear any
+ * drift prompts pointing at it. Shared by the drift toast and the tab chip.
+ */
+export async function openDriftedWorktree(toWorktree: string): Promise<void> {
+  await openTabAt(toWorktree);
+  useStore.getState().dismissWorktreeOpen(toWorktree);
+}
+
 export async function closeTab(id: string): Promise<void> {
   const s = useStore.getState();
   const tab = s.tabs.find((t) => t.id === id);
   s.removeTab(id);
+  // Clear any drift prompts owned by this tab's panes — the terminal is gone.
+  for (const p of tab ? leavesPtyIds(tab) : [id]) s.dismissDriftByPty(p);
   // Best-effort kill of every PTY the tab hosted; ignore errors (already
   // exited). A single-pane tab's pty id equals the tab id, but a split tab has
   // many panes — kill them all so we don't leak shells.
@@ -80,6 +91,7 @@ export async function closeFocusedPane(): Promise<void> {
   const focused = findLeaf(tab.root, tab.focusedPaneId);
   if (!focused) return;
   s.removePane(tab.id, focused.id);
+  s.dismissDriftByPty(focused.ptyId);
   await window.treeline.pty.kill(focused.ptyId).catch(() => {
     /* ignore */
   });

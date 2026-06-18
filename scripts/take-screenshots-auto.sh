@@ -56,6 +56,7 @@ ALL_SCENARIOS=(
   "32-listening-ports"
   "33-open-folder"
   "34-pr-status"
+  "35-worktree-open-toast"
 )
 
 if [ $# -gt 0 ]; then

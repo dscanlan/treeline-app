@@ -360,6 +360,23 @@ const SCENARIOS: Record<string, Scenario> = {
     });
   },
 
+  '35-worktree-open-toast': async ({ win }) => {
+    // A new worktree was just created (e.g. an agent ran `git worktree add`);
+    // treeline offers to open a terminal in it rather than carrying on as if
+    // the work were still happening in the original worktree.
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      driftByWorktree: {
+        [WORKTREES_TREELINE_APP[1]!.path]: {
+          toWorktree: WORKTREES_TREELINE_APP[1]!.path,
+          reason: 'created',
+        },
+      },
+    });
+  },
+
   // ── hover-state captures ───────────────────────────────────────────────
 
   '09-hover-repo-actions': async ({ win }) => {

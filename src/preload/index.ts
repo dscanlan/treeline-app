@@ -75,6 +75,9 @@ const api: TreelineApi = {
     remove: (path) =>
       ipcRenderer.invoke(Channels.WorktreesRemove, path) as Promise<void>,
     onChange: (cb) => listen<string>(Channels.WorktreesOnChange, cb),
+    onDrift: (cb) =>
+      listen<{ ptyId: string; toWorktree: string }>(Channels.WorktreesDrift, cb),
+    onCreated: (cb) => listen<string>(Channels.WorktreesCreated, cb),
   },
 
   pty: {

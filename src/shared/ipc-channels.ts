@@ -19,6 +19,8 @@ export const Channels = {
   WorktreesCreate: 'worktrees:create',
   WorktreesRemove: 'worktrees:remove',
   WorktreesOnChange: 'worktrees:onChange',
+  WorktreesDrift: 'worktrees:drift',
+  WorktreesCreated: 'worktrees:created',
 
   // pty
   PtySpawn: 'pty:spawn',
