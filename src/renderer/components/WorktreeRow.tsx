@@ -111,23 +111,28 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
 }
 
 /**
- * Listening-port chips for a worktree's second metadata line. One dim `:PORT`
- * chip per port that a process rooted in this worktree is listening on. Renders
+ * Listening-port chips for a worktree's second metadata line. One `:PORT` chip
+ * per port that a process rooted in this worktree is listening on; clicking a
+ * chip opens the embedded browser pane at `http://localhost:<port>` (the same
+ * store action the scriptable `treeline browser navigate` verb drives). Renders
  * nothing when the worktree owns no listening ports. Kept self-contained so the
  * row layout stays untouched as later features add sibling badges.
  */
 function PortChips({ ports }: { ports: number[] }) {
+  const openBrowserPanel = useStore((s) => s.openBrowserPanel);
   if (ports.length === 0) return null;
   return (
     <span className="flex items-center gap-1" data-ss="worktree-ports">
       {ports.map((port) => (
-        <span
+        <button
           key={port}
-          title={`listening on port ${port}`}
-          className="rounded border border-treeline-cyan/50 px-1 py-px text-[10px] text-treeline-cyan"
+          type="button"
+          onClick={() => openBrowserPanel(`http://localhost:${port}`)}
+          title={`Open localhost:${port} in the browser pane`}
+          className="rounded border border-treeline-cyan/50 px-1 py-px text-[10px] text-treeline-cyan hover:bg-treeline-cyan/15 hover:text-treeline-text"
         >
           :{port}
-        </span>
+        </button>
       ))}
     </span>
   );

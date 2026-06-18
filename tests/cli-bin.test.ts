@@ -127,6 +127,59 @@ describe('treeline hooks setup', () => {
   });
 });
 
+describe('treeline browser', () => {
+  it('navigate sends a browser/navigate frame with the raw url', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['browser', 'navigate', 'localhost:3000'], {
+      env: { TREELINE_SOCK: sock },
+    });
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({
+      verb: 'browser',
+      args: { action: 'navigate', url: 'localhost:3000' },
+    });
+  });
+
+  it('eval joins the remaining args into the code frame', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'eval', 'document.title', '||', '"x"'], {
+      env: { TREELINE_SOCK: sock },
+    });
+    expect((await received).args).toEqual({ action: 'eval', code: 'document.title || "x"' });
+  });
+
+  it('navigate --wait sets the wait flag in the frame', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'navigate', 'localhost:3000', '--wait'], {
+      env: { TREELINE_SOCK: sock },
+    });
+    expect((await received).args).toEqual({
+      action: 'navigate',
+      url: 'localhost:3000',
+      wait: true,
+    });
+  });
+
+  it('screenshot resolves a relative out-path to an absolute one', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'screenshot', './shot.png'], { env: { TREELINE_SOCK: sock } });
+    const args = (await received).args as { action: string; path: string };
+    expect(args.action).toBe('screenshot');
+    expect(args.path.startsWith('/')).toBe(true);
+    expect(args.path).toMatch(/\/shot\.png$/);
+  });
+
+  it('fails (exit 2) on an unknown browser action', async () => {
+    const res = await run(['browser', 'fly'], { env: { TREELINE_SOCK: join(tmp(), 'x.sock') } });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('unknown action');
+  });
+});
+
 describe('treeline notify-hook', () => {
   it('derives a message from the hook payload and fires notify (exit 0)', async () => {
     const sock = join(tmp(), 's.sock');

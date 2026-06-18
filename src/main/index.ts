@@ -35,6 +35,14 @@ import { listWorktreesIn } from './git';
 import { CliServer } from './cli-server';
 import { buildCliHandlers } from './cli-handlers';
 import { cliSocketPath } from './cli-socket-path';
+import {
+  setBrowserGuest,
+  clearBrowserGuest,
+  evalInBrowser,
+  captureBrowser,
+  captureBrowserToFile,
+  waitForGuestLoad,
+} from './browser-guest';
 
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
@@ -137,6 +145,11 @@ function hardenWebviews(win: BrowserWindow): void {
     webPreferences.contextIsolation = true;
   });
   win.webContents.on('did-attach-webview', (_e, guest) => {
+    // Hand main a handle to the guest so the scriptable CLI (`treeline browser
+    // eval/screenshot`) can drive it. Cleared when the pane is closed/reloaded
+    // and the guest is torn down. This is the ONLY place the guest is captured.
+    setBrowserGuest(guest);
+    guest.once('destroyed', () => clearBrowserGuest(guest));
     guest.setWindowOpenHandler(({ url }) => {
       if (isSafeExternalUrl(url)) void shell.openExternal(url);
       return { action: 'deny' };
@@ -263,6 +276,16 @@ app.whenReady().then(() => {
       // No focus-steal: scripts/agents type into the active pane in the
       // background. The renderer no-ops if no terminal is focused.
       sendKeys: (text) => sendCliCommand({ verb: 'send', text }),
+      // Open the browser pane through the renderer (opening it is React state);
+      // eval/screenshot run against the guest webContents directly in main.
+      browserNavigate: async (url, wait) => {
+        focusMainWindow();
+        sendCliCommand({ verb: 'browser-navigate', url });
+        if (wait) await waitForGuestLoad(url);
+      },
+      browserEval: (code) => evalInBrowser(code),
+      browserScreenshot: () => captureBrowser(),
+      browserScreenshotToFile: (path) => captureBrowserToFile(path),
     }),
   );
   cliServer.start().catch((err) => {

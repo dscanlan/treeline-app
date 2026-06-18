@@ -97,6 +97,10 @@ export function attachIpc(): () => void {
         // A tab is now a pane tree; write to the focused pane's PTY.
         const leaf = tab ? findLeaf(tab.root, tab.focusedPaneId) : null;
         if (leaf) api.pty.write(leaf.ptyId, cmd.text);
+      } else if (cmd.verb === 'browser-navigate') {
+        // Open the embedded browser pane and commit the URL as its src — the
+        // same store action a port-chip click takes, so CLI and GUI agree.
+        useStore.getState().openBrowserPanel(cmd.url);
       }
     }),
   );

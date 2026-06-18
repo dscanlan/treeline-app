@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeBrowserUrl } from '@shared/browser-url';
+import { isLocalDevUrl, normalizeBrowserUrl } from '@shared/browser-url';
 
 describe('normalizeBrowserUrl', () => {
   it('passes through http(s) URLs unchanged', () => {
@@ -30,5 +30,22 @@ describe('normalizeBrowserUrl', () => {
     expect(normalizeBrowserUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeBrowserUrl('data:text/html,<h1>x</h1>')).toBeNull();
     expect(normalizeBrowserUrl('chrome://settings')).toBeNull();
+  });
+});
+
+describe('isLocalDevUrl', () => {
+  it('is true for http(s) URLs on a local host', () => {
+    expect(isLocalDevUrl('http://localhost:5173/')).toBe(true);
+    expect(isLocalDevUrl('http://127.0.0.1:8080/app')).toBe(true);
+    expect(isLocalDevUrl('https://localhost:3000')).toBe(true);
+    expect(isLocalDevUrl('http://[::1]:5174/')).toBe(true);
+  });
+
+  it('is false for remote hosts and non-web schemes', () => {
+    expect(isLocalDevUrl('https://example.com')).toBe(false);
+    expect(isLocalDevUrl('http://192.168.1.10:3000')).toBe(false);
+    expect(isLocalDevUrl('file:///etc/passwd')).toBe(false);
+    expect(isLocalDevUrl('localhost:3000')).toBe(false); // not fully-qualified
+    expect(isLocalDevUrl('not a url')).toBe(false);
   });
 });

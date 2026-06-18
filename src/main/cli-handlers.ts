@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path';
 import type { Repo, Worktree } from '@shared/types';
+import { normalizeBrowserUrl } from '@shared/browser-url';
 import type { CliHandlerMap } from './cli-server';
 
 /**
@@ -20,6 +21,17 @@ export interface CliDeps {
   openWorktree(cwd: string): void;
   /** Type `text` into the focused terminal pane (drives the renderer). */
   sendKeys(text: string): void;
+  /**
+   * Open the embedded browser pane and point it at `url` (drives the renderer).
+   * When `wait` is set, resolves only after the page finishes loading.
+   */
+  browserNavigate(url: string, wait: boolean): Promise<void>;
+  /** Evaluate JS in the browser guest, resolving with its result (main-direct). */
+  browserEval(code: string): Promise<unknown>;
+  /** Capture the browser guest as a PNG data URL (main-direct). */
+  browserScreenshot(): Promise<string>;
+  /** Capture the browser guest to `path` (absolute) and resolve with the path. */
+  browserScreenshotToFile(path: string): Promise<string>;
 }
 
 function reqString(args: Record<string, unknown>, key: string): string {
@@ -103,6 +115,40 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
       if (typeof text !== 'string') throw new Error('missing required argument: text');
       deps.sendKeys(text);
       return { sent: text.length };
+    },
+
+    // Drive the embedded browser pane. `navigate` opens/points the pane (via the
+    // renderer); `eval`/`screenshot` run against the guest webContents in main
+    // and return a value. eval is gated to local origins in browser-guest.ts.
+    browser: async (args) => {
+      const action = reqString(args, 'action');
+      switch (action) {
+        case 'navigate': {
+          const raw = reqString(args, 'url');
+          const url = normalizeBrowserUrl(raw);
+          if (!url) throw new Error(`not a navigable http(s) URL: ${raw}`);
+          await deps.browserNavigate(url, args['wait'] === true);
+          return { navigated: url };
+        }
+        case 'eval': {
+          const code = reqString(args, 'code');
+          return { result: await deps.browserEval(code) };
+        }
+        case 'screenshot': {
+          const path = args['path'];
+          if (path !== undefined && (typeof path !== 'string' || path.length === 0)) {
+            throw new Error('browser screenshot path must be a non-empty string');
+          }
+          if (typeof path === 'string') {
+            return { saved: await deps.browserScreenshotToFile(path) };
+          }
+          return { screenshot: await deps.browserScreenshot() };
+        }
+        default:
+          throw new Error(
+            `unknown browser action: ${action} (expected navigate|eval|screenshot)`,
+          );
+      }
     },
   };
 }

@@ -14,7 +14,17 @@
  * verbs the idea names as the unblockers: `notify` (feeds agent notifications)
  * and `open` (open/focus a worktree tab, the headline cmux verb).
  */
-export const CLI_VERBS = ['ping', 'repos', 'worktrees', 'notify', 'open', 'send'] as const;
+export const CLI_VERBS = [
+  'ping',
+  'repos',
+  'worktrees',
+  'notify',
+  'open',
+  'send',
+  // Drive the embedded browser pane: `browser navigate|eval|screenshot`. The
+  // sub-action rides in args.action (the wire verb stays a flat identifier).
+  'browser',
+] as const;
 export type CliVerb = (typeof CLI_VERBS)[number];
 
 /** One request line: `{verb,args}\n`. */
@@ -38,11 +48,15 @@ export type CliResponse = CliResponseOk | CliResponseErr;
 /**
  * Command forwarded from main → renderer over IPC when a socket verb needs the
  * UI to act (the socket server itself lives in main and has no store access):
- * `open` focuses/opens a worktree tab; `send` types into the focused terminal.
+ * `open` focuses/opens a worktree tab; `send` types into the focused terminal;
+ * `browser-navigate` opens the browser pane and points it at `url` (opening the
+ * pane is React state, so it must go through the renderer — unlike eval/
+ * screenshot, which main runs directly against the guest webContents).
  */
 export type CliRendererCommand =
   | { verb: 'open'; cwd: string }
-  | { verb: 'send'; text: string };
+  | { verb: 'send'; text: string }
+  | { verb: 'browser-navigate'; url: string };
 
 /**
  * Encode a message as a single newline-delimited JSON frame. Both directions

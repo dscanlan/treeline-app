@@ -26,3 +26,20 @@ export function normalizeBrowserUrl(input: string): string | null {
   if (NON_WEB_SCHEME.test(trimmed)) return null;
   return `http://${trimmed}`;
 }
+
+/** Hostnames that resolve to the local machine — i.e. a local dev server. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+/**
+ * True when `url` is a fully-qualified http(s) URL pointing at this machine.
+ * Used to decide whether a clicked terminal link should open in the embedded
+ * browser pane (local dev server) versus the OS browser (anything else).
+ */
+export function isLocalDevUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && LOCAL_HOSTS.has(u.hostname);
+  } catch {
+    return false;
+  }
+}

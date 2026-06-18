@@ -8,6 +8,7 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   themeForId,
 } from '@shared/terminal-theme';
+import { isLocalDevUrl } from '@shared/browser-url';
 import { useStore } from '../store';
 
 export interface XtermHandle {
@@ -65,7 +66,19 @@ export function useXterm(
 
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
+    // Clicking a link in terminal output: a local dev-server URL (e.g. the
+    // `http://localhost:5174/` Vite prints) opens in the embedded browser pane
+    // — the "run your app, click it, see it" flow. Any other URL falls back to
+    // the OS browser via main's window-open handler (the prior behaviour).
+    term.loadAddon(
+      new WebLinksAddon((_event, uri) => {
+        if (isLocalDevUrl(uri)) {
+          useStore.getState().openBrowserPanel(uri);
+        } else {
+          window.open(uri);
+        }
+      }),
+    );
 
     term.open(container);
 

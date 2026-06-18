@@ -13,6 +13,9 @@
 //   treeline open <repo> [branch]
 //   treeline send <text...>            keystrokes to the focused terminal
 //   treeline notify <text...>
+//   treeline browser navigate <url> [--wait]  open the pane at <url> (--wait: until loaded)
+//   treeline browser eval <js...>      run JS in the pane, print the result (local origins only)
+//   treeline browser screenshot [path] capture the pane (PNG file at path, else data URL)
 //   treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
 //   treeline hooks remove
 //
@@ -20,7 +23,7 @@
 
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   existsSync,
@@ -54,6 +57,9 @@ const USAGE = `treeline — drive the running treeline-app
   treeline open <repo> [branch]
   treeline send <text...>            keystrokes to the focused terminal
   treeline notify <text...>
+  treeline browser navigate <url> [--wait]  open the pane at <url> (--wait: until loaded)
+  treeline browser eval <js...>      run JS in the pane, print the result (local origins only)
+  treeline browser screenshot [path] capture the pane (PNG file at path, else data URL)
   treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
   treeline hooks remove`;
 
@@ -83,6 +89,34 @@ function buildRequest(argv) {
       const text = rest.join(' ').trim();
       if (!text) fail('notify requires <text>');
       return { verb, args: { text } };
+    }
+    case 'browser': {
+      const action = rest[0];
+      if (action === 'navigate') {
+        const args = rest.slice(1);
+        const wait = args.includes('--wait');
+        const url = args.find((a) => a !== '--wait');
+        if (!url) fail('browser navigate requires a <url>');
+        return { verb, args: { action: 'navigate', url, ...(wait ? { wait: true } : {}) } };
+      }
+      if (action === 'eval') {
+        const code = rest.slice(1).join(' ');
+        if (!code) fail('browser eval requires <js>');
+        return { verb, args: { action: 'eval', code } };
+      }
+      if (action === 'screenshot') {
+        // Resolve the optional out-path against the CALLER's cwd here (the app's
+        // main process, which writes the file, has a different cwd).
+        const target = rest[1];
+        return {
+          verb,
+          args: target
+            ? { action: 'screenshot', path: resolve(process.cwd(), target) }
+            : { action: 'screenshot' },
+        };
+      }
+      fail(`browser: unknown action "${action ?? ''}" (expected navigate|eval|screenshot)`);
+      break;
     }
     default:
       fail(verb ? `unknown command: ${verb}` : 'no command given');

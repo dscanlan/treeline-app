@@ -30,6 +30,10 @@ function makeDeps(over: Partial<CliDeps> = {}): CliDeps {
     notify: vi.fn(),
     openWorktree: vi.fn(),
     sendKeys: vi.fn(),
+    browserNavigate: vi.fn(async () => {}),
+    browserEval: vi.fn(async () => 'page title'),
+    browserScreenshot: vi.fn(async () => 'data:image/png;base64,AAAA'),
+    browserScreenshotToFile: vi.fn(async (p: string) => p),
     ...over,
   };
 }
@@ -118,5 +122,61 @@ describe('buildCliHandlers', () => {
     expect(sendKeys).toHaveBeenCalledWith('npm test\n');
     expect(h.send({ text: '' })).toEqual({ sent: 0 });
     expect(() => h.send({})).toThrow(/missing required argument: text/);
+  });
+
+  it('browser navigate normalizes the URL then drives browserNavigate', async () => {
+    const browserNavigate = vi.fn();
+    const h = buildCliHandlers(makeDeps({ browserNavigate }));
+    // Scheme-less input is assumed http:// by normalizeBrowserUrl.
+    const res = await h.browser({ action: 'navigate', url: 'localhost:3000' });
+    expect(browserNavigate).toHaveBeenCalledWith('http://localhost:3000', false);
+    expect(res).toEqual({ navigated: 'http://localhost:3000' });
+  });
+
+  it('browser navigate --wait passes the wait flag through', async () => {
+    const browserNavigate = vi.fn(async () => {});
+    const h = buildCliHandlers(makeDeps({ browserNavigate }));
+    await h.browser({ action: 'navigate', url: 'localhost:3000', wait: true });
+    expect(browserNavigate).toHaveBeenCalledWith('http://localhost:3000', true);
+  });
+
+  it('browser navigate rejects a non-web URL', async () => {
+    const h = buildCliHandlers(makeDeps());
+    await expect(h.browser({ action: 'navigate', url: 'file:///etc/passwd' })).rejects.toThrow(
+      /not a navigable/,
+    );
+  });
+
+  it('browser eval returns the evaluated result', async () => {
+    const browserEval = vi.fn(async () => 42);
+    const h = buildCliHandlers(makeDeps({ browserEval }));
+    expect(await h.browser({ action: 'eval', code: '6*7' })).toEqual({ result: 42 });
+    expect(browserEval).toHaveBeenCalledWith('6*7');
+  });
+
+  it('browser eval requires the code argument', async () => {
+    const h = buildCliHandlers(makeDeps());
+    await expect(h.browser({ action: 'eval' })).rejects.toThrow(/missing required argument: code/);
+  });
+
+  it('browser screenshot returns the captured data URL', async () => {
+    const h = buildCliHandlers(makeDeps());
+    expect(await h.browser({ action: 'screenshot' })).toEqual({
+      screenshot: 'data:image/png;base64,AAAA',
+    });
+  });
+
+  it('browser screenshot writes to a file when a path is given', async () => {
+    const browserScreenshotToFile = vi.fn(async (p: string) => p);
+    const h = buildCliHandlers(makeDeps({ browserScreenshotToFile }));
+    expect(await h.browser({ action: 'screenshot', path: '/tmp/shot.png' })).toEqual({
+      saved: '/tmp/shot.png',
+    });
+    expect(browserScreenshotToFile).toHaveBeenCalledWith('/tmp/shot.png');
+  });
+
+  it('browser rejects an unknown action', async () => {
+    const h = buildCliHandlers(makeDeps());
+    await expect(h.browser({ action: 'teleport' })).rejects.toThrow(/unknown browser action/);
   });
 });
