@@ -65,11 +65,14 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 3. Renderer calls `window.treeline.pty.spawn({ cwd, cols, rows })`.
 4. Main's `PtyManager.spawn()` calls `node-pty.spawn(SHELL, ['-l'],
    { name: 'xterm-256color', cwd, env: sanitized })`. Returns a UUID.
-5. Renderer adds a `Tab` to the store with that UUID as `ptyId`.
+5. Renderer adds a `Tab` to the store whose `root` is a single-leaf pane
+   tree holding that UUID (since v0.8.0 a tab is a tree of panes —
+   `root: PaneNode` + `focusedPaneId` — not one `ptyId`).
 6. Main emits `'spawned'`, which routes to the
    `TerminalStatusMonitor.register(id, shellPid)` so the foreground-
    process detector starts watching this PTY's children.
-7. The renderer mounts a `<TerminalView>`, whose `useXterm` hook calls
+7. The renderer renders the tab's pane tree (`<PaneTreeView>` → a
+   `<PaneView>` per leaf); each `PaneView`'s `useXterm` hook calls
    `term.open(container)`, attaches `FitAddon`, runs `fit.fit()`, and
    subscribes via `window.treeline.pty.onData(id, chunk => term.write(chunk))`.
 8. Keystrokes from xterm: `term.onData(d => window.treeline.pty.write(id, d))`.
@@ -373,14 +376,18 @@ everywhere. CSS Modules would mean writing hand-named classes for every
 component to express "magenta foreground when claude" — pure overhead
 on a UI surface this size.
 
-### Zustand with three slices, not one big Context
+### Zustand sliced by domain, not one big Context
 
-You have three orthogonal state domains updated from different sources:
+State is split into orthogonal slices (currently **11**: `repos`, `tabs`,
+`processes`, `editor`, `browser`, `settings`, `modal`, `scratch`,
+`discoveries`, `drift`, `screenshot`), each updated from a different source:
 
 - Repos / worktrees, updated from IPC events (`worktrees:onChange`) and
   user clicks.
 - Tabs, updated from user clicks and PTY spawn/exit.
-- Processes, updated from a 2 s tick.
+- Processes (+ ports), updated from a 2 s tick.
+- …and the rest (code viewer, browser pane, settings, modals, scratch
+  terminals, discovered-repo / worktree-drift toasts).
 
 A single `useContext` provider would re-render every consumer on every
 PTY tick. Zustand selectors with shallow equality
@@ -419,7 +426,7 @@ output bursts at no perceptible latency cost.
 
 ### Hidden tabs stay mounted
 
-Inactive `<TerminalView>` components don't unmount — they get
+Inactive `<PaneView>` components don't unmount — they get
 `visibility: hidden; pointer-events: none; position: absolute`. Each
 xterm instance keeps consuming `term.write(chunk)` while hidden, so
 switching back is instant. The alternative — buffering data in main
@@ -449,7 +456,9 @@ src/
 │   ├── ipc-channels.ts           # `repos:list` etc. — string constants.
 │   ├── ipc-contract.ts           # The TreelineApi interface (one source of truth).
 │   ├── cli-protocol.ts           # CLI socket protocol: verbs + NDJSON frames (no node imports).
-│   ├── browser-url.ts            # normalizeBrowserUrl() for the browser pane.
+│   ├── pane-tree.ts              # PURE split-pane model: split/remove/focus-neighbour ops.
+│   ├── browser-url.ts            # normalizeBrowserUrl() + isLocalDevUrl() for the browser pane.
+│   ├── changed-poll.ts           # Changed-files poll interval helper.
 │   ├── keybindings.ts            # Command table + resolve/conflict/reserved (pure).
 │   ├── terminal-theme.ts         # Theme presets: xterm ITheme + app palette + font.
 │   └── claude-detect.ts          # detectClaudeWorktree(path, branch).
@@ -459,18 +468,24 @@ src/
 │   ├── cli-server.ts             # CliServer: unix-socket NDJSON server (0600).
 │   ├── cli-handlers.ts           # CLI verb handlers + resolveWorktree.
 │   ├── cli-socket-path.ts        # cli.sock path under userData.
+│   ├── cli-install.ts            # Writes the `treeline` shim + global-install symlink (v0.13.0).
 │   ├── browser-guest.ts          # Guest <webview> WebContents + scriptable ops (CDP snapshot/click/fill; localhost guard).
 │   ├── menu.ts                   # macOS menu template; accelerators from the keybinding map.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.
 │   ├── gh.ts                     # gh CLI: list PRs per repo; PURE parse/rollup helpers.
-│   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing.
+│   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing; PATH-injects the CLI shim.
 │   ├── process-monitor.ts        # 2 s ps + lsof; idle CPU tracking; listening-port scan.
 │   ├── pr-monitor.ts             # 60 s gh PR poll per repo; emit-on-change broadcast.
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
+│   ├── worktree-drift-monitor.ts # Flags a PTY whose cwd drifts into another tracked worktree.
+│   ├── repo-discovery.ts         # PTY cwd → untracked-repo detection (discovered-repo toasts).
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
+│   ├── repos-create.ts           # `git init` flow with new/existing-folder validation.
 │   ├── files-io.ts              # Code-viewer fs: listDir + read + atomic write.
+│   ├── screenshot.ts             # Dev-only headless capture harness (TREELINE_SCREENSHOT_ID).
+│   ├── updater.ts                # electron-updater: launch + 4 h checks; manual menu check.
 │   ├── ipc/                      # One handler module per domain.
 │   │   ├── repos.ts              # repos:list/add/remove/pickDirectory.
 │   │   ├── worktrees.ts          # list/create/remove + onChange events.
@@ -483,19 +498,25 @@ src/
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot/setSettings.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
-│       └── safe-path.ts          # Validate paths/branches from the renderer.
+│       ├── safe-path.ts          # Validate paths/branches from the renderer.
+│       └── safe-url.ts           # isSafeExternalUrl — web/mail-only allowlist for openExternal.
 │
 ├── preload/index.ts              # contextBridge.exposeInMainWorld('treeline', api).
 │
 └── renderer/
+    ├── main.tsx                  # Renderer entry: mounts <App> into index.html.
     ├── App.tsx                   # <TitleBar> + <Sidebar> + <MainArea> + <Modals>.
     ├── styles/globals.css        # Tailwind + .drag/.no-drag utilities.
     ├── components/
     │   ├── TitleBar.tsx
     │   ├── Sidebar.tsx
+    │   ├── SidebarResizer.tsx
+    │   ├── SidebarToggle.tsx
     │   ├── FilterInput.tsx
     │   ├── AddRepoButton.tsx
+    │   ├── NewRepoButton.tsx     # `git init` a brand-new repo.
     │   ├── RepoNode.tsx          # Per-repo collapsible group.
+    │   ├── FolderNode.tsx        # Pinned non-git folder: bare file tree, no worktrees.
     │   ├── WorktreeRow.tsx       # branch · sha · dirty · status · processes · ports · PR.
     │   ├── TabStatusDot.tsx
     │   ├── ProcessBadge.tsx
@@ -504,7 +525,8 @@ src/
     │   ├── TabBar.tsx
     │   ├── TabItem.tsx
     │   ├── TerminalHost.tsx      # Renders all tabs; only active is visible.
-    │   ├── TerminalView.tsx      # One xterm instance.
+    │   ├── PaneTreeView.tsx      # Recursive split tree → flex rows/cols + dividers.
+    │   ├── PaneView.tsx          # One xterm instance per pane leaf (focus ring/badge).
     │   ├── WorktreeFiles.tsx     # All|Changed toggle under an expanded worktree.
     │   ├── FileTree.tsx          # Lazy per-worktree file tree (+ FileTreeNode).
     │   ├── ChangedFilesList.tsx  # Flat git-status list (M/A/?/D/R letters).
@@ -516,27 +538,41 @@ src/
     │   ├── CodePanelResizer.tsx  # Draggable terminal/panel divider.
     │   ├── BrowserPane.tsx       # Embedded <webview>; address bar + nav + states.
     │   ├── BrowserPanelResizer.tsx # Terminal/browser divider (pointer capture).
-    │   ├── SidebarToggle.tsx
+    │   ├── ScratchList.tsx       # Scratch (repo-less) terminals group.
+    │   ├── ScratchRow.tsx
+    │   ├── ScratchTerminalButton.tsx
+    │   ├── DiscoveredRepoToast.tsx # "Add this untracked repo?" toast.
+    │   ├── WorktreeDriftToast.tsx  # "Open a terminal in this worktree?" toast (v0.11.0).
+    │   ├── ScreenshotForceTooltip.tsx # Dev-only screenshot-harness helper.
     │   └── modals/
     │       ├── ModalShell.tsx
+    │       ├── CreateRepoModal.tsx
     │       ├── CreateWorktreeModal.tsx
     │       ├── DeleteWorktreeModal.tsx
+    │       ├── ConfirmDiscardModal.tsx
     │       ├── SettingsModal.tsx # Appearance (theme/font) + keybindings editor.
     │       └── Modals.tsx        # Renders whichever modal is open.
-    ├── hooks/useXterm.ts         # Owns the Terminal lifecycle for one tab.
+    ├── hooks/useXterm.ts         # Owns the Terminal lifecycle for one pane.
     ├── hooks/useAppTheme.ts      # Writes the theme palette + font onto :root.
+    ├── hooks/useGlobalShortcuts.ts # Window-level split-pane chords (⌘D / ⌘⌥-arrows / ⌘⇧W).
     ├── store/
     │   ├── index.ts              # Composes the slices.
-    │   ├── repos-slice.ts        # repos, worktreesByRepo, filter, collapsed.
-    │   ├── tabs-slice.ts         # tabs, activeTabId, tabsByCwd (MRU).
-    │   ├── processes-slice.ts    # processes, processesByWorktreePath.
+    │   ├── repos-slice.ts        # repos, folders, worktreesByRepo, prByRepoBranch, filter, collapsed.
+    │   ├── tabs-slice.ts         # tabs (pane trees), activeTabId, tabsByCwd (MRU) + pane reducers.
+    │   ├── processes-slice.ts    # processes, processesByWorktreePath, portsByWorktreePath.
     │   ├── editor-slice.ts       # code panel: open file, tree expand/cache.
     │   ├── browser-slice.ts      # browser pane: open/width, src/address, nav state.
     │   ├── settings-slice.ts     # settings + derived resolved keybinding map.
-    │   └── modal-slice.ts        # which modal (if any) is open.
-    ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id).
+    │   ├── modal-slice.ts        # which modal (if any) is open.
+    │   ├── scratch-slice.ts      # repo-less scratch terminals.
+    │   ├── discoveries-slice.ts  # untracked-repo discovery suggestions.
+    │   ├── drift-slice.ts        # worktree-drift / -created open suggestions (v0.11.0).
+    │   └── screenshot-slice.ts   # dev-only screenshot-mode flags.
+    ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id), split/close pane.
     ├── actions/editor.ts         # openFileInPanel(path), toggleDir(path).
+    ├── actions/scratch.ts        # open/close scratch terminals.
     ├── ipc/client.ts             # Subscribes IPC events into the store.
+    ├── types/webview.d.ts        # JSX typing for the Electron <webview> tag.
     └── util/path.ts              # Tiny basename() (no Node access here).
 
 scripts/
@@ -545,12 +581,31 @@ scripts/
 ├── take-screenshots.sh           # Walks you through capturing README images.
 └── README.md
 
-tests/
+tests/                            # 26 Vitest suites (main-process logic; renderer verified manually).
 ├── claude-detect.test.ts
 ├── git-porcelain.test.ts
 ├── git.test.ts
 ├── repos-store.test.ts
+├── repos-create.test.ts
+├── files-io.test.ts
+├── repo-discovery.test.ts
+├── repo-discovery.integration.test.ts
 ├── pty-manager.test.ts
 ├── terminal-status.test.ts
-└── process-monitor.test.ts
+├── process-monitor.test.ts
+├── changed-poll.test.ts
+├── safe-url.test.ts
+├── exec.test.ts
+├── browser-url.test.ts
+├── browser-guest.test.ts
+├── pane-tree.test.ts
+├── keybindings.test.ts
+├── settings-migration.test.ts
+├── gh.test.ts
+├── pr-monitor.test.ts
+├── worktree-drift-monitor.test.ts
+├── cli-server.test.ts
+├── cli-handlers.test.ts
+├── cli-bin.test.ts
+└── cli-install.test.ts
 ```

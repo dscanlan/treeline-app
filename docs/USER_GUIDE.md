@@ -135,9 +135,9 @@ Click the **folder icon** on a worktree row to expand its file tree.
   | `R` | renamed | cyan |
   | `U` | conflicted | red |
 
-  Deleted entries are struck-through and not clickable; collapsed untracked
-  directories are shown but aren't themselves clickable (expand to reach their
-  files).
+  Deleted entries are struck-through and not clickable. Brand-new untracked
+  directories aren't collapsed into one inert row — their individual files are
+  listed (each opens as an all-additions diff), the same way VS Code does it.
 - **Click a file** → opens read-only and syntax-highlighted, splitting in beside
   the terminal. Clicking a file in **Changed** opens its **diff** (working tree
   vs `HEAD`); a **`Diff | File`** toggle flips between them.

@@ -46,7 +46,7 @@ config, runs `npm run dev`, and cleans up everything when you quit.
 ## Tests
 
 ```bash
-npm test                  # all suites, ~1.5 s
+npm test                  # all suites (~20 s; the git suites spin up real temp repos)
 npm test -- --reporter=verbose
 npx vitest                # watch mode
 ```
@@ -121,8 +121,8 @@ universal `.dmg` + `.zip`, then creates a GitHub Release with them
 auto-generated release notes.
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.14.0
+git push origin v0.14.0
 ```
 
 **Manual dispatch.** Open the workflow on GitHub Actions and click
@@ -195,16 +195,10 @@ repository secret**. Add five:
 | `APPLE_APP_SPECIFIC_PASSWORD` | from step 4 |
 | `APPLE_TEAM_ID` | from step 5 |
 
-### 7. Switch the workflow on
+### 7. The workflow is already wired for signing
 
-In `.github/workflows/release.yml`, replace:
-
-```yaml
-env:
-  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-```
-
-with:
+`.github/workflows/release.yml` already passes the signing secrets to the
+`Package macOS` step — you don't need to edit it:
 
 ```yaml
 env:
@@ -214,6 +208,10 @@ env:
   APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 ```
+
+Once the five secrets above exist in the repo, signing + notarization happen
+automatically. (If the cert ever lapses, revert that block to
+`CSC_IDENTITY_AUTO_DISCOVERY: 'false'` to ship an unsigned build.)
 
 Push, tag a new version, and the workflow will:
 

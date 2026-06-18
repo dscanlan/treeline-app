@@ -8,7 +8,7 @@ and the terminals you have open in them — so spawning Claude in a
 worktree, watching `npm test` in another, and managing branches in a
 third is one window, not three apps.
 
-A reimagining of [`treeline`](../treeline) (the Rust TUI), but where the
+A reimagining of `treeline` (a Rust TUI predecessor), but where the
 Rust version drives an external iTerm2 via AppleScript, this version
 **hosts** its own terminals via `node-pty` + `xterm.js`.
 
@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.12.0 — feature-complete for v1: macOS only, repos managed manually,
+v0.13.0 — feature-complete for v1: macOS only, repos managed manually,
 tabs are session-only (no restore across launches).
 
 ## Install
@@ -364,7 +364,7 @@ a single modal with three sections:
 
   ![The Settings modal with Toggle Sidebar bound to CmdOrCtrl+V: the field is outlined in red and an inline message reads "CmdOrCtrl+V is reserved by Paste — pick another", with Save disabled](docs/img/29-settings-keybind-conflict.png)
 
-Everything persists to the app config (`schemaVersion` 3); an older config is
+Everything persists to the app config (`schemaVersion` 4); an older config is
 migrated forward with the new defaults filled in.
 
 ### Scriptable CLI
@@ -397,15 +397,26 @@ treeline browser fill  <selector> <text…>  # type into a field         (local 
 treeline browser screenshot [path]         # capture the pane (PNG file, else data URL)
 ```
 
-The CLI is a self-contained Node script that lives in the **source checkout** at
-`bin/treeline.mjs`. It is **not bundled into the packaged `.app`** (the build ships
-only `out/**` + `package.json`), so to use it you need a clone of this repo; symlink
-`bin/treeline.mjs` onto your `PATH` from there. `treeline hooks setup` does that
-symlink for you and wires **Claude Code** hooks:
-it adds `Stop` and `Notification` entries to `~/.claude/settings.json` that call an
-internal `notify-hook`, turning *"Claude finished / Claude needs input"* into a
-desktop ping from the running app (`treeline hooks remove` reverses it). The hook
-never blocks Claude — if the app is down it exits cleanly without a notification.
+The CLI is a self-contained Node script (`bin/treeline.mjs`) and, as of v0.13.0,
+**ships inside the packaged `.app`** — no source checkout needed:
+
+- **Inside Treeline's own terminals**, nothing to install. On startup the app writes
+  a `treeline` shim under `userData/bin` and prepends that dir to every spawned
+  terminal's `PATH`, so an agent in a tab can just call `treeline …`. The shim runs
+  the bundled client through the app's own Electron (`ELECTRON_RUN_AS_NODE`), so no
+  system Node is required.
+- **Outside the app** (e.g. Terminal.app), run **Treeline → Install Command Line
+  Tool…** to symlink the shim into `/usr/local/bin`.
+- **From a source checkout**, symlink `bin/treeline.mjs` onto your `PATH`, or let
+  `treeline hooks setup` do it.
+
+`treeline hooks setup` also wires **Claude Code** hooks: it adds `Stop` and
+`Notification` entries to `~/.claude/settings.json` that call an internal
+`notify-hook`, turning *"Claude finished / Claude needs input"* into a desktop ping
+from the running app (`treeline hooks remove` reverses it). The hooks point at the
+stable shim so they survive app updates. The hook never blocks Claude — if the app
+is down it exits cleanly without a notification. See [docs/CLI.md](docs/CLI.md) for
+the full reference.
 
 > Notifications are delivered by macOS only from a **signed packaged build**; the
 > unsigned `npm run dev` binary is denied by the OS (`UNError 1`). The socket,
@@ -567,7 +578,7 @@ The short version:
 ┌────────────────────────────────────────────────────────────────────┐
 │                         Renderer (React + Zustand)                 │
 │                                                                    │
-│   <Sidebar>            <TabBar>             <TerminalView>×N       │
+│   <Sidebar>            <TabBar>          <PaneTreeView> panes×N    │
 │   <Modals>             <TitleBar>           hooks/useXterm         │
 │        │                   │                       │               │
 │        └────── window.treeline (contextBridge) ────┘               │
@@ -580,8 +591,9 @@ The short version:
 │                                                                    │
 │   PtyManager (node-pty)         WorktreeWatcher (fs.watch + 5s)    │
 │   TerminalStatusMonitor (1 s)   ProcessMonitor (2 s, ps + lsof)    │
-│   PrMonitor (60 s, gh CLI)      ReposStore (atomic JSON)           │
-│   git.ts / git-porcelain.ts / gh.ts                                │
+│   PrMonitor (60 s, gh CLI)      WorktreeDriftMonitor (cwd-driven)  │
+│   CliServer (0600 unix socket)  ReposStore (atomic JSON)           │
+│   git.ts / git-porcelain.ts / gh.ts / cli-install.ts               │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -589,7 +601,7 @@ The short version:
 - **`src/main/`** — privileged work: spawning shells, running git,
   watching the filesystem, polling the process table.
 - **`src/preload/index.ts`** — single contextBridge that exposes
-  `window.treeline.{repos, worktrees, pty, processes, pr, terminalStatus, files, config, window, system}`.
+  `window.treeline.{repos, worktrees, pty, processes, pr, terminalStatus, files, folders, config, window, cli, system, screenshot}`.
   The `system.homeDir` value is injected at window-creation time via
   `webPreferences.additionalArguments`, since a sandboxed preload can't
   `import 'node:os'` directly.
@@ -598,13 +610,17 @@ The short version:
   `sandbox: true`.
 - **Scriptable CLI** — `src/main/cli-server.ts` (a `CliServer` that listens on a
   `0600` unix socket) dispatches verbs built in `cli-handlers.ts` against the same
-  services the GUI uses. Verbs needing the UI (`open`, `send`) are forwarded to the
+  services the GUI uses (`ping`/`repos`/`worktrees`/`open`/`send`/`notify`/`browser`).
+  Verbs needing the UI (`open`, `send`, `browser navigate`) are forwarded to the
   renderer over a `cli:command` channel; `bin/treeline.mjs` is the standalone client.
+  As of v0.13.0 the client ships in the packaged app: `cli-install.ts` writes a
+  `treeline` shim under `userData/bin` and prepends it to every spawned terminal's
+  `PATH`, so agents inside the app get the CLI with no install (see [docs/CLI.md](docs/CLI.md)).
 
 ## Testing
 
 ```bash
-npm test              # vitest, ~170 tests across 18 suites
+npm test              # vitest, ~310 tests across 26 suites
 npm run typecheck     # strict tsc on main + renderer
 npm run lint
 ```
@@ -627,6 +643,15 @@ The suites:
 | `cli-server`         | Socket dispatch: NDJSON framing, unknown-verb/error replies, `0600` perms, stale-socket restart |
 | `cli-handlers`       | Verb handlers + `resolveWorktree` (repo/branch → worktree path) |
 | `cli-bin`            | `treeline` binary: `hooks setup/remove` settings merge (idempotent), `notify-hook` payload → message |
+| `cli-install`        | CLI shim render, `writeExecutableIfChanged` idempotency, global symlink (replace a symlink, refuse a real file) |
+| `pane-tree`          | Split-pane model: `splitPane` splice-vs-wrap, `removePane` collapse, `focusNeighbour` adjacency |
+| `keybindings`        | `resolveKeybindings`, accelerator normalisation, command + reserved-shortcut conflict detection |
+| `settings-migration` | `schemaVersion` default-fill / sanitisation (2→3 settings, 3→4 folders) |
+| `gh`                 | `parsePrList` JSON → `PrInfo`, `rollupChecks` (statusCheckRollup → CI state), failure → `{}` |
+| `pr-monitor`         | Injected-fetch emit-on-change, throwing fetch, `gh`-unavailable dormancy, repo drop |
+| `browser-guest`      | Scriptable-browser localhost guard (`assertScriptableOrigin`), guest set/clear lifecycle |
+| `worktree-drift-monitor` | Home-on-first-cwd, drift emit on move to a different worktree, dedup, `release` |
+| `changed-poll` / `safe-url` / `exec` | Changed-files poll interval, external-URL allowlist, `execFile` timeout/error wrapper |
 
 Tests that touch git use `GIT_CONFIG_GLOBAL=/dev/null` so they don't
 inherit your machine's commit-signing config (1Password, GPG, etc.).
