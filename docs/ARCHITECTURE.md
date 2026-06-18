@@ -187,11 +187,17 @@ and agents can issue the same verbs a user would click.
 4. Verbs that need the UI are forwarded to the renderer over a `cli:command`
    channel: `open` focuses the window and calls the same `openTabAt(cwd)` a sidebar
    click takes; `send` writes its text to the *focused* tab's PTY (`pty.write`).
-   `notify` feeds the **agent-attention notifications** below: with a `cwd`
-   (the Claude Code hook passes one) main maps it to the PTY(s) running there and
-   re-emits `PtyManager`'s `notification` event so the right pane lights up;
-   without one it falls back to a plain Electron `Notification` (click-to-focus,
-   no focus-steal — important since a Claude `Stop` hook fires it on every turn).
+   `notify` feeds the **agent-attention notifications** below (target resolution
+   lives in `main/notification-targets.ts`, unit-tested): with a `paneId` (the
+   Claude Code hook reads it from the `TREELINE_PANE_ID` env var treeline exports
+   into every shell) main lights *exactly* that pane; otherwise it matches by
+   `cwd` but **only when that resolves to a single pane** — two tabs on the same
+   directory are indistinguishable by cwd, so fanning out to both would flag the
+   wrong agent (Claude also fires some notifications from a process that doesn't
+   inherit `TREELINE_PANE_ID`, so a pane id can't be guaranteed). When neither
+   pinpoints a unique pane it falls back to a plain Electron `Notification`
+   (click-to-focus, no focus-steal — important since a Claude `Stop` hook fires it
+   on every turn).
 5. The `browser` verbs drive the embedded pane (the **agent act-then-verify loop**:
    `navigate` / `snapshot` / `query` / `eval` / `click` / `fill` / `screenshot`).
    They run mostly **main-direct**, not renderer-forwarded: `main/browser-guest.ts`
@@ -371,10 +377,17 @@ paths converge on a single `PtyManager` `notification` event `{ id, text }`:
 1. **OSC scan.** `PtyManager`'s existing per-PTY output scanner (the one that
    parses OSC 7 cwd) also matches **OSC 9 / 99 / 777** desktop-notification
    sequences and emits `notification`. Any terminal program can trigger it.
-2. **Claude Code hook → cwd.** Claude Code hooks have no controlling terminal, so
-   the `notify-hook` reports the agent's cwd over the socket; the `notify` dep
-   maps cwd → the PTY(s) there (`PtyManager.cwdOf`) and re-emits the *same*
-   `notification` event, reusing everything downstream.
+2. **Claude Code hook → pane id.** Claude Code hooks have no controlling terminal,
+   so the `notify-hook` reports over the socket. treeline exports a
+   `TREELINE_PANE_ID` env var into every shell it spawns; the hook inherits it (via
+   the agent process tree) and sends it back, so the `notify` dep lights *exactly*
+   that pane (`PtyManager.has`). It also sends its cwd, used only as a *unique*-pane
+   fallback for shells treeline didn't spawn (or hook firings that lost the env
+   var — Claude raises some notifications from a process that doesn't inherit it).
+   Because cwd can't tell two tabs in the same directory apart, a cwd that matches
+   more than one pane lights *none* of them (a window-level toast fires instead);
+   see `notification-targets.ts`. Either way it re-emits the *same* `notification`
+   event, reusing everything downstream.
 
 `registerPtyIpc` broadcasts `notification` to the renderer over `pty:notification`;
 `markNotification(ptyId, text)` records it in a **transient, never-persisted**

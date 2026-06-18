@@ -16,12 +16,12 @@ export interface CliDeps {
   /** Worktrees of a repo, from git.ts listWorktreesIn — the same call the IPC layer makes. */
   listWorktrees(repoPath: string): Promise<Worktree[]>;
   /**
-   * Surface an agent-attention notification. When `cwd` is given (the Claude
-   * Code hook passes the agent's working dir), the app ties it to the PTY(s)
-   * running there and lights that pane's in-app ring/badge; otherwise it falls
-   * back to a plain native toast.
+   * Surface an agent-attention notification. When `paneId` is given (the Claude
+   * Code hook reads it from TREELINE_PANE_ID), the app lights exactly that pane.
+   * Otherwise, when `cwd` is given, it falls back to the PTY(s) running there
+   * (ambiguous when two tabs share a directory); failing both, a native toast.
    */
-  notify(text: string, cwd?: string): void;
+  notify(text: string, cwd?: string, paneId?: string): void;
   /** Focus the window and open/focus the tab for `cwd` (drives the renderer). */
   openWorktree(cwd: string): void;
   /** Type `text` into the focused terminal pane (drives the renderer). */
@@ -111,7 +111,9 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
     notify: (args) => {
       const text = reqString(args, 'text');
       const cwd = typeof args['cwd'] === 'string' && args['cwd'] ? args['cwd'] : undefined;
-      deps.notify(text, cwd);
+      const paneId =
+        typeof args['paneId'] === 'string' && args['paneId'] ? args['paneId'] : undefined;
+      deps.notify(text, cwd, paneId);
     },
 
     open: async (args) => {

@@ -353,13 +353,21 @@ function notifyHook() {
     }
     // Claude Code runs hooks WITHOUT a controlling terminal (/dev/tty is ENXIO),
     // so we can't emit an OSC escape into the pane. Instead tell the app over the
-    // socket, passing the hook's cwd; the app maps cwd → the PTY(s) running there
-    // and lights that pane's in-app ring/badge (and a native toast when the
-    // window is unfocused). Fire-and-forget; never fail the hook.
+    // socket. The hook inherits TREELINE_PANE_ID from the shell treeline spawned
+    // it in, so prefer that — it identifies the EXACT pane, where cwd can't tell
+    // two tabs in the same directory apart. cwd is still sent as a fallback for
+    // shells treeline didn't spawn (no pane id). Fire-and-forget; never fail the
+    // hook.
+    const paneId = process.env.TREELINE_PANE_ID || undefined;
     try {
       const sock = connect(socketPath());
       sock.on('connect', () =>
-        sock.end(JSON.stringify({ verb: 'notify', args: { text, ...(cwd ? { cwd } : {}) } }) + '\n'),
+        sock.end(
+          JSON.stringify({
+            verb: 'notify',
+            args: { text, ...(cwd ? { cwd } : {}), ...(paneId ? { paneId } : {}) },
+          }) + '\n',
+        ),
       );
       sock.on('data', exit0);
       sock.on('close', exit0);

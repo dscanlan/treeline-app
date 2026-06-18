@@ -224,8 +224,10 @@ describe('treeline notify-hook', () => {
   it('derives a message from the hook payload and fires notify (exit 0)', async () => {
     const sock = join(tmp(), 's.sock');
     const { received } = stubServer(sock);
+    // Clear TREELINE_PANE_ID: the test runner may itself be inside a treeline
+    // pane, and that would non-deterministically inject a paneId here.
     const res = await run(['notify-hook'], {
-      env: { TREELINE_SOCK: sock },
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: '' },
       stdin: JSON.stringify({ hook_event_name: 'Stop', cwd: '/code/my-app' }),
     });
     expect(res.code).toBe(0);
@@ -240,10 +242,20 @@ describe('treeline notify-hook', () => {
     const sock = join(tmp(), 's.sock');
     const { received } = stubServer(sock);
     await run(['notify-hook'], {
-      env: { TREELINE_SOCK: sock },
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: '' },
       stdin: JSON.stringify({ hook_event_name: 'Notification', message: 'Permission needed' }),
     });
     expect((await received).args).toEqual({ text: 'Permission needed' });
+  });
+
+  it('forwards TREELINE_PANE_ID as paneId so the exact pane lights up', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['notify-hook'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-abc' },
+      stdin: JSON.stringify({ hook_event_name: 'Notification', message: 'Permission needed' }),
+    });
+    expect((await received).args).toEqual({ text: 'Permission needed', paneId: 'pane-abc' });
   });
 
   it('exits 0 even when the app is not running', async () => {

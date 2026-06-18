@@ -20,6 +20,13 @@ export interface SpawnOpts {
   rows: number;
   /** Defaults to process.env.SHELL ?? '/bin/zsh'. */
   shell?: string;
+  /**
+   * The PTY id, exported into the shell as `TREELINE_PANE_ID`. Child processes
+   * (an agent, and the Claude Code hooks it spawns) inherit it, so a hook can
+   * report *exactly which pane* it ran in instead of just its cwd — two tabs in
+   * the same directory are otherwise indistinguishable by cwd alone.
+   */
+  paneId?: string;
 }
 
 export type SpawnFn = (opts: SpawnOpts) => IPtyLike;
@@ -119,7 +126,7 @@ export class PtyManager extends EventEmitter {
 
   spawn(opts: SpawnOpts): { id: string; shellPid: number } {
     const id = randomUUID();
-    const proc = this.spawnFn(opts);
+    const proc = this.spawnFn({ ...opts, paneId: id });
 
     const entry: PtyEntry = {
       proc,
@@ -481,13 +488,14 @@ export function defaultSpawn(opts: SpawnOpts): IPtyLike {
     cols: Math.max(1, opts.cols | 0),
     rows: Math.max(1, opts.rows | 0),
     cwd: opts.cwd,
-    env: sanitizeEnv(process.env, managedBinDir),
+    env: sanitizeEnv(process.env, managedBinDir, opts.paneId),
   }) as IPtyLike;
 }
 
 export function sanitizeEnv(
   env: NodeJS.ProcessEnv,
   binDir: string | null = null,
+  paneId: string | null = null,
 ): { [k: string]: string } {
   const out: { [k: string]: string } = {};
   for (const [k, v] of Object.entries(env)) {
@@ -499,6 +507,10 @@ export function sanitizeEnv(
   }
   out['TERM'] = 'xterm-256color';
   out['COLORTERM'] = 'truecolor';
+  // Tag the shell with its pane id so the Claude Code notify hook (which has no
+  // tty and only knows its cwd) can report the exact pane it ran in. Inherited
+  // by every child process of the shell.
+  if (paneId) out['TREELINE_PANE_ID'] = paneId;
   // Prepend the managed bin dir (holding the `treeline` shim) unless it's
   // already on PATH, so the CLI resolves first without duplicating entries.
   if (binDir) {

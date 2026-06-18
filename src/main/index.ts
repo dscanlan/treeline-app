@@ -13,6 +13,7 @@ import {
   type PtySpawnedEvent,
 } from './pty-manager';
 import { materializeCliShim } from './cli-install';
+import { resolveNotificationTargets } from './notification-targets';
 import { ReposStore } from './repos-store';
 import { buildAppMenu } from './menu';
 import { resolveKeybindings } from '@shared/keybindings';
@@ -331,26 +332,16 @@ app.whenReady().then(() => {
       version: app.getVersion(),
       listRepos: () => reposStore?.get().repos ?? [],
       listWorktrees: (repoPath) => listWorktreesIn(repoPath),
-      notify: (text, cwd) => {
-        // Tie the notification to the pane(s) running at `cwd` (the Claude Code
-        // hook passes its working dir, since it has no controlling tty to emit an
-        // OSC into). Re-emitting the same 'notification' event the OSC scanner
-        // raises lights the in-app ring/badge (via registerPtyIpc) and the native
-        // toast when unfocused (via the ptyManager 'notification' handler above).
+      notify: (text, cwd, paneId) => {
+        // Tie the notification to the pane the agent ran in. The Claude Code hook
+        // has no controlling tty to emit an OSC into, so it reports over the
+        // socket. Re-emitting the same 'notification' event the OSC scanner raises
+        // lights the in-app ring/badge (via registerPtyIpc) and the native toast
+        // when unfocused (via the ptyManager 'notification' handler above).
         let matched = 0;
         const mgr = ptyManager;
-        if (cwd && mgr) {
-          const ids = mgr.shellPids().map((p) => p.id);
-          const exact = ids.filter((id) => mgr.cwdOf(id) === cwd);
-          // Fall back to a containment match (shell in the worktree root, agent in
-          // a subdir, or vice-versa) so a not-pixel-identical cwd still resolves.
-          const targets =
-            exact.length > 0
-              ? exact
-              : ids.filter((id) => {
-                  const pc = mgr.cwdOf(id);
-                  return !!pc && (cwd.startsWith(pc + '/') || pc.startsWith(cwd + '/'));
-                });
+        if (mgr) {
+          const targets = resolveNotificationTargets(mgr, { cwd, paneId });
           for (const id of targets) {
             mgr.emit('notification', { id, text } satisfies PtyNotificationEvent);
             matched++;

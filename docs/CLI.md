@@ -183,9 +183,15 @@ installs the CLI symlink in one step:
 
 - Adds `Stop` and `Notification` hook entries to Claude Code's `settings.json`
   that call this script's internal `notify-hook`. When Claude finishes or asks
-  for input, the hook reports its working directory to the running app over the
-  socket; the app maps that cwd back to the **exact pane** the agent is in and
-  lights that pane's [waiting indicators](./USER_GUIDE.md#knowing-when-an-agent-needs-you)
+  for input, the hook reports to the running app over the socket. Every shell
+  treeline spawns is tagged with a `TREELINE_PANE_ID` env var, which the hook
+  inherits and sends back, so the app lights the **exact pane** the agent is in.
+  The cwd is also sent as a fallback (for shells treeline didn't spawn, or hook
+  firings that lost the env var), but it's only used when it resolves to a single
+  pane — cwd alone can't tell two tabs in the same directory apart, so an ambiguous
+  cwd falls back to a window-level desktop notification instead of lighting the
+  wrong tab. It lights that pane's
+  [waiting indicators](./USER_GUIDE.md#knowing-when-an-agent-needs-you)
   — the magenta tab, the sidebar unread dot, and the pane ring — plus a native
   desktop notification when the window is in the background. The hook is wired by
   **absolute path**, so it works even if the symlink dir isn't on `PATH`, and it

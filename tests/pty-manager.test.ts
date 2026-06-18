@@ -66,6 +66,19 @@ describe('PtyManager', () => {
     expect(events).toEqual([{ id, shellPid: 4242 }]);
   });
 
+  it('passes the new PTY id to spawnFn as paneId (for TREELINE_PANE_ID)', () => {
+    const fake = new FakePty();
+    const seen: (string | undefined)[] = [];
+    const spawnFn: SpawnFn = (opts) => {
+      seen.push(opts.paneId);
+      return fake;
+    };
+    const mgr = new PtyManager(spawnFn, undefined, 0);
+
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    expect(seen).toEqual([id]);
+  });
+
   it('coalesces multiple data chunks into a single tick-flushed event', async () => {
     const fake = new FakePty();
     const mgr = new PtyManager(() => fake, undefined, 0);
@@ -450,5 +463,15 @@ describe('sanitizeEnv', () => {
   it('leaves PATH untouched when no bin dir is given', () => {
     const out = sanitizeEnv({ PATH: '/usr/bin' });
     expect(out.PATH).toBe('/usr/bin');
+  });
+
+  it('exports TREELINE_PANE_ID when a pane id is given', () => {
+    const out = sanitizeEnv({ PATH: '/usr/bin' }, null, 'pane-123');
+    expect(out.TREELINE_PANE_ID).toBe('pane-123');
+  });
+
+  it('omits TREELINE_PANE_ID when no pane id is given', () => {
+    const out = sanitizeEnv({ PATH: '/usr/bin' });
+    expect(out.TREELINE_PANE_ID).toBeUndefined();
   });
 });
