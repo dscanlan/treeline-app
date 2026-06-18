@@ -173,6 +173,46 @@ describe('treeline browser', () => {
     expect(args.path).toMatch(/\/shot\.png$/);
   });
 
+  it('snapshot sends a bare snapshot frame', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'snapshot'], { env: { TREELINE_SOCK: sock } });
+    expect((await received).args).toEqual({ action: 'snapshot' });
+  });
+
+  it('query carries the selector', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'query', 'button.primary'], { env: { TREELINE_SOCK: sock } });
+    expect((await received).args).toEqual({ action: 'query', selector: 'button.primary' });
+  });
+
+  it('click carries the selector', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'click', '#save'], { env: { TREELINE_SOCK: sock } });
+    expect((await received).args).toEqual({ action: 'click', selector: '#save' });
+  });
+
+  it('fill joins the remaining args into the text frame', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['browser', 'fill', 'input[name=q]', 'hello', 'world'], {
+      env: { TREELINE_SOCK: sock },
+    });
+    expect((await received).args).toEqual({
+      action: 'fill',
+      selector: 'input[name=q]',
+      text: 'hello world',
+    });
+  });
+
+  it('query fails (exit 2) without a selector', async () => {
+    const res = await run(['browser', 'query'], { env: { TREELINE_SOCK: join(tmp(), 'x.sock') } });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('requires a <selector>');
+  });
+
   it('fails (exit 2) on an unknown browser action', async () => {
     const res = await run(['browser', 'fly'], { env: { TREELINE_SOCK: join(tmp(), 'x.sock') } });
     expect(res.code).toBe(2);

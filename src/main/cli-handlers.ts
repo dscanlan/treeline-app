@@ -32,6 +32,14 @@ export interface CliDeps {
   browserScreenshot(): Promise<string>;
   /** Capture the browser guest to `path` (absolute) and resolve with the path. */
   browserScreenshotToFile(path: string): Promise<string>;
+  /** Compact accessibility-tree snapshot of the guest page (main-direct, any origin). */
+  browserSnapshot(): Promise<string>;
+  /** Inspect a CSS selector without acting — descriptor of the first match or null. */
+  browserQuery(selector: string): Promise<unknown>;
+  /** Synthetic-click the element matched by `selector` (main-direct, local origins only). */
+  browserClick(selector: string): Promise<unknown>;
+  /** Fill the element matched by `selector` with `text` (main-direct, local origins only). */
+  browserFill(selector: string, text: string): Promise<unknown>;
 }
 
 function reqString(args: Record<string, unknown>, key: string): string {
@@ -144,9 +152,25 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
           }
           return { screenshot: await deps.browserScreenshot() };
         }
+        case 'snapshot':
+          return { snapshot: await deps.browserSnapshot() };
+        case 'query': {
+          const selector = reqString(args, 'selector');
+          return { element: await deps.browserQuery(selector) };
+        }
+        case 'click': {
+          const selector = reqString(args, 'selector');
+          return await deps.browserClick(selector);
+        }
+        case 'fill': {
+          const selector = reqString(args, 'selector');
+          const text = args['text'];
+          if (typeof text !== 'string') throw new Error('missing required argument: text');
+          return await deps.browserFill(selector, text);
+        }
         default:
           throw new Error(
-            `unknown browser action: ${action} (expected navigate|eval|screenshot)`,
+            `unknown browser action: ${action} (expected navigate|eval|screenshot|snapshot|query|click|fill)`,
           );
       }
     },

@@ -21,7 +21,8 @@ export const CLI_VERBS = [
   'notify',
   'open',
   'send',
-  // Drive the embedded browser pane: `browser navigate|eval|screenshot`. The
+  // Drive the embedded browser pane:
+  // `browser navigate|eval|screenshot|snapshot|query|click|fill`. The
   // sub-action rides in args.action (the wire verb stays a flat identifier).
   'browser',
 ] as const;

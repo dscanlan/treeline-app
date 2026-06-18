@@ -51,6 +51,10 @@ import {
   captureBrowser,
   captureBrowserToFile,
   waitForGuestLoad,
+  snapshotBrowser,
+  queryBrowserElement,
+  clickInBrowser,
+  fillInBrowser,
 } from './browser-guest';
 
 let mainWindow: BrowserWindow | null = null;
@@ -331,6 +335,10 @@ app.whenReady().then(() => {
       browserEval: (code) => evalInBrowser(code),
       browserScreenshot: () => captureBrowser(),
       browserScreenshotToFile: (path) => captureBrowserToFile(path),
+      browserSnapshot: () => snapshotBrowser(),
+      browserQuery: (selector) => queryBrowserElement(selector),
+      browserClick: (selector) => clickInBrowser(selector),
+      browserFill: (selector, text) => fillInBrowser(selector, text),
     }),
   );
   cliServer.start().catch((err) => {

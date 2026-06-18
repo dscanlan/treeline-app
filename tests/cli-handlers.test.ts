@@ -34,6 +34,10 @@ function makeDeps(over: Partial<CliDeps> = {}): CliDeps {
     browserEval: vi.fn(async () => 'page title'),
     browserScreenshot: vi.fn(async () => 'data:image/png;base64,AAAA'),
     browserScreenshotToFile: vi.fn(async (p: string) => p),
+    browserSnapshot: vi.fn(async () => 'WebArea "Demo"'),
+    browserQuery: vi.fn(async () => ({ tag: 'button', count: 1 })),
+    browserClick: vi.fn(async () => ({ clicked: 'button' })),
+    browserFill: vi.fn(async () => ({ filled: 'input' })),
     ...over,
   };
 }
@@ -173,6 +177,56 @@ describe('buildCliHandlers', () => {
       saved: '/tmp/shot.png',
     });
     expect(browserScreenshotToFile).toHaveBeenCalledWith('/tmp/shot.png');
+  });
+
+  it('browser snapshot returns the accessibility tree', async () => {
+    const h = buildCliHandlers(makeDeps());
+    expect(await h.browser({ action: 'snapshot' })).toEqual({ snapshot: 'WebArea "Demo"' });
+  });
+
+  it('browser query returns the element descriptor', async () => {
+    const browserQuery = vi.fn(async () => ({ tag: 'button', count: 2 }));
+    const h = buildCliHandlers(makeDeps({ browserQuery }));
+    expect(await h.browser({ action: 'query', selector: 'button' })).toEqual({
+      element: { tag: 'button', count: 2 },
+    });
+    expect(browserQuery).toHaveBeenCalledWith('button');
+  });
+
+  it('browser query requires a selector', async () => {
+    const h = buildCliHandlers(makeDeps());
+    await expect(h.browser({ action: 'query' })).rejects.toThrow(/missing required argument: selector/);
+  });
+
+  it('browser click drives browserClick with the selector', async () => {
+    const browserClick = vi.fn(async () => ({ clicked: '#save' }));
+    const h = buildCliHandlers(makeDeps({ browserClick }));
+    expect(await h.browser({ action: 'click', selector: '#save' })).toEqual({ clicked: '#save' });
+    expect(browserClick).toHaveBeenCalledWith('#save');
+  });
+
+  it('browser click requires a selector', async () => {
+    const h = buildCliHandlers(makeDeps());
+    await expect(h.browser({ action: 'click' })).rejects.toThrow(/missing required argument: selector/);
+  });
+
+  it('browser fill drives browserFill with selector and text', async () => {
+    const browserFill = vi.fn(async () => ({ filled: 'input' }));
+    const h = buildCliHandlers(makeDeps({ browserFill }));
+    expect(await h.browser({ action: 'fill', selector: 'input', text: 'hello' })).toEqual({
+      filled: 'input',
+    });
+    expect(browserFill).toHaveBeenCalledWith('input', 'hello');
+  });
+
+  it('browser fill allows empty text but requires a string', async () => {
+    const browserFill = vi.fn(async () => ({ filled: 'input' }));
+    const h = buildCliHandlers(makeDeps({ browserFill }));
+    await h.browser({ action: 'fill', selector: 'input', text: '' });
+    expect(browserFill).toHaveBeenCalledWith('input', '');
+    await expect(h.browser({ action: 'fill', selector: 'input' })).rejects.toThrow(
+      /missing required argument: text/,
+    );
   });
 
   it('browser rejects an unknown action', async () => {

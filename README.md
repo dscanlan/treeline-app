@@ -302,8 +302,10 @@ without alt-tabbing to Safari/Chrome and hunting for the port.
 - **Drag the divider** on the pane's left edge to resize (the terminal re-fits);
   the `×` in the header closes it.
 
-This is the view-only first cut; a scriptable API to drive and inspect the page
-(e.g. so an agent can verify its own change) is planned as a follow-up.
+The pane is also **scriptable** — the `treeline browser …` CLI verbs let an agent
+in a worktree terminal navigate it, read the page, and click/type into it, so it can
+*act on its own change and verify the result*. See [Driving the browser (the agent
+loop)](#driving-the-browser-the-agent-loop) below.
 
 ### Settings & theming
 
@@ -353,6 +355,15 @@ treeline worktrees <repo>          # a repo's worktrees (JSON)
 treeline open <repo> [branch]      # focus, or open, that worktree's terminal tab
 treeline send 'npm test\n'         # type keystrokes into the focused terminal
 treeline notify "build finished"   # native desktop notification from the app
+
+# Drive the embedded browser pane (see "the agent loop" below)
+treeline browser navigate <url> [--wait]   # open the pane at <url> (--wait: until loaded)
+treeline browser snapshot                  # compact accessibility tree of the page
+treeline browser query <selector>          # inspect the first CSS match (or null)
+treeline browser eval  <js…>               # run JS, print the result  (local origins)
+treeline browser click <selector>          # synthetic click an element (local origins)
+treeline browser fill  <selector> <text…>  # type into a field         (local origins)
+treeline browser screenshot [path]         # capture the pane (PNG file, else data URL)
 ```
 
 The CLI ships as a self-contained Node script (`bin/treeline.mjs`) you can symlink
@@ -365,6 +376,56 @@ never blocks Claude — if the app is down it exits cleanly without a notificati
 > Notifications are delivered by macOS only from a **signed packaged build**; the
 > unsigned `npm run dev` binary is denied by the OS (`UNError 1`). The socket,
 > `open`, and `send` work in dev regardless.
+
+#### Driving the browser (the agent loop)
+
+The `treeline browser …` verbs turn the [embedded pane](#browser) into a surface an
+agent can **act on and then verify** — the reason the pane exists. An agent working
+in a worktree terminal can change code, drive its own dev server in the pane, and
+read back the result without a human in the seat:
+
+```bash
+# 1. point the pane at the dev server and wait for the page to settle
+treeline browser navigate http://localhost:5173 --wait
+# 2. orient — what's on the page? (compact role/name accessibility tree)
+treeline browser snapshot
+# 3. exercise the UI like a user
+treeline browser fill  "#email" "agent@treeline.dev"
+treeline browser click "#save"
+# 4. verify the change took
+treeline browser snapshot                       # did the expected state appear?
+treeline browser screenshot ./after.png         # … or diff the pixels
+```
+
+**`navigate` is the linchpin of design-driven UI work.** The intended loop when you
+hand an agent a design (a mock, a Figma export, a screenshot) is:
+
+> **edit the component → `navigate --wait` to the dev server → `screenshot` →
+> compare against the design → adjust → repeat.**
+
+Because `--wait` only resolves once the page has finished loading on the target
+origin, the screenshot the agent compares is never a half-rendered frame — the
+act-then-look cycle doesn't race the rebuild. With a hot-reloading dev server the
+agent often doesn't even re-`navigate`; it just `screenshot`s after each edit and
+keeps closing the gap to the design. `snapshot`/`query` give it the structural read
+(roles, names, which selector matches) when a pixel diff isn't enough to know
+*what* to change.
+
+**Safety — local origins only.** `navigate`, `snapshot`, `query`, and `screenshot`
+work against any page (they only read or point the pane). The verbs that *act* —
+`eval`, `click`, `fill` — are refused unless the pane is on a **local** origin
+(`localhost` / `127.0.0.1` / `[::1]`):
+
+```
+$ treeline browser click "a"          # while the pane is on https://example.com
+treeline: scripting blocked: non-local origin (example.com)
+```
+
+So an agent can script the dev server you asked it to build, but not some
+logged-in remote tab you happened to leave open in the pane. Under the hood the
+acting verbs drive a real Chromium guest over the DevTools Protocol — `click` is a
+synthetic mouse event at the element's centre, `fill` focuses and types — so they
+exercise the same input path a user would, not a DOM shortcut.
 
 ### Scratch terminals
 

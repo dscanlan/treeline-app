@@ -157,9 +157,10 @@ surface — and is hardened in `hardenWebviews()`: the guest gets its own
 `persist:treeline-browser` session, attaches with no preload / no node
 integration / isolation on (`will-attach-webview`), and its new-window attempts
 route through the same safe-scheme `setWindowOpenHandler` as the main window.
-The renderer CSP gains `frame-src http: https:` so the frame can load. A
-scriptable IPC surface (drive/inspect the page so an agent can verify its own
-change) is a planned follow-up, deliberately deferred from this view-only cut.
+The renderer CSP gains `frame-src http: https:` so the frame can load. The pane
+is also **scriptable** so an agent can verify its own change — see the CLI's
+`browser` verbs below; that surface is where the trust-widening actually bites,
+so its acting verbs are gated to local origins.
 
 ### Scriptable CLI (socket → app)
 
@@ -185,7 +186,20 @@ and agents can issue the same verbs a user would click.
    click takes; `send` writes its text to the *focused* tab's PTY (`pty.write`).
    `notify` shows an Electron `Notification` (click-to-focus, no focus-steal —
    important since a Claude `Stop` hook fires it on every turn).
-5. `bin/treeline.mjs` is the standalone client — dependency-free Node, symlinkable
+5. The `browser` verbs drive the embedded pane (the **agent act-then-verify loop**:
+   `navigate` / `snapshot` / `query` / `eval` / `click` / `fill` / `screenshot`).
+   They run mostly **main-direct**, not renderer-forwarded: `main/browser-guest.ts`
+   holds the guest `<webview>`'s `WebContents` — captured the moment it attaches in
+   `hardenWebviews()`'s `did-attach-webview`, the *only* place main gets that handle —
+   and exposes the ops on it. `navigate` is the exception, forwarded to the renderer
+   (opening the pane is React state). Structured input (`snapshot`/`query`/`click`/
+   `fill`) drives a CDP session via `webContents.debugger` (lazy `attach('1.3')`,
+   reset when the guest changes); `click`/`fill` resolve a CSS selector to viewport
+   coordinates then dispatch **synthetic** `Input` events. Because this lets an agent
+   *act* on a live page, the mutating verbs (`eval`/`click`/`fill`) call
+   `assertScriptableOrigin` and run only on `localhost`/`127.0.0.1`/`[::1]`; the
+   read-only verbs (`navigate`/`snapshot`/`query`/`screenshot`) work on any origin.
+6. `bin/treeline.mjs` is the standalone client — dependency-free Node, symlinkable
    onto `PATH`. Beyond the socket verbs it carries the Claude Code glue:
    `hooks setup` atomically merges `Stop`/`Notification` hooks into
    `~/.claude/settings.json` (idempotent; honours `CLAUDE_CONFIG_DIR`) pointing at
@@ -445,6 +459,7 @@ src/
 │   ├── cli-server.ts             # CliServer: unix-socket NDJSON server (0600).
 │   ├── cli-handlers.ts           # CLI verb handlers + resolveWorktree.
 │   ├── cli-socket-path.ts        # cli.sock path under userData.
+│   ├── browser-guest.ts          # Guest <webview> WebContents + scriptable ops (CDP snapshot/click/fill; localhost guard).
 │   ├── menu.ts                   # macOS menu template; accelerators from the keybinding map.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.

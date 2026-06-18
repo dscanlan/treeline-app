@@ -16,6 +16,10 @@
 //   treeline browser navigate <url> [--wait]  open the pane at <url> (--wait: until loaded)
 //   treeline browser eval <js...>      run JS in the pane, print the result (local origins only)
 //   treeline browser screenshot [path] capture the pane (PNG file at path, else data URL)
+//   treeline browser snapshot          compact accessibility tree of the page
+//   treeline browser query <selector>  inspect the first match of a CSS selector
+//   treeline browser click <selector>  synthetic-click the element (local origins only)
+//   treeline browser fill <selector> <text...>  type into the element (local origins only)
 //   treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
 //   treeline hooks remove
 //
@@ -60,6 +64,10 @@ const USAGE = `treeline — drive the running treeline-app
   treeline browser navigate <url> [--wait]  open the pane at <url> (--wait: until loaded)
   treeline browser eval <js...>      run JS in the pane, print the result (local origins only)
   treeline browser screenshot [path] capture the pane (PNG file at path, else data URL)
+  treeline browser snapshot          compact accessibility tree of the page
+  treeline browser query <selector>  inspect the first match of a CSS selector
+  treeline browser click <selector>  synthetic-click the element (local origins only)
+  treeline browser fill <selector> <text...>  type into the element (local origins only)
   treeline hooks setup [--bin-dir D] wire Claude Code hooks → treeline notify
   treeline hooks remove`;
 
@@ -115,7 +123,28 @@ function buildRequest(argv) {
             : { action: 'screenshot' },
         };
       }
-      fail(`browser: unknown action "${action ?? ''}" (expected navigate|eval|screenshot)`);
+      if (action === 'snapshot') {
+        return { verb, args: { action: 'snapshot' } };
+      }
+      if (action === 'query') {
+        const selector = rest[1];
+        if (!selector) fail('browser query requires a <selector>');
+        return { verb, args: { action: 'query', selector } };
+      }
+      if (action === 'click') {
+        const selector = rest[1];
+        if (!selector) fail('browser click requires a <selector>');
+        return { verb, args: { action: 'click', selector } };
+      }
+      if (action === 'fill') {
+        const selector = rest[1];
+        const text = rest.slice(2).join(' ');
+        if (!selector) fail('browser fill requires a <selector> and <text>');
+        return { verb, args: { action: 'fill', selector, text: unescape(text) } };
+      }
+      fail(
+        `browser: unknown action "${action ?? ''}" (expected navigate|eval|screenshot|snapshot|query|click|fill)`,
+      );
       break;
     }
     default:
