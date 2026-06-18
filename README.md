@@ -14,25 +14,38 @@ Rust version drives an external iTerm2 via AppleScript, this version
 
 ![Sidebar populated with three fixture repos and several worktrees, including the magenta ✦ Claude group](docs/img/02-sidebar.png)
 
+## Documentation
+
+- **[User Guide](docs/USER_GUIDE.md)** — task-oriented walkthrough of every GUI
+  workflow (add a repo, open terminals, dev servers & the browser pane, editing
+  files, worktrees, theming, auto-update).
+- **[CLI Guide](docs/CLI.md)** — install + every `treeline` command, JSON output
+  shapes, the raw socket API, and troubleshooting.
+- **[Architecture](docs/ARCHITECTURE.md)** · **[Developing & releasing](docs/DEVELOPING.md)** — for contributors.
+
+New here? Start with the [five-minute quick start](docs/USER_GUIDE.md#five-minute-quick-start).
+
 ## Why
 
 The driving workflow is:
 
 1. Add a repo to the sidebar (one-time, via the native file picker).
-2. Click the repo root → a terminal tab opens with a shell at the repo path.
+2. Hover the repo row and click its `>_` button → a terminal tab opens
+   with a shell at the repo path. (Clicking the repo *name* expands or
+   collapses its worktrees.)
 3. Run `claude` in that tab — Claude creates a new git worktree.
 4. The sidebar auto-refreshes (`fs.watch` on `.git/worktrees`) and the new
    worktree appears within ~500ms.
 5. Click the new worktree → a tab opens cd'd into it. Or hit the `+`
    in the tab bar to add a second tab on the same worktree.
 
-You can also work directly on a branch — clicking the repo root and
-running `git`, `npm`, `vim` etc. is a first-class flow; the worktree
-dance is optional.
+You can also work directly on a branch — opening a terminal at the repo
+root and running `git`, `npm`, `vim` etc. is a first-class flow; the
+worktree dance is optional.
 
 ## Status
 
-v0.1.0 — feature-complete for v1: macOS only, repos managed manually,
+v0.12.0 — feature-complete for v1: macOS only, repos managed manually,
 tabs are session-only (no restore across launches).
 
 ## Install
@@ -83,6 +96,9 @@ up on exit.
 
 ## Tour
 
+> The sections below are a feature overview. For step-by-step GUI workflows see
+> the **[User Guide](docs/USER_GUIDE.md)**.
+
 ### Sidebar
 
 ![Empty state when no repos have been added yet](docs/img/01-empty.png)
@@ -128,6 +144,12 @@ and sorted, and attribution is by the listener's **cwd**, so a server
 launched outside treeline still appears as long as it's rooted in the
 worktree.
 
+Each `:PORT` chip is a **button**: click it to open
+`http://localhost:<port>` in the [embedded browser](#browser) pane — the
+"run your server → click the port → see your app" loop, no address bar
+typing. (It's the same store action the scriptable `treeline browser
+navigate` verb drives.)
+
 #### Linked PR status
 
 ![Two worktrees in the treeline-app repo: feat-auth showing a green #482 ✓ badge (open PR, checks passing) and the Claude worktree showing a dim #471 ● badge (draft PR, checks pending) beside its magenta CLAUDE badge and dirty dot](docs/img/34-pr-status.png)
@@ -162,6 +184,11 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
 - **Click a tab's `×`** → closes the tab, kills its PTY (SIGHUP, then
   SIGKILL after 200 ms), and falls back to the next-MRU tab on the same
   worktree if any.
+- **Drag a tab** along the tab strip to reorder it; a short click still
+  selects (the drag only engages past a small threshold).
+- **Click a link in terminal output** → a local dev-server URL (e.g. the
+  `http://localhost:5173/` Vite prints) opens in the [embedded
+  browser](#browser) pane; any other URL opens in your OS browser.
 
 Terminals stay mounted (consuming PTY data into their scrollback) when
 not visible, so switching back is instant — no replay flicker.
@@ -215,6 +242,7 @@ viewer does that without leaving treeline or breaking your terminal flow.
   | `?`    | untracked | green  |
   | `D`    | deleted   | red    |
   | `R`    | renamed   | cyan   |
+  | `U`    | conflicted | red   |
 
   Deleted entries are shown struck-through and aren't clickable. The list
   refreshes off the same `.git` watcher that drives the dirty dot, so it
@@ -341,6 +369,9 @@ migrated forward with the new defaults filled in.
 
 ### Scriptable CLI
 
+> Full reference — install, every command, JSON output shapes, the raw socket
+> protocol, and troubleshooting — is in the **[CLI Guide](docs/CLI.md)**.
+
 The running app exposes a `treeline` CLI (and a raw socket API) so scripts and
 agents — not just the mouse — can drive it. The app's main process listens on a
 **user-scoped unix domain socket** (under its `userData` dir, `0600`, never bound
@@ -366,8 +397,11 @@ treeline browser fill  <selector> <text…>  # type into a field         (local 
 treeline browser screenshot [path]         # capture the pane (PNG file, else data URL)
 ```
 
-The CLI ships as a self-contained Node script (`bin/treeline.mjs`) you can symlink
-onto your `PATH`. `treeline hooks setup` does that and wires **Claude Code** hooks:
+The CLI is a self-contained Node script that lives in the **source checkout** at
+`bin/treeline.mjs`. It is **not bundled into the packaged `.app`** (the build ships
+only `out/**` + `package.json`), so to use it you need a clone of this repo; symlink
+`bin/treeline.mjs` onto your `PATH` from there. `treeline hooks setup` does that
+symlink for you and wires **Claude Code** hooks:
 it adds `Stop` and `Notification` entries to `~/.claude/settings.json` that call an
 internal `notify-hook`, turning *"Claude finished / Claude needs input"* into a
 desktop ping from the running app (`treeline hooks remove` reverses it). The hook

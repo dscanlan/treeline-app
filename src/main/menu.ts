@@ -1,7 +1,14 @@
-import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { resolveKeybindings, type ResolvedKeybindings } from '@shared/keybindings';
 import { checkForUpdatesManual } from './updater';
+
+/** Docs on GitHub, opened from the Help menu so packaged-app users can find them. */
+const DOCS = {
+  userGuide: 'https://github.com/dscanlan/treeline-app/blob/main/docs/USER_GUIDE.md',
+  cli: 'https://github.com/dscanlan/treeline-app/blob/main/docs/CLI.md',
+  repo: 'https://github.com/dscanlan/treeline-app',
+} as const;
 
 /**
  * Build the macOS app menu. Accelerators are driven by the resolved keybinding
@@ -114,6 +121,24 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
               { role: 'window' as const },
             ]
           : [{ role: 'close' as const }]),
+      ],
+    },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'User Guide',
+          click: () => void shell.openExternal(DOCS.userGuide),
+        },
+        {
+          label: 'CLI Reference',
+          click: () => void shell.openExternal(DOCS.cli),
+        },
+        { type: 'separator' as const },
+        {
+          label: `${appName} on GitHub`,
+          click: () => void shell.openExternal(DOCS.repo),
+        },
       ],
     },
   ];
