@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { Folder, Repo, Worktree } from '@shared/types';
+import type { Folder, PrInfo, Repo, Worktree } from '@shared/types';
 
 /** Clamp bounds for the resizable sidebar (px). */
 export const SIDEBAR_MIN_WIDTH = 180;
@@ -36,6 +36,12 @@ export interface ReposSlice {
   /** Plain (non-git) directories pinned to the sidebar as bare file trees. */
   folders: Folder[];
   worktreesByRepo: Record<string, Worktree[]>;
+  /**
+   * GitHub PR status keyed by repo path → branch name → PrInfo. Populated from
+   * the PR monitor's `pr:update` broadcasts (and the initial `pr:snapshot`).
+   * `WorktreeRow` looks up `prByRepoBranch[repoPath]?.[worktree.branch]`.
+   */
+  prByRepoBranch: Record<string, Record<string, PrInfo>>;
   selectedSidebarPath: string | null;
   /**
    * Scratch terminal id selected in the sidebar. Mutually exclusive with
@@ -59,6 +65,10 @@ export interface ReposSlice {
   setRepos: (repos: Repo[]) => void;
   setFolders: (folders: Folder[]) => void;
   setWorktrees: (repoPath: string, worktrees: Worktree[]) => void;
+  /** Replace a single repo's branch→PR map (one PR-monitor broadcast). */
+  setPrInfo: (repoPath: string, prByBranch: Record<string, PrInfo>) => void;
+  /** Replace the whole repo→branch→PR index (initial snapshot hydrate). */
+  setAllPrInfo: (prByRepoBranch: Record<string, Record<string, PrInfo>>) => void;
   setSelected: (path: string | null) => void;
   setSelectedScratch: (id: string | null) => void;
   setFilter: (s: string) => void;
@@ -71,6 +81,7 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   repos: [],
   folders: [],
   worktreesByRepo: {},
+  prByRepoBranch: {},
   selectedSidebarPath: null,
   selectedScratchId: null,
   filter: '',
@@ -82,6 +93,9 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   setFolders: (folders) => set({ folders }),
   setWorktrees: (repoPath, worktrees) =>
     set((s) => ({ worktreesByRepo: { ...s.worktreesByRepo, [repoPath]: worktrees } })),
+  setPrInfo: (repoPath, prByBranch) =>
+    set((s) => ({ prByRepoBranch: { ...s.prByRepoBranch, [repoPath]: prByBranch } })),
+  setAllPrInfo: (prByRepoBranch) => set({ prByRepoBranch }),
   // Selecting a worktree clears any scratch selection (and vice versa) so
   // exactly one row in the sidebar appears highlighted at a time.
   setSelected: (path) => set({ selectedSidebarPath: path, selectedScratchId: null }),

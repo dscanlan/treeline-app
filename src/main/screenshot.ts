@@ -13,6 +13,7 @@ import type {
   DirEntry,
   FileDiff,
   Folder,
+  PrInfo,
   Repo,
   Scratch,
   SettingsConfig,
@@ -233,6 +234,43 @@ const SCENARIOS: Record<string, Scenario> = {
         [devWt.path]: [3000, 5173],
         [claudeWt.path]: [8787],
       },
+    });
+  },
+
+  '34-pr-status': async ({ win }) => {
+    // Linked-PR badges: `#NNN` colored by state plus a CI rollup glyph, on the
+    // same metadata line as the port chips / process badge. feat-auth has an
+    // open PR with passing checks (green #482 ✓); the Claude worktree has a
+    // draft PR with checks still running (dim #471 ●), shown beside its magenta
+    // process badge and dirty dot to demonstrate the shared metadata line.
+    const featWt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const claudeWt = WORKTREES_TREELINE_APP[2]!; // worktree-discovery-feat
+    const fakeClaude: DetectedProcess = {
+      pid: 31415,
+      kind: 'claude',
+      cwd: claudeWt.path,
+      idle: false,
+    };
+    const prByBranch: Record<string, PrInfo> = {
+      [featWt.branch]: {
+        number: 482,
+        state: 'open',
+        url: 'https://github.com/example/treeline-app/pull/482',
+        checks: 'passing',
+      },
+      [claudeWt.branch]: {
+        number: 471,
+        state: 'draft',
+        url: 'https://github.com/example/treeline-app/pull/471',
+        checks: 'pending',
+      },
+    };
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      processesByWorktreePath: { [claudeWt.path]: [fakeClaude] },
+      prByRepoBranch: { [REPO_TREELINE_APP.path]: prByBranch },
     });
   },
 

@@ -289,6 +289,41 @@ the sidebar reads `portsByWorktreePath[wt.path]` to render the `:PORT`
 chips. Attribution is by the listener's cwd, so a server started outside
 treeline still shows up as long as it's rooted in the worktree.
 
+### Linked PR status (gh)
+
+The `PrMonitor` (`main/pr-monitor.ts`) is a separate monitor from the
+`ProcessMonitor` — PR status is a per-repo network call, not a per-process
+local probe — but it follows the same EventEmitter + broadcast-on-change
+shape:
+
+1. `start()` probes `ghAvailable()` once (`gh --version`, memoized). No
+   `gh` on PATH → the monitor stays dormant and the feature is a no-op.
+2. A 60 s timer polls every tracked repo; `setRepoPaths()` (seeded from
+   the repo list, kept in sync by the repo add/remove hooks) refreshes
+   newly-added repos immediately, and the `WorktreeWatcher`'s `change`
+   broadcast triggers a targeted `refreshRepo()` so a new branch's PR
+   surfaces without waiting for the next tick.
+3. `main/gh.ts` runs `gh pr list --state all --json
+   number,state,isDraft,headRefName,url,statusCheckRollup` (`cwd` = repo),
+   indexes by `headRefName`, maps `state`+`isDraft` → `PrState`, and
+   reduces `statusCheckRollup` → one `PrChecks` (any failure → failing;
+   else any in-flight → pending; else passing). Any non-zero exit — no
+   GitHub remote, unauthenticated, offline, timeout — degrades to `{}`.
+4. A per-repo `refreshing` guard coalesces overlapping fetches; the
+   monitor emits `update { repoPath, prByBranch }` only when a repo's map
+   actually changes (JSON-diffed against the last broadcast).
+
+Unlike the process/port indexes (keyed by worktree path), PR data is keyed
+by **repo + branch** and lives in its own side map — `git-porcelain.ts`
+and the `Worktree` type stay pure and network-free. `ipc/pr.ts` holds the
+latest-per-repo snapshot (served on `pr:snapshot` for first paint) and
+broadcasts deltas on `pr:update`; the renderer stores them in
+`prByRepoBranch[repoPath][branch]`, and `WorktreeRow` renders `<PrBadge>`
+from `prByRepoBranch[repoPath]?.[worktree.branch]`. Clicking the badge
+calls `system.openExternal`, which validates the URL against the same
+`isSafeExternalUrl` web/mail allowlist used for terminal links before
+handing it to `shell.openExternal`.
+
 ### Per-tab status (running / idle / exited)
 
 Independent from AI CLI detection — answers the simpler question "does
@@ -307,7 +342,7 @@ this tab's shell have a foreground process running right now?"
 ### Quit
 
 1. `before-quit` fires.
-2. WorktreeWatcher, TerminalStatusMonitor, ProcessMonitor stop.
+2. WorktreeWatcher, TerminalStatusMonitor, ProcessMonitor, PrMonitor stop.
 3. PtyManager calls `proc.kill('SIGHUP')` on every PTY.
 4. Each PTY gets 200 ms to exit gracefully.
 5. Holdouts get `SIGKILL`.
@@ -413,8 +448,10 @@ src/
 │   ├── menu.ts                   # macOS menu template; accelerators from the keybinding map.
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.
+│   ├── gh.ts                     # gh CLI: list PRs per repo; PURE parse/rollup helpers.
 │   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing.
 │   ├── process-monitor.ts        # 2 s ps + lsof; idle CPU tracking; listening-port scan.
+│   ├── pr-monitor.ts             # 60 s gh PR poll per repo; emit-on-change broadcast.
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
@@ -424,6 +461,8 @@ src/
 │   │   ├── worktrees.ts          # list/create/remove + onChange events.
 │   │   ├── pty.ts                # spawn/write/resize/kill + data/exit.
 │   │   ├── processes.ts          # snapshot + update events.
+│   │   ├── pr.ts                 # pr:snapshot + pr:update events (latest-per-repo).
+│   │   ├── system.ts             # system:openExternal (safe-url allowlist).
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
 │   │   ├── files.ts             # files:readDir/read/changed/diff/write (validate → files-io/git).
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot/setSettings.
@@ -442,9 +481,10 @@ src/
     │   ├── FilterInput.tsx
     │   ├── AddRepoButton.tsx
     │   ├── RepoNode.tsx          # Per-repo collapsible group.
-    │   ├── WorktreeRow.tsx       # branch · sha · dirty · status · processes.
+    │   ├── WorktreeRow.tsx       # branch · sha · dirty · status · processes · ports · PR.
     │   ├── TabStatusDot.tsx
     │   ├── ProcessBadge.tsx
+    │   ├── PrBadge.tsx           # #NNN colored by PR state + CI glyph; opens PR on click.
     │   ├── MainArea.tsx          # Splits terminal + optional code panel.
     │   ├── TabBar.tsx
     │   ├── TabItem.tsx

@@ -17,11 +17,14 @@ import { appPaletteForId } from '@shared/terminal-theme';
 import { WorktreeWatcher } from './worktree-watcher';
 import { TerminalStatusMonitor } from './terminal-status';
 import { ProcessMonitor } from './process-monitor';
+import { PrMonitor } from './pr-monitor';
 import { RepoDiscovery, type DiscoveredRepoEvent } from './repo-discovery';
 import { broadcastDiscoveredRepo, registerReposIpc } from './ipc/repos';
 import { registerWorktreesIpc, broadcastWorktreesChanged } from './ipc/worktrees';
 import { registerPtyIpc } from './ipc/pty';
 import { registerProcessesIpc, broadcastProcesses } from './ipc/processes';
+import { registerPrIpc, broadcastPr } from './ipc/pr';
+import { registerSystemIpc } from './ipc/system';
 import { registerConfigIpc } from './ipc/config';
 import { registerFilesIpc } from './ipc/files';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
@@ -39,6 +42,7 @@ let reposStore: ReposStore | null = null;
 let worktreeWatcher: WorktreeWatcher | null = null;
 let terminalStatusMonitor: TerminalStatusMonitor | null = null;
 let processMonitor: ProcessMonitor | null = null;
+let prMonitor: PrMonitor | null = null;
 let repoDiscovery: RepoDiscovery | null = null;
 let cliServer: CliServer | null = null;
 let isQuitting = false;
@@ -167,10 +171,20 @@ app.whenReady().then(() => {
   processMonitor.on('snapshot', (snap) => broadcastProcesses(snap));
   processMonitor.start();
 
+  // GitHub PR status per branch via the `gh` CLI. Polls slowly (network +
+  // rate limits) and broadcasts deltas; no-ops if `gh` isn't installed.
+  prMonitor = new PrMonitor();
+  prMonitor.on('update', (snap) => broadcastPr(snap));
+  prMonitor.setRepoPaths(cfg.repos.map((r) => r.path));
+  void prMonitor.start();
+
   worktreeWatcher = new WorktreeWatcher();
   worktreeWatcher.on('change', ({ repoPath }: { repoPath: string }) => {
     broadcastWorktreesChanged(repoPath);
     processMonitor?.setWorktreePaths(worktreeWatcher?.allWorktreePaths() ?? []);
+    // A new/removed worktree may add or retire a branch with a PR — refresh
+    // this repo's PR map off the same debounced signal rather than per-render.
+    void prMonitor?.refreshRepo(repoPath);
   });
   for (const repo of cfg.repos) worktreeWatcher.add(repo.path);
   // Initial seed for the process monitor so prefix matching works on tick #1.
@@ -195,10 +209,12 @@ app.whenReady().then(() => {
     onRepoAdded: (path) => {
       worktreeWatcher?.add(path);
       repoDiscovery?.setTrackedRepos(reposStore?.get().repos.map((r) => r.path) ?? []);
+      prMonitor?.setRepoPaths(reposStore?.get().repos.map((r) => r.path) ?? []);
     },
     onRepoRemoved: (path) => {
       worktreeWatcher?.remove(path);
       repoDiscovery?.setTrackedRepos(reposStore?.get().repos.map((r) => r.path) ?? []);
+      prMonitor?.setRepoPaths(reposStore?.get().repos.map((r) => r.path) ?? []);
     },
     onRepoDismissed: () => {
       repoDiscovery?.setDismissedRepos(reposStore?.get().dismissedRepos ?? []);
@@ -207,6 +223,8 @@ app.whenReady().then(() => {
   registerWorktreesIpc();
   registerPtyIpc(ptyManager);
   registerProcessesIpc();
+  registerPrIpc();
+  registerSystemIpc();
   registerConfigIpc(reposStore, {
     // Rebuild the app menu when keybindings change so new accelerators apply
     // without a restart.
@@ -282,6 +300,7 @@ app.on('before-quit', async (e) => {
   worktreeWatcher?.stop();
   terminalStatusMonitor?.stop();
   processMonitor?.stop();
+  prMonitor?.stop();
   void cliServer?.stop();
   if (!ptyManager) return;
   // Best-effort: SIGHUP every PTY, then SIGKILL any holdouts after the grace.

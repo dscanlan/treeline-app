@@ -5,6 +5,7 @@ import { openTabAt } from '../actions/tabs';
 import { toggleDir } from '../actions/editor';
 import { TabStatusDot } from './TabStatusDot';
 import { ProcessBadge } from './ProcessBadge';
+import { PrBadge } from './PrBadge';
 import { WorktreeFiles } from './WorktreeFiles';
 
 interface Props {
@@ -18,6 +19,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const wtStatus = useStore((s) => s.worktreeStatus(worktree.path));
   const procs = useStore((s) => s.processesByWorktreePath[worktree.path] ?? []);
   const ports = useStore((s) => s.portsByWorktreePath[worktree.path] ?? []);
+  const pr = useStore((s) => s.prByRepoBranch[repoPath]?.[worktree.branch]);
   const openModal = useStore((s) => s.openModal);
   const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
 
@@ -91,6 +93,9 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
             * block on the same metadata line — do NOT refactor the layout. */}
           <PortChips ports={ports} />
           {/* ── end listening-port chips ─────────────────────────────────── */}
+          {/* Linked PR badge (feature #5): #NNN + state color + CI glyph, opens
+            * the PR on GitHub. Self-contained, sibling to the port chips. */}
+          {pr && <PrBadge pr={pr} />}
           {worktree.isDirty && (
             <span className="text-treeline-yellow" title="dirty">
               ●

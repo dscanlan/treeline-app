@@ -104,8 +104,9 @@ Each worktree row shows: the branch name, short SHA, a yellow `●` if the
 working tree is dirty, a colored status dot for any open tabs on that
 path (green = running, cyan = idle, dim = exited), a magenta `claude`
 / `opencode` / `aider` badge if one of those CLIs is currently in that
-worktree, and a dim cyan `:PORT` chip for each TCP port a process rooted
-in that worktree is listening on.
+worktree, a dim cyan `:PORT` chip for each TCP port a process rooted
+in that worktree is listening on, and a `#NNN` badge for the branch's
+linked GitHub PR (colored by state, with a CI checks glyph).
 
 Claude-managed worktrees (paths under `.claude/worktrees/` or branches
 starting with `worktree-`) get a magenta `✦` icon and are grouped into
@@ -126,6 +127,24 @@ process exits — without you running `lsof` yourself. Ports are deduped
 and sorted, and attribution is by the listener's **cwd**, so a server
 launched outside treeline still appears as long as it's rooted in the
 worktree.
+
+#### Linked PR status
+
+![Two worktrees in the treeline-app repo: feat-auth showing a green #482 ✓ badge (open PR, checks passing) and the Claude worktree showing a dim #471 ● badge (draft PR, checks pending) beside its magenta CLAUDE badge and dirty dot](docs/img/34-pr-status.png)
+
+A worktree's real status often lives on GitHub — is there an open PR for
+this branch, is CI green, is it merged? A background poll runs the
+[`gh` CLI](https://cli.github.com) (`gh pr list`) per repo and shows the
+branch's linked PR right on its row: the PR number colored by state
+(**green** open · **dim** draft · **magenta** merged · **red** closed)
+plus a CI rollup glyph (**✓** passing · **✗** failing · **●** pending).
+Click the badge to open the PR in your browser. It refreshes on a 60 s
+cadence and whenever the worktree set changes, so a freshly-opened PR or a
+flipped CI run shows up on its own.
+
+This reuses your existing `gh` auth — no token to configure — and degrades
+silently: no `gh`, not authenticated, no GitHub remote, or offline just
+means no badge (everything else works unchanged).
 
 ### Terminals
 
@@ -444,7 +463,8 @@ The short version:
 │                                                                    │
 │   PtyManager (node-pty)         WorktreeWatcher (fs.watch + 5s)    │
 │   TerminalStatusMonitor (1 s)   ProcessMonitor (2 s, ps + lsof)    │
-│   ReposStore (atomic JSON)      git.ts / git-porcelain.ts          │
+│   PrMonitor (60 s, gh CLI)      ReposStore (atomic JSON)           │
+│   git.ts / git-porcelain.ts / gh.ts                                │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -452,7 +472,7 @@ The short version:
 - **`src/main/`** — privileged work: spawning shells, running git,
   watching the filesystem, polling the process table.
 - **`src/preload/index.ts`** — single contextBridge that exposes
-  `window.treeline.{repos, worktrees, pty, processes, terminalStatus, files, config, window, system}`.
+  `window.treeline.{repos, worktrees, pty, processes, pr, terminalStatus, files, config, window, system}`.
   The `system.homeDir` value is injected at window-creation time via
   `webPreferences.additionalArguments`, since a sandboxed preload can't
   `import 'node:os'` directly.
