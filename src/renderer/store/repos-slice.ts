@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { Repo, Worktree } from '@shared/types';
+import type { Folder, Repo, Worktree } from '@shared/types';
 
 /** Clamp bounds for the resizable sidebar (px). */
 export const SIDEBAR_MIN_WIDTH = 180;
@@ -33,6 +33,8 @@ function persistWidth(w: number): void {
 
 export interface ReposSlice {
   repos: Repo[];
+  /** Plain (non-git) directories pinned to the sidebar as bare file trees. */
+  folders: Folder[];
   worktreesByRepo: Record<string, Worktree[]>;
   selectedSidebarPath: string | null;
   /**
@@ -55,6 +57,7 @@ export interface ReposSlice {
   sidebarResizing: boolean;
 
   setRepos: (repos: Repo[]) => void;
+  setFolders: (folders: Folder[]) => void;
   setWorktrees: (repoPath: string, worktrees: Worktree[]) => void;
   setSelected: (path: string | null) => void;
   setSelectedScratch: (id: string | null) => void;
@@ -66,6 +69,7 @@ export interface ReposSlice {
 
 export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (set) => ({
   repos: [],
+  folders: [],
   worktreesByRepo: {},
   selectedSidebarPath: null,
   selectedScratchId: null,
@@ -75,6 +79,7 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   sidebarResizing: false,
 
   setRepos: (repos) => set({ repos }),
+  setFolders: (folders) => set({ folders }),
   setWorktrees: (repoPath, worktrees) =>
     set((s) => ({ worktreesByRepo: { ...s.worktreesByRepo, [repoPath]: worktrees } })),
   // Selecting a worktree clears any scratch selection (and vice versa) so

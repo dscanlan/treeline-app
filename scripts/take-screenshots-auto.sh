@@ -54,6 +54,7 @@ ALL_SCENARIOS=(
   "30-theme-light"
   "31-theme-midnight"
   "32-listening-ports"
+  "33-open-folder"
 )
 
 if [ $# -gt 0 ]; then

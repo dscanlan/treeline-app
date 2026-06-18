@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, basename } from 'node:path';
-import type { AppConfig, Repo, SettingsConfig } from '@shared/types';
+import type { AppConfig, Folder, Repo, SettingsConfig } from '@shared/types';
 import {
   DEFAULT_TERMINAL_FONT_FAMILY,
   DEFAULT_TERMINAL_FONT_SIZE,
@@ -18,11 +18,12 @@ const DEFAULT_SETTINGS: SettingsConfig = {
 
 const DEFAULT_CONFIG: AppConfig = {
   repos: [],
+  folders: [],
   codeRoot: null,
   sidebarCollapsed: false,
   dismissedRepos: [],
   settings: { ...DEFAULT_SETTINGS },
-  schemaVersion: 3,
+  schemaVersion: 4,
 };
 
 /**
@@ -89,6 +90,26 @@ export class ReposStore {
     await this.save({ ...cfg, repos: cfg.repos.filter((r) => r.path !== absPath) });
   }
 
+  async addFolder(absPath: string): Promise<Folder> {
+    const cfg = this.get();
+    const existing = cfg.folders.find((f) => f.path === absPath);
+    if (existing) return existing;
+
+    const folder: Folder = {
+      path: absPath,
+      name: basename(absPath),
+      addedAt: Date.now(),
+    };
+    await this.save({ ...cfg, folders: [...cfg.folders, folder] });
+    return folder;
+  }
+
+  async removeFolder(absPath: string): Promise<void> {
+    const cfg = this.get();
+    if (!cfg.folders.some((f) => f.path === absPath)) return;
+    await this.save({ ...cfg, folders: cfg.folders.filter((f) => f.path !== absPath) });
+  }
+
   async setCodeRoot(p: string | null): Promise<void> {
     await this.save({ ...this.get(), codeRoot: p });
   }
@@ -130,6 +151,20 @@ export class ReposStore {
             typeof r.addedAt === 'number',
         )
         .map((r) => ({ path: r.path, name: r.name, addedAt: r.addedAt }));
+    }
+    // folders — added in schemaVersion 4. Same validation as repos; a pre-v4
+    // config (no `folders` key) lands on []. Repo and Folder share a shape.
+    if (Array.isArray(raw.folders)) {
+      base.folders = raw.folders
+        .filter(
+          (f): f is Folder =>
+            !!f &&
+            typeof f === 'object' &&
+            typeof f.path === 'string' &&
+            typeof f.name === 'string' &&
+            typeof f.addedAt === 'number',
+        )
+        .map((f) => ({ path: f.path, name: f.name, addedAt: f.addedAt }));
     }
     if (typeof raw.codeRoot === 'string' || raw.codeRoot === null) {
       base.codeRoot = raw.codeRoot;

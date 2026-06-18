@@ -106,6 +106,7 @@ export function attachIpc(): () => void {
         }
         useStore.setState({
           repos: [],
+          folders: [],
           worktreesByRepo: {},
           selectedSidebarPath: null,
           selectedScratchId: null,
@@ -145,6 +146,7 @@ export function attachIpc(): () => void {
       if (p.reset) s.setSettings(DEFAULT_RENDERER_SETTINGS);
       if (p.settings) s.setSettings(p.settings);
       if (p.repos) s.setRepos(p.repos);
+      if (p.folders) s.setFolders(p.folders);
       if (p.worktreesByRepo) {
         for (const [path, wts] of Object.entries(p.worktreesByRepo)) {
           s.setWorktrees(path, wts);
@@ -239,6 +241,7 @@ export async function loadInitialState(): Promise<void> {
   const api = window.treeline;
   const cfg = await api.config.get();
   useStore.getState().setRepos(cfg.repos);
+  useStore.getState().setFolders(cfg.folders);
   useStore.getState().setSidebarCollapsed(cfg.sidebarCollapsed);
   useStore.getState().setSettings(cfg.settings);
 

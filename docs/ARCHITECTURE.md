@@ -39,18 +39,22 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 
 ## Data flow
 
-### Adding a repo
+### Adding a repo or folder
 
-1. User clicks `+ Add repo` in the sidebar.
+1. User clicks `+ Add repo / folder` in the sidebar.
 2. Renderer calls `window.treeline.repos.pickDirectory()`.
 3. Preload forwards via `ipcRenderer.invoke('repos:pickDirectory')`.
 4. Main shows a native `dialog.showOpenDialog` and returns the path.
-5. Renderer calls `window.treeline.repos.add(path)`.
-6. Main validates that the path is a git repo (`git rev-parse
-   --show-toplevel`), persists it to `~/Library/Application
-   Support/treeline-app/config.json` via the `ReposStore`, and tells the
-   `WorktreeWatcher` to start watching the new repo.
-7. Renderer reads the updated config and calls
+5. Renderer calls `window.treeline.repos.addPath(path)`.
+6. Main classifies the path with `resolveParentRepoPath` (`git rev-parse`):
+   - **A git repo** (or any path inside one) → persisted as a repo via the
+     `ReposStore`, the `WorktreeWatcher` starts watching it, and the handler
+     returns `{ kind: 'repo', repo }`.
+   - **Anything else** → pinned as a plain non-git **folder** (`ReposStore.addFolder`),
+     returning `{ kind: 'folder', folder }`. A folder roots a bare file tree
+     with no worktrees and no Changed/diff (see *Open folders* in the README).
+7. The store persists to `~/Library/Application Support/treeline-app/config.json`.
+   Renderer reads the updated config; for a repo it also calls
    `window.treeline.worktrees.list(path)` to populate the sidebar.
 
 ### Opening a terminal
@@ -192,9 +196,12 @@ and agents can issue the same verbs a user would click.
 
 Settings (`SettingsConfig`: `terminalTheme`, `fontFamily`, `fontSize`,
 `keybindings`) live in `AppConfig` and persist through the same atomic
-`ReposStore`. The store is at `schemaVersion: 3`; `migrate()` default-fills the
-whole `settings` block for any pre-v3 config and sanitises a partial/corrupt one
-(wrong-typed fields dropped), so an older install upgrades silently.
+`ReposStore`. The store is at `schemaVersion: 4`; `migrate()` default-fills the
+whole `settings` block for any pre-v3 config and the `folders` array for any
+pre-v4 config (both default to empty/factory values), and sanitises
+partial/corrupt entries (wrong-typed fields dropped), so an older install
+upgrades silently. `migrate()` is the single owner of the schema — new
+persisted fields are added here and the version bumped once.
 
 **App-wide theming runs on CSS variables.** The nine `treeline-*` Tailwind tokens
 (`tailwind.config.ts`) don't hold colors — each resolves to

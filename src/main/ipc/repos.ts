@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { Channels } from '@shared/ipc-channels';
-import type { Repo } from '@shared/types';
+import type { AddPathResult, Repo } from '@shared/types';
 import { resolveParentRepoPath } from '../git';
 import { createRepo, type CreateRepoOpts } from '../repos-create';
 import type { ReposStore } from '../repos-store';
@@ -55,6 +55,26 @@ export function registerReposIpc(
     return repo;
   });
 
+  handle(Channels.ReposAddPath, async (rawPath): Promise<AddPathResult> => {
+    const path = validateAbsPath(rawPath);
+    // Classify the picked directory: a git repo (or any path inside one) is
+    // added as a repo with worktrees, exactly like ReposAdd. Anything else is
+    // pinned as a plain folder root — a bare, git-free file tree.
+    const parent = await resolveParentRepoPath(path);
+    if (parent) {
+      const repo = await store.addRepo(parent);
+      hooks.onRepoAdded?.(parent);
+      return { kind: 'repo', repo };
+    }
+    const folder = await store.addFolder(path);
+    return { kind: 'folder', folder };
+  });
+
+  handle(Channels.FoldersRemove, async (rawPath) => {
+    const path = validateAbsPath(rawPath);
+    await store.removeFolder(path);
+  });
+
   handle(Channels.ReposCreate, async (rawOpts) => {
     // createRepo validates rawOpts internally; we just narrow the unknown.
     const repo = await createRepo(store, rawOpts as CreateRepoOpts);
@@ -77,8 +97,9 @@ export function registerReposIpc(
   handle(Channels.ReposPickDirectory, async (): Promise<string | null> => {
     const win = getMainWindow();
     const opts: Electron.OpenDialogOptions = {
-      title: 'Add repo or worktree path',
-      message: 'Pick a repo root, a subdirectory, or a worktree path. Treeline resolves to the parent repo automatically.',
+      title: 'Add repo or folder',
+      message:
+        'Pick a git repo, worktree, or any folder. Git paths resolve to the parent repo; a non-git folder is pinned as a plain file tree.',
       properties: ['openDirectory'],
       buttonLabel: 'Add',
     };

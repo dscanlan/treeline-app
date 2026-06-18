@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../store';
 import { RepoNode } from './RepoNode';
+import { FolderNode } from './FolderNode';
 import { FilterInput } from './FilterInput';
 import { AddRepoButton } from './AddRepoButton';
 import { NewRepoButton } from './NewRepoButton';
@@ -9,15 +10,17 @@ import { ScratchTerminalButton } from './ScratchTerminalButton';
 import { SidebarToggle } from './SidebarToggle';
 
 export function Sidebar() {
-  const { repos, sidebarCollapsed, sidebarWidth, sidebarResizing, hasScratches } = useStore(
-    useShallow((s) => ({
-      repos: s.repos,
-      sidebarCollapsed: s.sidebarCollapsed,
-      sidebarWidth: s.sidebarWidth,
-      sidebarResizing: s.sidebarResizing,
-      hasScratches: s.scratches.length > 0,
-    })),
-  );
+  const { repos, folders, sidebarCollapsed, sidebarWidth, sidebarResizing, hasScratches } =
+    useStore(
+      useShallow((s) => ({
+        repos: s.repos,
+        folders: s.folders,
+        sidebarCollapsed: s.sidebarCollapsed,
+        sidebarWidth: s.sidebarWidth,
+        sidebarResizing: s.sidebarResizing,
+        hasScratches: s.scratches.length > 0,
+      })),
+    );
 
   return (
     <aside
@@ -60,13 +63,20 @@ export function Sidebar() {
           </>
         )}
         <div className="px-1">
-          {repos.length === 0 ? (
+          {repos.length === 0 && folders.length === 0 ? (
             <div className="px-3 py-6 text-treeline-dim">
-              No repositories yet. Click <span className="text-treeline-text">+ Add repo</span> to
-              begin.
+              No repositories yet. Click{' '}
+              <span className="text-treeline-text">+ Add repo / folder</span> to begin.
             </div>
           ) : (
-            repos.map((r) => <RepoNode key={r.path} repo={r} />)
+            <>
+              {repos.map((r) => (
+                <RepoNode key={r.path} repo={r} />
+              ))}
+              {folders.map((f) => (
+                <FolderNode key={f.path} folder={f} />
+              ))}
+            </>
           )}
         </div>
       </div>

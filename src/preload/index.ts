@@ -3,6 +3,7 @@ import { Channels } from '@shared/ipc-channels';
 import type { ScreenshotHydratePayload, TreelineApi } from '@shared/ipc-contract';
 import type { CliRendererCommand } from '@shared/cli-protocol';
 import type {
+  AddPathResult,
   AppConfig,
   ChangedFile,
   DirEntry,
@@ -47,6 +48,8 @@ const api: TreelineApi = {
   repos: {
     list: () => ipcRenderer.invoke(Channels.ReposList) as Promise<Repo[]>,
     add: (path) => ipcRenderer.invoke(Channels.ReposAdd, path) as Promise<Repo>,
+    addPath: (path) =>
+      ipcRenderer.invoke(Channels.ReposAddPath, path) as Promise<AddPathResult>,
     create: (opts) => ipcRenderer.invoke(Channels.ReposCreate, opts) as Promise<Repo>,
     remove: (path) => ipcRenderer.invoke(Channels.ReposRemove, path) as Promise<void>,
     pickDirectory: () =>
@@ -111,6 +114,11 @@ const api: TreelineApi = {
     diff: (path) => ipcRenderer.invoke(Channels.FilesDiff, path) as Promise<FileDiff>,
     write: (path, content) =>
       ipcRenderer.invoke(Channels.FilesWrite, path, content) as Promise<void>,
+  },
+
+  folders: {
+    remove: (path) =>
+      ipcRenderer.invoke(Channels.FoldersRemove, path) as Promise<void>,
   },
 
   config: {

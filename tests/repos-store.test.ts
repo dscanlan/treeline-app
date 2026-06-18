@@ -27,7 +27,7 @@ describe('ReposStore', () => {
     expect(cfg.settings.terminalTheme).toBe('graphite');
     expect(cfg.settings.fontSize).toBe(13);
     expect(cfg.settings.keybindings).toEqual({});
-    expect(cfg.schemaVersion).toBe(3);
+    expect(cfg.schemaVersion).toBe(4);
   });
 
   it('addRepo + removeRepo round-trips through disk', async () => {
@@ -57,6 +57,48 @@ describe('ReposStore', () => {
     const second = await store.addRepo('/Users/me/code/foo');
     expect(first).toEqual(second);
     expect(store.get().repos).toHaveLength(1);
+  });
+
+  it('load() defaults folders to [] when file is missing', () => {
+    expect(new ReposStore(configPath).load().folders).toEqual([]);
+  });
+
+  it('addFolder + removeFolder round-trips through disk and is idempotent', async () => {
+    const a = new ReposStore(configPath);
+    a.load();
+    const first = await a.addFolder('/Users/me/.claude/commands');
+    const second = await a.addFolder('/Users/me/.claude/commands'); // dup
+    expect(first).toEqual(second);
+    await a.addFolder('/Users/me/notes');
+
+    const b = new ReposStore(configPath);
+    const cfg = b.load();
+    expect(cfg.folders.map((f) => f.path)).toEqual([
+      '/Users/me/.claude/commands',
+      '/Users/me/notes',
+    ]);
+    expect(cfg.folders[0]?.name).toBe('commands');
+
+    await b.removeFolder('/Users/me/.claude/commands');
+    const c = new ReposStore(configPath);
+    expect(c.load().folders.map((f) => f.path)).toEqual(['/Users/me/notes']);
+  });
+
+  it('migrates a pre-v4 config (no folders field) by defaulting to []', () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        repos: [{ path: '/x', name: 'x', addedAt: 100 }],
+        codeRoot: null,
+        sidebarCollapsed: false,
+        dismissedRepos: [],
+        schemaVersion: 3,
+      }),
+    );
+    const cfg = new ReposStore(configPath).load();
+    expect(cfg.folders).toEqual([]);
+    expect(cfg.repos).toHaveLength(1);
+    expect(cfg.schemaVersion).toBe(4);
   });
 
   it('setSidebarCollapsed persists across reloads', async () => {
@@ -89,7 +131,7 @@ describe('ReposStore', () => {
     const store = new ReposStore(configPath);
     const cfg = store.load();
     expect(cfg.repos).toEqual([]);
-    expect(cfg.schemaVersion).toBe(3);
+    expect(cfg.schemaVersion).toBe(4);
   });
 
   it('migrates a partial config (missing keys) without losing data', () => {
@@ -107,7 +149,7 @@ describe('ReposStore', () => {
     expect(cfg.sidebarCollapsed).toBe(false);
     expect(cfg.dismissedRepos).toEqual([]);
     expect(cfg.settings.terminalTheme).toBe('graphite');
-    expect(cfg.schemaVersion).toBe(3);
+    expect(cfg.schemaVersion).toBe(4);
   });
 
   it('dismissRepo persists across reloads and is idempotent', async () => {
@@ -139,7 +181,7 @@ describe('ReposStore', () => {
     expect(cfg.sidebarCollapsed).toBe(true);
     expect(cfg.settings.terminalTheme).toBe('graphite');
     expect(cfg.settings.keybindings).toEqual({});
-    expect(cfg.schemaVersion).toBe(3);
+    expect(cfg.schemaVersion).toBe(4);
   });
 
   it('writes atomically — the tmp file is never left behind on success', async () => {

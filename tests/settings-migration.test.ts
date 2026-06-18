@@ -32,7 +32,7 @@ describe('settings migration (schemaVersion 3)', () => {
       }),
     );
     const cfg = new ReposStore(configPath).load();
-    expect(cfg.schemaVersion).toBe(3);
+    expect(cfg.schemaVersion).toBe(4);
     expect(cfg.settings).toEqual({
       terminalTheme: 'graphite',
       fontFamily:
@@ -103,7 +103,7 @@ describe('settings migration (schemaVersion 3)', () => {
   it('a corrupt config falls back to default settings', () => {
     writeFileSync(configPath, '{ broken');
     const cfg = new ReposStore(configPath).load();
-    expect(cfg.schemaVersion).toBe(3);
+    expect(cfg.schemaVersion).toBe(4);
     expect(cfg.settings.keybindings).toEqual({});
   });
 });

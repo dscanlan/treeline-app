@@ -11,6 +11,28 @@ export interface Repo {
   addedAt: number;
 }
 
+/**
+ * A plain (non-git) directory the user has pinned to the sidebar. Same shape as
+ * {@link Repo} but semantically distinct: a folder roots a bare file tree with no
+ * worktrees and no git Changed/diff features. Added in schemaVersion 4.
+ */
+export interface Folder {
+  /** Absolute directory path. */
+  path: string;
+  /** basename(path). */
+  name: string;
+  /** epoch ms when the user added this folder. */
+  addedAt: number;
+}
+
+/**
+ * Result of `repos.addPath`: the main process classifies the picked directory as
+ * either a git repo (added with worktrees, today's behavior) or a plain folder.
+ */
+export type AddPathResult =
+  | { kind: 'repo'; repo: Repo }
+  | { kind: 'folder'; folder: Folder };
+
 export interface Worktree {
   /** Absolute, canonicalized worktree path. */
   path: string;
@@ -99,6 +121,11 @@ export interface SettingsConfig {
 
 export interface AppConfig {
   repos: Repo[];
+  /**
+   * Plain (non-git) directories pinned to the sidebar as bare file trees. Added
+   * in schemaVersion 4; older configs default-fill this to []. See {@link Folder}.
+   */
+  folders: Folder[];
   /** Optional: parent dir for future "discover under root" features. */
   codeRoot: string | null;
   /** Persisted sidebar collapse state. */
@@ -114,7 +141,7 @@ export interface AppConfig {
    * schemaVersion 3. Always present after migrate() default-fills it.
    */
   settings: SettingsConfig;
-  schemaVersion: 3;
+  schemaVersion: 4;
 }
 
 export interface TerminalStatusUpdate {

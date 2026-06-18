@@ -237,6 +237,33 @@ placeholder instead of mojibake.
 
 ![The unsaved-changes modal — Keep editing or Discard — shown when navigating away mid-edit](docs/img/23-discard-modal.png)
 
+### Open folders (non-git)
+
+![A repo with its worktrees above a top-level "commands" folder node expanded to its files (review-ideas.md selected), with the file's rendered Markdown Preview in the split code panel — the folder has no worktrees and no Changed/diff tab](docs/img/33-open-folder.png)
+
+Not everything you want to read or edit lives in a git repo — dotfiles, a
+notes directory, `~/.claude/commands`. **Add repo / folder** accepts those too:
+pick any directory and, if it isn't a git repo, treeline pins it as a plain
+**folder** root.
+
+- **One button, two outcomes.** Click **+ Add repo / folder** and pick a
+  directory. A git repo (or any path inside one) is added as a repo with its
+  worktrees, exactly as before; anything else is pinned as a folder.
+- **A bare, editable file tree.** A folder appears as a top-level node (folder
+  glyph, below your repos) that expands straight into the same lazy file tree —
+  click files to view, **Edit** + **⌘S** to save. The whole code viewer
+  (syntax highlighting, Markdown preview) works unchanged.
+- **No git, no git UI.** Folders have no worktrees and no **`All | Changed`**
+  toggle or diff view — those are git-only. Saving a file in a folder just
+  writes it; there's nothing to diff against.
+- **Persists across restarts**, alongside your repos. The **`×`** on the folder
+  row unpins it (the files on disk are untouched); **`>_`** opens a terminal
+  there.
+
+Editing existing files only — creating brand-new files from the tree isn't
+supported yet. (A directory that sits *inside* a git repo is detected as that
+repo, not added as a plain folder.)
+
 ### Browser
 
 ![The embedded browser pane open beside a terminal: the left tab shows a worktree running npm run dev, and the right pane is a real Chromium webview with an address bar (http://localhost:3000), back/forward/reload controls, and a rendered dashboard page](docs/img/27-browser.png)

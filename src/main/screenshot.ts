@@ -10,7 +10,9 @@ import type { ScreenshotHydratePayload } from '@shared/ipc-contract';
 import type {
   ChangedFile,
   DetectedProcess,
+  DirEntry,
   FileDiff,
+  Folder,
   Repo,
   Scratch,
   SettingsConfig,
@@ -896,6 +898,71 @@ const SCENARIOS: Record<string, Scenario> = {
       worktreesByRepo: ALL_WORKTREES,
       settings: settingsCfg({ terminalTheme: 'midnight' }),
     });
+  },
+
+  // ── Open Folder: a plain non-git directory pinned to the sidebar ─────────
+  // A repo (with its worktrees) sits above a top-level *folder* node —
+  // ~/.claude/commands — expanded to its bare, editable file tree. There are no
+  // worktrees and no Changed/diff tab for a folder; here review-ideas.md is
+  // opened in the rendered Markdown preview beside the terminal.
+  '33-open-folder': async (ctx) => {
+    const folder: Folder = {
+      path: '/Users/example/.claude/commands',
+      name: 'commands',
+      addedAt: 1_700_000_000_000,
+    };
+    const entry = (name: string): DirEntry => ({
+      name,
+      path: `${folder.path}/${name}`,
+      type: 'file',
+    });
+    const file = `${folder.path}/review-ideas.md`;
+    const md = [
+      '# review-ideas',
+      '',
+      'Review my ideas & project improvements. This file lives in',
+      '`~/.claude/commands` — **outside any git repo** — yet treeline opens it',
+      'for browsing and editing all the same.',
+      '',
+      '## How it works',
+      '',
+      '- Click **+ Add repo / folder** and pick any directory',
+      '- A non-git folder is pinned as a plain file tree (no worktrees)',
+      '- Markdown opens in this rendered **Preview**; switch to **File** to edit',
+      '',
+      '> Tip: ⌘S saves; there is no Changed/diff tab for a plain folder.',
+    ].join('\n');
+
+    const { tab, ptyId } = await spawnTabPty(ctx, 'main');
+    await waitForPtySettle(ctx, ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      folders: [folder],
+      tabs: [tab],
+      activeTabId: tab.id,
+      terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
+      // Expand the folder's bare tree and pre-load its children. The opened
+      // file is highlighted because openFilePath matches its entry path.
+      expandedDirs: { [folder.path]: true },
+      dirChildren: {
+        [folder.path]: [
+          entry('document-repo.md'),
+          entry('ingest-knowledge.md'),
+          entry('lint-vault.md'),
+          entry('query-notes.md'),
+          entry('review-ideas.md'),
+        ],
+      },
+      codePanelOpen: true,
+      codePanelWidth: 560,
+      openFilePath: file,
+      panelMode: 'preview',
+      openFileText: md,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, ptyId, ['clear\n', "echo 'open folder'\n"]);
   },
 };
 

@@ -1,11 +1,13 @@
 import type { CliRendererCommand } from './cli-protocol';
 import type {
+  AddPathResult,
   AppConfig,
   ChangedFile,
   DetectedProcess,
   DirEntry,
   FileContents,
   FileDiff,
+  Folder,
   ProcessSnapshot,
   Repo,
   Scratch,
@@ -25,6 +27,8 @@ export interface ScreenshotHydratePayload {
   /** Wipe slices + localStorage before applying. Always set in practice. */
   reset?: boolean;
   repos?: Repo[];
+  /** Plain non-git folder roots pinned to the sidebar (the "Open Folder" feature). */
+  folders?: Folder[];
   worktreesByRepo?: Record<string, Worktree[]>;
   selected?: string | null;
   pendingDiscoveries?: { repoPath: string; viaCwd: string }[];
@@ -122,6 +126,12 @@ export interface TreelineApi {
     list(): Promise<Repo[]>;
     add(absPath: string): Promise<Repo>;
     /**
+     * Add a picked directory, classified by main: a git repo (added with
+     * worktrees, like `add`) or a plain non-git folder pinned as a bare file
+     * tree. Backs the "+ Add repo / folder" button. See {@link AddPathResult}.
+     */
+    addPath(absPath: string): Promise<AddPathResult>;
+    /**
      * Initialize a new git repo and register it in the store. Validates
      * strictly: target must not already be a repo, new-folder names must not
      * collide, existing-folder targets must be empty (`.DS_Store` ignored).
@@ -190,6 +200,16 @@ export interface TreelineApi {
     diff(path: string): Promise<FileDiff>;
     /** Atomically overwrite the existing file at `path` with `content`. */
     write(path: string, content: string): Promise<void>;
+  };
+
+  /**
+   * Plain (non-git) folders pinned to the sidebar. They're added via
+   * `repos.addPath` (which classifies repo vs folder) and listed through
+   * `config.get().folders`; this namespace only handles removal.
+   */
+  folders: {
+    /** Unpin a plain folder from the sidebar. */
+    remove(absPath: string): Promise<void>;
   };
 
   config: {

@@ -4,11 +4,15 @@ export const Channels = {
   // repos
   ReposList: 'repos:list',
   ReposAdd: 'repos:add',
+  ReposAddPath: 'repos:addPath',
   ReposCreate: 'repos:create',
   ReposRemove: 'repos:remove',
   ReposPickDirectory: 'repos:pickDirectory',
   ReposDismissDiscovered: 'repos:dismissDiscovered',
   ReposDiscovered: 'repos:discovered',
+
+  // folders (plain non-git directories pinned to the sidebar)
+  FoldersRemove: 'folders:remove',
 
   // worktrees
   WorktreesList: 'worktrees:list',
