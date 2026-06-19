@@ -29,7 +29,7 @@ just call it:
 
 ```bash
 treeline ping
-# { "ok": true, "app": "treeline", "version": "0.15.0" }
+# { "ok": true, "app": "treeline", "version": "0.16.0" }
 ```
 
 This is the common case — agents driving the app live in its terminals.
@@ -240,7 +240,7 @@ The CLI pretty-prints the response `data` payload. Shapes:
 **`ping`**
 
 ```json
-{ "ok": true, "app": "treeline", "version": "0.15.0" }
+{ "ok": true, "app": "treeline", "version": "0.16.0" }
 ```
 
 **`repos`** — array of `Repo`:
@@ -327,5 +327,5 @@ sub-action rides in `args.action`). Example with `socat`:
 
 ```bash
 echo '{"verb":"ping"}' | socat - UNIX-CONNECT:"$HOME/Library/Application Support/treeline-app/cli.sock"
-# {"ok":true,"data":{"ok":true,"app":"treeline","version":"0.15.0"}}
+# {"ok":true,"data":{"ok":true,"app":"treeline","version":"0.16.0"}}
 ```
