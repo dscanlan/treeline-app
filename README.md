@@ -549,30 +549,32 @@ disappears so xterm doesn't keep talking to a vanished cwd.
 
 ### Worktree handoff prompt
 
-![Bottom-right toast reading "Open a terminal in feat-auth? A new worktree was created." with Open, Resume Claude here, and Dismiss buttons, beside the sidebar where the feat-auth worktree has just appeared](docs/img/35-worktree-open-toast.png)
+![Bottom-right toast reading "Continue Claude in feat-auth? A new worktree was created." with "Continue Claude in new tab" and Dismiss buttons, beside the sidebar where the feat-auth worktree has just appeared](docs/img/35-worktree-open-toast.png)
 
 When a new worktree appears — typically because an agent ran
 `git worktree add` from inside a hosted terminal — treeline offers to
-open a terminal in it. Without this, the original tab keeps running in
-`main` and the work _looks_ like it's happening there, even though the
-new branch lives elsewhere. **Open** spawns a terminal in the new
-worktree (or focuses the existing one if you already have a tab there);
-**Dismiss** clears the prompt. The trigger is worktree _creation_, so it
-fires for the agent flow where no shell `cd` ever actually happens — the
-`claude` process stays rooted in `main` the whole time.
+**continue the Claude conversation** there, via a **Continue Claude in
+new tab** button. Without this, the original tab keeps running in `main`
+and the work _looks_ like it's happening there, even though the new
+branch lives elsewhere. **Dismiss** clears the prompt. The trigger is
+worktree _creation_, so it fires for the agent flow where no shell `cd`
+ever actually happens — the `claude` process stays rooted in `main` the
+whole time.
 
-The same prompt also appears (with a `↗` chip on the affected tab) when a
+The same detection also fires (with a `↗` chip on the affected tab) when a
 terminal's working directory _drifts_ into a different worktree from the
 one it started in — e.g. you type `cd ../other-worktree` in the shell
-yourself. A worktree you already have a terminal open in is never
-prompted about. First sighting of each worktree at launch is seeded
-silently, so neither startup nor adding a repo nags you — only worktrees
-that appear mid-session do.
+yourself. There's no fresh conversation to hand off in that case, so the
+toast instead offers a plain **Open** — a shell in the drifted-into
+worktree, or focus of the existing tab if you already have one. A worktree
+you already have a terminal open in is never prompted about. First sighting
+of each worktree at launch is seeded silently, so neither startup nor
+adding a repo nags you — only worktrees that appear mid-session do.
 
 ### Resume the Claude session in the worktree
 
-When the prompt fired because a worktree was _created_, it carries a
-third button: **Resume Claude here**. Instead of opening a blank shell, it
+When the prompt fired because a worktree was _created_, its action —
+**Continue Claude in new tab** — does more than open a blank shell: it
 **continues the same Claude conversation** inside the new worktree.
 
 Claude Code stores each conversation's transcript under a folder keyed by
@@ -596,15 +598,27 @@ running would give you _two_ agents working the same task. So on handoff
 treeline freezes the origin pane — `SIGSTOP` on its whole process subtree
 (shell + agent + children), a real stop, not just a focus change — so only
 one copy is ever active. The frozen pane shows a **Session paused** overlay
-naming the worktree it moved to, with a **Return to original (discards
-worktree session)** button that thaws the origin (`SIGCONT`) and closes the
-worktree fork. Closing either tab keeps the pair consistent: close the fork
-and the origin un-freezes; close the origin and the link is simply dropped.
+— a solid card over a dimmed, blurred terminal so it stays legible against
+whatever scrollback sits underneath — naming the worktree the conversation
+moved to and offering the two ways forward:
 
-![The main pane dimmed under a "Session paused" overlay reading "Resumed in worktree feat-auth. This copy is frozen so the two can't run at once," above a "Return to original (discards worktree session)" button, with the frozen Claude session faintly visible behind it](docs/img/37-session-paused.png)
+- **Keep working in `<worktree>` → close this tab** — the usual choice once
+  you've committed to continuing in the worktree. It closes the now-redundant
+  origin tab (reaping the frozen process) and leaves the worktree fork
+  running untouched.
+- **Return to original (discards worktree session)** — the undo. It thaws
+  the origin (`SIGCONT`) and closes the worktree fork, so work resumes where
+  it left off and the fork is thrown away.
 
-This is entirely opt-in — if you never press **Resume Claude here**, nothing
-is copied and nothing is paused; the original session just keeps running.
+Either way the pair stays consistent, and closing the worktree fork tab
+directly also un-freezes the origin — so a parked process can never be
+stranded.
+
+![A "Session paused" overlay on a solid card over a dimmed, blurred terminal, reading "Resumed in worktree feat-auth. This copy is frozen so the two can't run at once," above a primary "Keep working in feat-auth → close this tab" button and a secondary "Return to original (discards worktree session)" button](docs/img/37-session-paused.png)
+
+This is entirely opt-in — if you never press **Continue Claude in new tab**,
+nothing is copied and nothing is paused; the original session just keeps
+running.
 Parking targets the most-recent pane rooted at the parent repo, so run
 `claude` in a hosted treeline terminal (not one outside the app) for the
 pause to find it.

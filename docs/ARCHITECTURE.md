@@ -591,7 +591,7 @@ src/
     │   ├── ScratchRow.tsx
     │   ├── ScratchTerminalButton.tsx
     │   ├── DiscoveredRepoToast.tsx # "Add this untracked repo?" toast.
-    │   ├── WorktreeDriftToast.tsx  # "Open a terminal in this worktree?" toast; + "Resume Claude here" handoff.
+    │   ├── WorktreeDriftToast.tsx  # worktree toast: "Continue Claude in new tab" (created) / "Open" (drift) handoff.
     │   ├── ScreenshotForceTooltip.tsx # Dev-only screenshot-harness helper.
     │   └── modals/
     │       ├── ModalShell.tsx

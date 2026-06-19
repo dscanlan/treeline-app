@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PaneLeaf } from '@shared/pane-tree';
 import { useXterm } from '../hooks/useXterm';
 import { useStore } from '../store';
-import { returnToOriginal } from '../actions/tabs';
+import { returnToOriginal, closeTab } from '../actions/tabs';
 import { TabStatusDot } from './TabStatusDot';
 import { basename } from '../util/path';
 
@@ -51,32 +51,49 @@ export function PaneView({ leaf, tabId, active, showChrome }: Props) {
     >
       <div ref={containerRef} className="absolute inset-0" />
       {/* Parked overlay — this session was frozen (SIGSTOP) because its
-        * conversation was resumed in a worktree. Dims the terminal and offers a
-        * way back, which thaws this pane and discards the worktree fork. */}
+        * conversation was resumed in a worktree. A heavy scrim hides the busy
+        * terminal beneath, and a solid card carries the two ways forward:
+        * keep the worktree (close this dead origin tab) or return here
+        * (thaw this pane and discard the worktree fork). */}
       {handoff && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-treeline-surface/85 backdrop-blur-[1px]">
-          <div className="max-w-[80%] text-center text-xs text-treeline-dim">
-            <div className="mb-1 text-sm text-treeline-text">Session paused</div>
-            Resumed in worktree{' '}
-            <span className="text-treeline-cyan">{basename(handoff.worktreeCwd)}</span>. This
-            copy is frozen so the two can&apos;t run at once.
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 flex max-w-sm flex-col items-center gap-4 rounded-lg border border-treeline-highlight bg-treeline-surface px-6 py-5 text-center shadow-2xl">
+            <div className="text-xs text-treeline-dim">
+              <div className="mb-1 text-sm font-medium text-treeline-text">Session paused</div>
+              Resumed in worktree{' '}
+              <span className="text-treeline-cyan">{basename(handoff.worktreeCwd)}</span>. This
+              copy is frozen so the two can&apos;t run at once.
+            </div>
+            <div className="flex w-full flex-col gap-2">
+              <button
+                type="button"
+                disabled={returning}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void closeTab(tabId);
+                }}
+                className="rounded border border-treeline-cyan bg-treeline-cyan px-3 py-1.5 text-xs font-medium text-treeline-surface hover:opacity-90 disabled:opacity-50"
+              >
+                Keep working in {basename(handoff.worktreeCwd)} → close this tab
+              </button>
+              <button
+                type="button"
+                disabled={returning}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setReturning(true);
+                  try {
+                    await returnToOriginal(leaf.ptyId);
+                  } finally {
+                    setReturning(false);
+                  }
+                }}
+                className="rounded border border-treeline-highlight px-3 py-1.5 text-xs text-treeline-dim hover:text-treeline-text disabled:opacity-50"
+              >
+                {returning ? 'Returning…' : 'Return to original (discards worktree session)'}
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            disabled={returning}
-            onClick={async (e) => {
-              e.stopPropagation();
-              setReturning(true);
-              try {
-                await returnToOriginal(leaf.ptyId);
-              } finally {
-                setReturning(false);
-              }
-            }}
-            className="rounded border border-treeline-cyan bg-treeline-cyan px-3 py-1 text-xs text-treeline-surface hover:opacity-90 disabled:opacity-50"
-          >
-            {returning ? 'Returning…' : 'Return to original (discards worktree session)'}
-          </button>
         </div>
       )}
       {/* Attention ring — agent on this pane is waiting on the human. Drawn

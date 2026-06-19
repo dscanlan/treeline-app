@@ -58,30 +58,39 @@ export function WorktreeDriftToast() {
       className="fixed bottom-24 right-4 z-40 w-80 rounded border border-treeline-highlight bg-treeline-surface p-3 text-treeline-text shadow-2xl"
     >
       <div className="mb-1 flex items-baseline justify-between gap-2">
-        <h3 className="text-sm text-treeline-cyan">Open a terminal in {basename}?</h3>
+        <h3 className="text-sm text-treeline-cyan">
+          {head.reason === 'created'
+            ? `Continue Claude in ${basename}?`
+            : `Open a terminal in ${basename}?`}
+        </h3>
         {queueLen > 1 && (
           <span className="text-xs text-treeline-dim">+{queueLen - 1} more</span>
         )}
       </div>
       <p className="mb-3 break-all text-xs text-treeline-dim">{body}</p>
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onOpen}
-          disabled={busy}
-          className="rounded border border-treeline-highlight bg-treeline-highlight px-2 py-1 text-xs text-treeline-text hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? 'Opening…' : 'Open'}
-        </button>
+        {/* A plain terminal here is only the useful action for drift (a cwd that
+          * moved into a worktree). For a freshly-created worktree, "Continue
+          * Claude" below is the offer — a blank shell isn't what's wanted. */}
+        {head.reason !== 'created' && (
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={busy}
+            className="rounded border border-treeline-highlight bg-treeline-highlight px-2 py-1 text-xs text-treeline-text hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? 'Opening…' : 'Open'}
+          </button>
+        )}
         {head.reason === 'created' && (
           <button
             type="button"
             onClick={onResume}
             disabled={busy}
-            title="Copy this repo's active Claude conversation into the worktree and continue it"
+            title="Copy this repo's active Claude conversation into the worktree and continue it in a new tab (the original is paused)"
             className="rounded border border-treeline-cyan bg-treeline-cyan px-2 py-1 text-xs text-treeline-surface hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? 'Resuming…' : 'Resume Claude here'}
+            {busy ? 'Continuing…' : 'Continue Claude in new tab'}
           </button>
         )}
         <button
