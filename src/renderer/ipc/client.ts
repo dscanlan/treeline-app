@@ -167,6 +167,7 @@ export function attachIpc(): () => void {
           activeTabId: null,
           tabsByCwd: {},
           unreadByPtyId: {},
+          handoffByOriginPty: {},
           processes: [],
           processesByWorktreePath: {},
           portsByWorktreePath: {},
@@ -243,6 +244,9 @@ export function attachIpc(): () => void {
       }
       if (p.unreadByPtyId !== undefined) {
         useStore.setState({ unreadByPtyId: p.unreadByPtyId });
+      }
+      if (p.handoffByOriginPty !== undefined) {
+        useStore.setState({ handoffByOriginPty: p.handoffByOriginPty });
       }
       if (p.processesByWorktreePath !== undefined) {
         const flat = Object.values(p.processesByWorktreePath).flat();

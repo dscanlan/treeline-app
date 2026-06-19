@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PaneLeaf } from '@shared/pane-tree';
 import { useXterm } from '../hooks/useXterm';
 import { useStore } from '../store';
+import { returnToOriginal } from '../actions/tabs';
 import { TabStatusDot } from './TabStatusDot';
+import { basename } from '../util/path';
 
 interface Props {
   leaf: PaneLeaf;
@@ -27,6 +29,10 @@ export function PaneView({ leaf, tabId, active, showChrome }: Props) {
   // looked yet — light up a ring (independent of focus chrome, so it shows even
   // in a single-pane tab).
   const unread = useStore((s) => s.unreadByPtyId[leaf.ptyId]);
+  // This pane was SIGSTOP-parked because its conversation was resumed in a
+  // worktree — show a frozen overlay with a way back.
+  const handoff = useStore((s) => s.handoffByOriginPty[leaf.ptyId]);
+  const [returning, setReturning] = useState(false);
 
   // When this pane becomes the active focused pane, its container may have just
   // been revealed or resized: refit and pull keyboard focus into the terminal.
@@ -44,6 +50,35 @@ export function PaneView({ leaf, tabId, active, showChrome }: Props) {
       onPointerDown={() => setFocusedPane(tabId, leaf.id)}
     >
       <div ref={containerRef} className="absolute inset-0" />
+      {/* Parked overlay — this session was frozen (SIGSTOP) because its
+        * conversation was resumed in a worktree. Dims the terminal and offers a
+        * way back, which thaws this pane and discards the worktree fork. */}
+      {handoff && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-treeline-surface/85 backdrop-blur-[1px]">
+          <div className="max-w-[80%] text-center text-xs text-treeline-dim">
+            <div className="mb-1 text-sm text-treeline-text">Session paused</div>
+            Resumed in worktree{' '}
+            <span className="text-treeline-cyan">{basename(handoff.worktreeCwd)}</span>. This
+            copy is frozen so the two can&apos;t run at once.
+          </div>
+          <button
+            type="button"
+            disabled={returning}
+            onClick={async (e) => {
+              e.stopPropagation();
+              setReturning(true);
+              try {
+                await returnToOriginal(leaf.ptyId);
+              } finally {
+                setReturning(false);
+              }
+            }}
+            className="rounded border border-treeline-cyan bg-treeline-cyan px-3 py-1 text-xs text-treeline-surface hover:opacity-90 disabled:opacity-50"
+          >
+            {returning ? 'Returning…' : 'Return to original (discards worktree session)'}
+          </button>
+        </div>
+      )}
       {/* Attention ring — agent on this pane is waiting on the human. Drawn
         * above the focus ring and pulsing so it's noticeable across many panes. */}
       {unread && (

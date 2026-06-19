@@ -40,6 +40,7 @@ import { registerPrIpc, broadcastPr } from './ipc/pr';
 import { registerSystemIpc } from './ipc/system';
 import { registerConfigIpc } from './ipc/config';
 import { registerFilesIpc } from './ipc/files';
+import { registerClaudeSessionIpc } from './ipc/claude-session';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
 import { setupAutoUpdater } from './updater';
@@ -321,6 +322,7 @@ app.whenReady().then(() => {
     },
   });
   registerFilesIpc();
+  registerClaudeSessionIpc();
 
   // Scriptable CLI: listen on a user-scoped unix socket so the `treeline` CLI
   // (and agents/hooks) can drive the running app. Verbs route through the same

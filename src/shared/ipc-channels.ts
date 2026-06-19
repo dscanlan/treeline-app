@@ -27,6 +27,10 @@ export const Channels = {
   PtyWrite: 'pty:write',
   PtyResize: 'pty:resize',
   PtyKill: 'pty:kill',
+  // Freeze / thaw a pane's whole process subtree (SIGSTOP/SIGCONT) — used to
+  // park the origin session during a resume-in-worktree handoff.
+  PtyPause: 'pty:pause',
+  PtyResume: 'pty:resume',
   PtyData: 'pty:data',
   PtyExit: 'pty:exit',
   // Agent-attention notification raised by a terminal (OSC 9/99/777) — see
@@ -56,6 +60,10 @@ export const Channels = {
   ConfigSetCodeRoot: 'config:setCodeRoot',
   ConfigSetSidebarCollapsed: 'config:setSidebarCollapsed',
   ConfigSetSettings: 'config:setSettings',
+
+  // claude session resume (copy a conversation transcript into a worktree's
+  // project folder so `claude --resume` can continue it there)
+  ClaudeSessionPrepareResume: 'claudeSession:prepareResume',
 
   // system (open external URLs via the safe-url allowlist)
   SystemOpenExternal: 'system:openExternal',

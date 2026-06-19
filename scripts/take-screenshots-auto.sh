@@ -58,6 +58,7 @@ ALL_SCENARIOS=(
   "34-pr-status"
   "35-worktree-open-toast"
   "36-agent-notifications"
+  "37-session-paused"
 )
 
 if [ $# -gt 0 ]; then

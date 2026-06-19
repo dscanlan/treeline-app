@@ -539,6 +539,44 @@ const SCENARIOS: Record<string, Scenario> = {
     ]);
   },
 
+  '37-session-paused': async (ctx) => {
+    // The user resumed this pane's Claude conversation in a worktree, so the
+    // origin session is SIGSTOP-parked and shown the "Session paused" overlay
+    // with a way back. The frozen terminal shows faintly behind the dim so it's
+    // clear a real session is parked, not gone.
+    const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth — the worktree it moved to
+    const spawned = await spawnTabPty(ctx, 'main');
+    const ptyId = spawned.ptyId;
+    // Pin the tab cwd to the repo root (the origin session lives in main).
+    const tab: Tab = { ...spawned.tab, cwd: REPO_TREELINE_APP.path };
+    await waitForPtySettle(ctx, ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: REPO_TREELINE_APP.path,
+      handoffByOriginPty: {
+        [ptyId]: {
+          originPtyId: ptyId,
+          originTabId: tab.id,
+          originCwd: REPO_TREELINE_APP.path,
+          worktreeCwd: wt.path,
+          forkTabId: 'fork-tab',
+        },
+      },
+    });
+    await delay(400);
+    await typeAndSettle(ctx, ptyId, [
+      "clear\n",
+      "printf '\\033[35m\\xe2\\x9c\\xa6 Claude Code session\\033[0m\\n'\n",
+      "printf 'Implemented the auth module; created worktree feat-auth.\\n'\n",
+    ]);
+    // Let the dim overlay settle over the terminal before capture.
+    await delay(300);
+  },
+
   '14-status-dots': async (ctx) => {
     const a = await spawnTabPty(ctx, 'main'); // running
     const b = await spawnTabPty(ctx, 'feat-auth'); // idle

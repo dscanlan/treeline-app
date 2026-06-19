@@ -521,12 +521,13 @@ src/
 │   ├── git.ts                    # execFile wrappers around the git CLI.
 │   ├── git-porcelain.ts          # PURE parser. No IO. 100 % unit-tested.
 │   ├── gh.ts                     # gh CLI: list PRs per repo; PURE parse/rollup helpers.
-│   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing; PATH-injects the CLI shim.
+│   ├── pty-manager.ts            # Owns the node-pty Map; chunk coalescing; PATH-injects the CLI shim; pause/resume (subtree SIGSTOP/SIGCONT).
 │   ├── process-monitor.ts        # 2 s ps + lsof; idle CPU tracking; listening-port scan.
 │   ├── pr-monitor.ts             # 60 s gh PR poll per repo; emit-on-change broadcast.
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
 │   ├── worktree-drift-monitor.ts # Flags a PTY whose cwd drifts into another tracked worktree.
+│   ├── claude-session.ts         # Find/copy a Claude transcript across project folders (resume-in-worktree handoff). PURE fs.
 │   ├── repo-discovery.ts         # PTY cwd → untracked-repo detection (discovered-repo toasts).
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
 │   ├── repos-create.ts           # `git init` flow with new/existing-folder validation.
@@ -536,7 +537,8 @@ src/
 │   ├── ipc/                      # One handler module per domain.
 │   │   ├── repos.ts              # repos:list/add/remove/pickDirectory.
 │   │   ├── worktrees.ts          # list/create/remove + onChange events.
-│   │   ├── pty.ts                # spawn/write/resize/kill + data/exit.
+│   │   ├── pty.ts                # spawn/write/resize/kill/pause/resume + data/exit.
+│   │   ├── claude-session.ts     # claudeSession:prepareResume — copy parent-repo session into a worktree.
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── pr.ts                 # pr:snapshot + pr:update events (latest-per-repo).
 │   │   ├── system.ts             # system:openExternal (safe-url allowlist).
@@ -589,7 +591,7 @@ src/
     │   ├── ScratchRow.tsx
     │   ├── ScratchTerminalButton.tsx
     │   ├── DiscoveredRepoToast.tsx # "Add this untracked repo?" toast.
-    │   ├── WorktreeDriftToast.tsx  # "Open a terminal in this worktree?" toast.
+    │   ├── WorktreeDriftToast.tsx  # "Open a terminal in this worktree?" toast; + "Resume Claude here" handoff.
     │   ├── ScreenshotForceTooltip.tsx # Dev-only screenshot-harness helper.
     │   └── modals/
     │       ├── ModalShell.tsx
@@ -614,8 +616,9 @@ src/
     │   ├── scratch-slice.ts      # repo-less scratch terminals.
     │   ├── discoveries-slice.ts  # untracked-repo discovery suggestions.
     │   ├── drift-slice.ts        # worktree-drift / -created open suggestions.
+    │   ├── handoff-slice.ts      # parked origin ↔ worktree-fork links for the resume-Claude handoff.
     │   └── screenshot-slice.ts   # dev-only screenshot-mode flags.
-    ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id), split/close pane.
+    ├── actions/tabs.ts           # openTabAt(cwd, {forceNew}), closeTab(id), split/close pane; resumeSessionInWorktree / returnToOriginal (park handoff).
     ├── actions/editor.ts         # openFileInPanel(path), toggleDir(path).
     ├── actions/scratch.ts        # open/close scratch terminals.
     ├── ipc/client.ts             # Subscribes IPC events into the store.

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../store';
-import { openDriftedWorktree } from '../actions/tabs';
+import { openDriftedWorktree, resumeSessionInWorktree } from '../actions/tabs';
 
 /**
  * Bottom-right toast offering to open a terminal in a worktree, surfaced when
@@ -39,6 +39,18 @@ export function WorktreeDriftToast() {
     }
   };
 
+  const onResume = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await resumeSessionInWorktree(head.toWorktree);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div
       role="status"
@@ -61,6 +73,17 @@ export function WorktreeDriftToast() {
         >
           {busy ? 'Opening…' : 'Open'}
         </button>
+        {head.reason === 'created' && (
+          <button
+            type="button"
+            onClick={onResume}
+            disabled={busy}
+            title="Copy this repo's active Claude conversation into the worktree and continue it"
+            className="rounded border border-treeline-cyan bg-treeline-cyan px-2 py-1 text-xs text-treeline-surface hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? 'Resuming…' : 'Resume Claude here'}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => dismiss(head.toWorktree)}

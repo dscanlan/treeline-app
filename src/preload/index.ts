@@ -86,6 +86,8 @@ const api: TreelineApi = {
     write: (id, data) => ipcRenderer.send(Channels.PtyWrite, id, data),
     resize: (id, cols, rows) => ipcRenderer.send(Channels.PtyResize, id, cols, rows),
     kill: (id) => ipcRenderer.invoke(Channels.PtyKill, id) as Promise<void>,
+    pause: (id) => ipcRenderer.invoke(Channels.PtyPause, id) as Promise<boolean>,
+    resume: (id) => ipcRenderer.invoke(Channels.PtyResume, id) as Promise<boolean>,
     onData: (id, cb) =>
       listen<{ id: string; chunk: string }>(
         Channels.PtyData,
@@ -136,6 +138,13 @@ const api: TreelineApi = {
   folders: {
     remove: (path) =>
       ipcRenderer.invoke(Channels.FoldersRemove, path) as Promise<void>,
+  },
+
+  claudeSession: {
+    prepareResume: (worktreePath) =>
+      ipcRenderer.invoke(Channels.ClaudeSessionPrepareResume, worktreePath) as Promise<
+        { sessionId: string; originCwd: string } | null
+      >,
   },
 
   config: {

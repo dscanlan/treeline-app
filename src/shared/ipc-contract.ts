@@ -39,6 +39,21 @@ export interface ScreenshotHydratePayload {
     string,
     { toWorktree: string; reason: 'drift' | 'created'; ptyId?: string }
   >;
+  /**
+   * Seed the parked-session overlay (handoff slice): a pane whose Claude
+   * conversation was resumed in a worktree, so it's frozen with a "Session
+   * paused" overlay. Keyed by the parked origin pane's pty id.
+   */
+  handoffByOriginPty?: Record<
+    string,
+    {
+      originPtyId: string;
+      originTabId: string;
+      originCwd: string;
+      worktreeCwd: string;
+      forkTabId: string;
+    }
+  >;
   filter?: string;
   sidebarCollapsed?: boolean;
   /** Override the persisted settings (theme/font/keybindings) for the capture. */
@@ -198,6 +213,14 @@ export interface TreelineApi {
     write(id: string, data: string): void;
     resize(id: string, cols: number, rows: number): void;
     kill(id: string): Promise<void>;
+    /**
+     * Freeze this pane's whole process subtree (shell + agent + children) with
+     * SIGSTOP. Used to park the origin session when its conversation is resumed
+     * in a worktree, so two copies can't run at once. Resolves true if frozen.
+     */
+    pause(id: string): Promise<boolean>;
+    /** Thaw a {@link pause}d pane (SIGCONT). Resolves true if resumed. */
+    resume(id: string): Promise<boolean>;
     onData(id: string, cb: (chunk: string) => void): () => void;
     onExit(
       id: string,
@@ -255,6 +278,20 @@ export interface TreelineApi {
   folders: {
     /** Unpin a plain folder from the sidebar. */
     remove(absPath: string): Promise<void>;
+  };
+
+  /**
+   * Continue an existing Claude Code conversation inside a freshly-created
+   * worktree. Claude keys transcripts by directory, so the same session can't be
+   * resumed from a worktree natively; `prepareResume` finds the active session in
+   * the worktree's parent repo and copies its transcript into the worktree's
+   * project folder, returning the session id to pass to `claude --resume`.
+   * Resolves null when the parent repo has no Claude session to resume.
+   */
+  claudeSession: {
+    prepareResume(
+      worktreePath: string,
+    ): Promise<{ sessionId: string; originCwd: string } | null>;
   };
 
   config: {

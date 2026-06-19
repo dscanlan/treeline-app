@@ -475,3 +475,59 @@ describe('sanitizeEnv', () => {
     expect(out.TREELINE_PANE_ID).toBeUndefined();
   });
 });
+
+describe('PtyManager pause/resume', () => {
+  function makeMgr() {
+    const fake = new FakePty();
+    const signals: { pid: number; signal: string }[] = [];
+    // Subtree: shell (4242) → agent (100) → tool (101).
+    const subtreeProbe = vi.fn(async (root: number) =>
+      root === 4242 ? [4242, 100, 101] : [root],
+    );
+    const signalFn = (pid: number, signal: NodeJS.Signals) =>
+      signals.push({ pid, signal });
+    const mgr = new PtyManager(() => fake, undefined, 0, subtreeProbe, signalFn);
+    return { mgr, signals, subtreeProbe };
+  }
+
+  it('pause() SIGSTOPs the whole subtree, leaves-first', async () => {
+    const { mgr, signals } = makeMgr();
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+
+    expect(await mgr.pause(id)).toBe(true);
+    expect(signals).toEqual([
+      { pid: 101, signal: 'SIGSTOP' },
+      { pid: 100, signal: 'SIGSTOP' },
+      { pid: 4242, signal: 'SIGSTOP' },
+    ]);
+    expect(mgr.isPaused(id)).toBe(true);
+  });
+
+  it('resume() SIGCONTs the subtree root-first and clears the flag', async () => {
+    const { mgr, signals } = makeMgr();
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    await mgr.pause(id);
+    signals.length = 0;
+
+    expect(await mgr.resume(id)).toBe(true);
+    expect(signals).toEqual([
+      { pid: 4242, signal: 'SIGCONT' },
+      { pid: 100, signal: 'SIGCONT' },
+      { pid: 101, signal: 'SIGCONT' },
+    ]);
+    expect(mgr.isPaused(id)).toBe(false);
+  });
+
+  it('pause()/resume() return false for an unknown pty and signal nothing', async () => {
+    const { mgr, signals } = makeMgr();
+    expect(await mgr.pause('nope')).toBe(false);
+    expect(await mgr.resume('nope')).toBe(false);
+    expect(signals).toEqual([]);
+  });
+
+  it('isPaused() defaults to false for a freshly-spawned pty', () => {
+    const { mgr } = makeMgr();
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    expect(mgr.isPaused(id)).toBe(false);
+  });
+});

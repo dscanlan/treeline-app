@@ -533,7 +533,7 @@ disappears so xterm doesn't keep talking to a vanished cwd.
 
 ### Worktree handoff prompt
 
-![Bottom-right toast reading "Open a terminal in feat-auth? A new worktree was created." with Open and Dismiss buttons, beside the sidebar where the feat-auth worktree has just appeared](docs/img/35-worktree-open-toast.png)
+![Bottom-right toast reading "Open a terminal in feat-auth? A new worktree was created." with Open, Resume Claude here, and Dismiss buttons, beside the sidebar where the feat-auth worktree has just appeared](docs/img/35-worktree-open-toast.png)
 
 When a new worktree appears — typically because an agent ran
 `git worktree add` from inside a hosted terminal — treeline offers to
@@ -552,6 +552,46 @@ yourself. A worktree you already have a terminal open in is never
 prompted about. First sighting of each worktree at launch is seeded
 silently, so neither startup nor adding a repo nags you — only worktrees
 that appear mid-session do.
+
+### Resume the Claude session in the worktree
+
+When the prompt fired because a worktree was _created_, it carries a
+third button: **Resume Claude here**. Instead of opening a blank shell, it
+**continues the same Claude conversation** inside the new worktree.
+
+Claude Code stores each conversation's transcript under a folder keyed by
+the directory it ran in, so `claude --resume` launched from a worktree
+can't normally see a session started in the repo's main checkout. Treeline
+bridges that: it finds the parent repo's most-recent Claude session, copies
+its transcript into the worktree's project folder, opens a terminal there,
+and runs `claude --resume <id> --fork-session`. The forked session gets its
+own id, so the original transcript is never altered.
+
+What carries over is the **conversation** — every prompt, reply, tool call
+and its output. What does _not_ carry over is the **filesystem and runtime**:
+the worktree is its own checkout, so uncommitted edits from the main repo
+aren't present, no processes are still running, and per-session sidecars
+(like the to-do list) don't follow. The resumed agent remembers what was
+discussed; it should re-check the worktree's actual files before continuing.
+
+**The original session is paused, not duplicated.** Because resuming
+re-instates whatever the conversation was mid-doing, leaving the original
+running would give you _two_ agents working the same task. So on handoff
+treeline freezes the origin pane — `SIGSTOP` on its whole process subtree
+(shell + agent + children), a real stop, not just a focus change — so only
+one copy is ever active. The frozen pane shows a **Session paused** overlay
+naming the worktree it moved to, with a **Return to original (discards
+worktree session)** button that thaws the origin (`SIGCONT`) and closes the
+worktree fork. Closing either tab keeps the pair consistent: close the fork
+and the origin un-freezes; close the origin and the link is simply dropped.
+
+![The main pane dimmed under a "Session paused" overlay reading "Resumed in worktree feat-auth. This copy is frozen so the two can't run at once," above a "Return to original (discards worktree session)" button, with the frozen Claude session faintly visible behind it](docs/img/37-session-paused.png)
+
+This is entirely opt-in — if you never press **Resume Claude here**, nothing
+is copied and nothing is paused; the original session just keeps running.
+Parking targets the most-recent pane rooted at the parent repo, so run
+`claude` in a hosted treeline terminal (not one outside the app) for the
+pause to find it.
 
 ### Sidebar collapse
 

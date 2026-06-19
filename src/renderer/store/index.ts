@@ -5,6 +5,7 @@ import { createProcessesSlice, type ProcessesSlice } from './processes-slice';
 import { createModalSlice, type ModalSlice } from './modal-slice';
 import { createDiscoveriesSlice, type DiscoveriesSlice } from './discoveries-slice';
 import { createDriftSlice, type DriftSlice } from './drift-slice';
+import { createHandoffSlice, type HandoffSlice } from './handoff-slice';
 import { createScreenshotSlice, type ScreenshotSlice } from './screenshot-slice';
 import { createScratchSlice, type ScratchSlice } from './scratch-slice';
 import { createEditorSlice, type EditorSlice } from './editor-slice';
@@ -17,6 +18,7 @@ export type AppStore = ReposSlice &
   ModalSlice &
   DiscoveriesSlice &
   DriftSlice &
+  HandoffSlice &
   ScreenshotSlice &
   ScratchSlice &
   EditorSlice &
@@ -30,6 +32,7 @@ export const useStore = create<AppStore>()((...a) => ({
   ...createModalSlice(...a),
   ...createDiscoveriesSlice(...a),
   ...createDriftSlice(...a),
+  ...createHandoffSlice(...a),
   ...createScreenshotSlice(...a),
   ...createScratchSlice(...a),
   ...createEditorSlice(...a),

@@ -38,6 +38,16 @@ export type SpawnFn = (opts: SpawnOpts) => IPtyLike;
  */
 export type CwdProbe = (pid: number) => Promise<string | null>;
 
+/**
+ * Resolves a process and all its descendants (root included). Used to freeze a
+ * whole pane — shell + agent + the agent's children — in one go. Defaults to a
+ * `ps`-based walk; injectable so tests don't touch the real process table.
+ */
+export type SubtreeProbe = (rootPid: number) => Promise<number[]>;
+
+/** Send a signal to a pid. Injectable so tests can record calls. */
+export type SignalFn = (pid: number, signal: NodeJS.Signals) => void;
+
 interface PtyEntry {
   proc: IPtyLike;
   shellPid: number;
@@ -56,6 +66,8 @@ interface PtyEntry {
   /** epoch ms of the most recent OSC 7 observation (0 if never). */
   lastOscAt: number;
   cwdPollTimer: NodeJS.Timeout | null;
+  /** True while the pane's process subtree is SIGSTOP-frozen (see pause()). */
+  paused: boolean;
 }
 
 export interface PtyDataEvent {
@@ -120,6 +132,8 @@ export class PtyManager extends EventEmitter {
     private readonly spawnFn: SpawnFn,
     private readonly cwdProbe: CwdProbe = defaultCwdProbe,
     private readonly cwdPollMs: number = 5000,
+    private readonly subtreeProbe: SubtreeProbe = defaultSubtreeProbe,
+    private readonly signalFn: SignalFn = defaultSignal,
   ) {
     super();
   }
@@ -147,6 +161,7 @@ export class PtyManager extends EventEmitter {
       oscScanTail: '',
       lastOscAt: 0,
       cwdPollTimer: null,
+      paused: false,
     };
 
     this.ptys.set(id, entry);
@@ -209,6 +224,43 @@ export class PtyManager extends EventEmitter {
   /** Kill every PTY. Used during app quit. */
   async killAll(graceMs = 200): Promise<void> {
     await Promise.all([...this.ptys.keys()].map((id) => this.kill(id, graceMs)));
+  }
+
+  /**
+   * Freeze the pane: SIGSTOP the shell **and every descendant** (the agent and
+   * its children), so a running agent genuinely stops consuming CPU rather than
+   * just losing focus. Used by the "resume this session in a worktree" handoff
+   * to park the origin session so two copies of the same conversation can't act
+   * at once. Signals leaves-first so a parent can't reap a child mid-stop.
+   * Best-effort per pid (a races-away child is ignored); returns false if the
+   * pty is gone. Idempotent.
+   */
+  async pause(id: string): Promise<boolean> {
+    const entry = this.ptys.get(id);
+    if (!entry) return false;
+    const pids = await this.subtreeProbe(entry.shellPid);
+    for (const pid of [...pids].reverse()) this.signalFn(pid, 'SIGSTOP');
+    entry.paused = true;
+    return true;
+  }
+
+  /**
+   * Thaw a {@link pause}d pane: SIGCONT the subtree root-first (so the shell is
+   * runnable before its children wake). Best-effort; returns false if the pty is
+   * gone. Idempotent.
+   */
+  async resume(id: string): Promise<boolean> {
+    const entry = this.ptys.get(id);
+    if (!entry) return false;
+    const pids = await this.subtreeProbe(entry.shellPid);
+    for (const pid of pids) this.signalFn(pid, 'SIGCONT');
+    entry.paused = false;
+    return true;
+  }
+
+  /** True if `id` is currently SIGSTOP-frozen. */
+  isPaused(id: string): boolean {
+    return this.ptys.get(id)?.paused ?? false;
   }
 
   /** True if a PTY with this id is still registered. */
@@ -457,6 +509,56 @@ export const defaultCwdProbe: CwdProbe = async (pid) => {
     return null;
   } catch {
     return null;
+  }
+};
+
+// ── default subtree probe + signaller (pause/resume) ────────────────────────
+
+/**
+ * Resolve `rootPid` and all its transitive descendants via a single
+ * `ps -axo pid=,ppid=` snapshot (one cheap call, no per-pid lsof). Returned
+ * breadth-first with the root first, so callers can stop leaves-first by
+ * reversing and continue root-first as-is. On any failure returns just the
+ * root, so a pause still freezes the shell even if the walk fails.
+ */
+export const defaultSubtreeProbe: SubtreeProbe = async (rootPid) => {
+  try {
+    const { stdout } = await run('ps', ['-axo', 'pid=,ppid='], {
+      timeoutMs: 4000,
+      throwOnError: false,
+    });
+    const children = new Map<number, number[]>();
+    for (const line of stdout.split('\n')) {
+      const m = line.trim().match(/^(\d+)\s+(\d+)$/);
+      if (!m) continue;
+      const pid = Number(m[1]);
+      const ppid = Number(m[2]);
+      const siblings = children.get(ppid);
+      if (siblings) siblings.push(pid);
+      else children.set(ppid, [pid]);
+    }
+    const out: number[] = [];
+    const queue = [rootPid];
+    const seen = new Set<number>();
+    while (queue.length > 0) {
+      const pid = queue.shift()!;
+      if (seen.has(pid)) continue; // guard against any cyclic ppid weirdness
+      seen.add(pid);
+      out.push(pid);
+      for (const child of children.get(pid) ?? []) queue.push(child);
+    }
+    return out;
+  } catch {
+    return [rootPid];
+  }
+};
+
+/** Default signaller — `process.kill`, swallowing ESRCH/EPERM for dead pids. */
+export const defaultSignal: SignalFn = (pid, signal) => {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    /* already gone or not permitted — best-effort */
   }
 };
 

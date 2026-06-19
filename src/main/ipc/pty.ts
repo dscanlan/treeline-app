@@ -36,6 +36,16 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
     await mgr.kill(id);
   });
 
+  ipcMain.handle(Channels.PtyPause, async (_e, id: unknown) => {
+    if (typeof id !== 'string') return false;
+    return mgr.pause(id);
+  });
+
+  ipcMain.handle(Channels.PtyResume, async (_e, id: unknown) => {
+    if (typeof id !== 'string') return false;
+    return mgr.resume(id);
+  });
+
   // Fan-out PtyManager events to every webContents. Renderer-side preload
   // pre-filters by id so each subscriber only fires for its tab.
   const onData = (e: PtyDataEvent) => broadcast(Channels.PtyData, e);
@@ -51,6 +61,8 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
     ipcMain.removeAllListeners(Channels.PtyWrite);
     ipcMain.removeAllListeners(Channels.PtyResize);
     ipcMain.removeHandler(Channels.PtyKill);
+    ipcMain.removeHandler(Channels.PtyPause);
+    ipcMain.removeHandler(Channels.PtyResume);
     mgr.off('data', onData);
     mgr.off('exit', onExit);
     mgr.off('notification', onNotification);

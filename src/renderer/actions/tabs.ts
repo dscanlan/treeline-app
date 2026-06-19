@@ -33,9 +33,110 @@ export async function openDriftedWorktree(toWorktree: string): Promise<void> {
   useStore.getState().dismissWorktreeOpen(toWorktree);
 }
 
+/**
+ * Run `data` against the freshly-spawned PTY `id` once its shell is ready.
+ * A login shell prints its prompt asynchronously, and typing before that can be
+ * swallowed by a redraw — so we wait for the first byte of output (the prompt),
+ * with a timeout fallback in case the shell stays silent.
+ */
+function writeWhenReady(id: string, data: string): void {
+  let fired = false;
+  const fire = (): void => {
+    if (fired) return;
+    fired = true;
+    clearTimeout(timer);
+    unsub();
+    window.treeline.pty.write(id, data);
+  };
+  const unsub = window.treeline.pty.onData(id, fire);
+  const timer = setTimeout(fire, 1500);
+}
+
+/**
+ * Continue the parent repo's active Claude conversation inside a newly-created
+ * worktree. Asks main to copy the session transcript into the worktree's project
+ * folder (Claude keys transcripts by directory, so this is the only way to
+ * resume the *same* conversation there), opens a fresh terminal in the worktree,
+ * and runs `claude --resume <id> --fork-session` once its shell is ready.
+ * `--fork-session` gives the worktree copy its own id so the original stays
+ * untouched. Throws when there's no session to resume, so callers can surface it.
+ */
+export async function resumeSessionInWorktree(toWorktree: string): Promise<void> {
+  const prep = await window.treeline.claudeSession.prepareResume(toWorktree);
+  if (!prep) throw new Error('No Claude session found in the parent repo to resume.');
+
+  const s = useStore.getState();
+
+  // The origin pane to park: the MRU tab rooted at the parent repo, and its
+  // focused pane — where the agent that created the worktree is running.
+  const originTabId = s.tabsByCwd[prep.originCwd]?.[0] ?? null;
+  const originTab = originTabId ? s.tabs.find((t) => t.id === originTabId) : null;
+  const originPtyId = originTab
+    ? (findLeaf(originTab.root, originTab.focusedPaneId)?.ptyId ?? null)
+    : null;
+
+  // Spawn the worktree fork and resume the copied conversation in it.
+  const { id: forkPty } = await window.treeline.pty.spawn({
+    cwd: toWorktree,
+    cols: 80,
+    rows: 24,
+  });
+  const forkTabId = s.addTab({ ptyId: forkPty, cwd: toWorktree });
+  s.setSelected(toWorktree);
+  writeWhenReady(forkPty, `claude --resume ${prep.sessionId} --fork-session\r`);
+  s.dismissWorktreeOpen(toWorktree);
+
+  // Park the origin so the same conversation can't run in two places at once.
+  // Best-effort: if we couldn't pin down the origin pane (e.g. the agent ran in
+  // a terminal outside treeline), skip the freeze rather than guess wrong.
+  if (originPtyId && originTabId) {
+    const frozen = await window.treeline.pty.pause(originPtyId);
+    if (frozen) {
+      s.recordHandoff({
+        originPtyId,
+        originTabId,
+        originCwd: prep.originCwd,
+        worktreeCwd: toWorktree,
+        forkTabId,
+      });
+    }
+  }
+}
+
+/**
+ * Undo a handoff: thaw the parked origin session and discard the worktree fork,
+ * so work continues only in the original. Enforces the "one active agent"
+ * guarantee — going back kills the fork rather than leaving both runnable.
+ * No-op if `originPtyId` isn't currently parked.
+ */
+export async function returnToOriginal(originPtyId: string): Promise<void> {
+  const s = useStore.getState();
+  const handoff = s.handoffByOriginPty[originPtyId];
+  if (!handoff) return;
+  // Clear first so closeTab() below doesn't also try to thaw the origin.
+  s.clearHandoff(originPtyId);
+  await closeTab(handoff.forkTabId); // kills the fork's claude
+  await window.treeline.pty.resume(originPtyId);
+  s.setActive(handoff.originTabId);
+  s.setSelected(handoff.originCwd);
+}
+
 export async function closeTab(id: string): Promise<void> {
   const s = useStore.getState();
   const tab = s.tabs.find((t) => t.id === id);
+
+  // Keep session handoffs consistent when either side's tab closes:
+  //  - closing the worktree fork abandons the handoff → thaw the parked origin.
+  //  - closing the origin tab kills the parked pane → just drop the record.
+  const forkHandoff = s.handoffForFork(id);
+  if (forkHandoff) {
+    s.clearHandoff(forkHandoff.originPtyId);
+    void window.treeline.pty.resume(forkHandoff.originPtyId);
+  }
+  for (const h of Object.values(s.handoffByOriginPty)) {
+    if (h.originTabId === id) s.clearHandoff(h.originPtyId);
+  }
+
   s.removeTab(id);
   // Clear any drift prompts owned by this tab's panes — the terminal is gone.
   for (const p of tab ? leavesPtyIds(tab) : [id]) s.dismissDriftByPty(p);
