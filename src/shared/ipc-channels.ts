@@ -24,6 +24,9 @@ export const Channels = {
 
   // pty
   PtySpawn: 'pty:spawn',
+  // List every live PTY so the renderer can re-attach after a reload (its tab
+  // state is in-memory and wiped on reload; main's PTYs keep running).
+  PtyList: 'pty:list',
   PtyWrite: 'pty:write',
   PtyResize: 'pty:resize',
   PtyKill: 'pty:kill',

@@ -89,6 +89,8 @@ export interface ScreenshotHydratePayload {
    * agent actually firing a notification.
    */
   unreadByPtyId?: Record<string, { text: string; at: number }>;
+  /** Seed the "↻ Restored N terminals" reload-reattach toast for capture. */
+  reattachNotice?: { count: number; at: number } | null;
   /** Replace processesByWorktreePath wholesale — drives the magenta `claude`/`opencode`/`aider` badges in WorktreeRow. */
   processesByWorktreePath?: Record<string, DetectedProcess[]>;
   /** Replace portsByWorktreePath wholesale — drives the listening-port chips in WorktreeRow. */
@@ -210,6 +212,13 @@ export interface TreelineApi {
       cols: number;
       rows: number;
     }): Promise<{ id: string }>;
+    /**
+     * Every live PTY in the main process, so the renderer can re-attach after a
+     * reload (its tab state is in-memory and wiped on reload, but these shells
+     * keep running). The re-mounted terminal nudges a resize to make a TUI
+     * repaint its current frame — no captured output is replayed.
+     */
+    list(): Promise<{ id: string; cwd: string }[]>;
     write(id: string, data: string): void;
     resize(id: string, cols: number, rows: number): void;
     kill(id: string): Promise<void>;

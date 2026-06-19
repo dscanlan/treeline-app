@@ -95,6 +95,38 @@ back is instant.
 
 ---
 
+## Your sessions survive a reload or restart
+
+![Two terminals re-adopted after a reload, with a "Restored 2 terminals" toast](img/38-reattach-toast.png)
+
+Your terminals live in treeline's background process, not in the window. So when
+the **window reloads** — the app auto-updates and relaunches, you hit Reload
+(⌘R), or **your laptop suddenly restarts or shuts down and reopens the app** —
+treeline **re-adopts the terminals that were still running** instead of leaving
+them orphaned. A brief **"↻ Restored N terminals"** toast confirms it, and each
+pane repaints itself (a long-running `claude` session, a watching `npm test`,
+that `ssh` you left open) so you pick up where you left off.
+
+What this means in practice:
+
+- A reload or an unexpected restart **doesn't kill your running agents or
+  commands** — they keep running and reappear in their tabs.
+- You won't accumulate **invisible orphaned shells** eating resources behind a
+  window that lost track of them.
+
+Notes:
+
+- Each surviving terminal comes back as its own tab. A split *layout* isn't
+  restored — the panes return as separate tabs.
+- Scrollback from before the reload isn't replayed; a running full-screen tool
+  (like an agent CLI) repaints its current view, and a plain shell shows a fresh
+  prompt. The **process and its state are intact** either way.
+- This protects against window reloads and app relaunches — it is **not** a
+  substitute for a full machine shutdown that terminates every process. If the
+  OS kills the background process too, the sessions are gone.
+
+---
+
 ## Knowing when an agent needs you
 
 ![A waiting agent — the tab, the sidebar row, and the pane all light up magenta](img/36-agent-notifications.png)

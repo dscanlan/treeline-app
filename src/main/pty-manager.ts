@@ -273,6 +273,16 @@ export class PtyManager extends EventEmitter {
     return [...this.ptys.entries()].map(([id, e]) => ({ id, shellPid: e.shellPid }));
   }
 
+  /**
+   * Snapshot of every live PTY, for the renderer to re-attach after a reload.
+   * The renderer's tab state is in-memory and wiped on reload, but these PTYs
+   * (and the agents inside them) keep running here — without re-attach they'd
+   * be orphaned, killable only by quitting the app.
+   */
+  list(): { id: string; cwd: string }[] {
+    return [...this.ptys.entries()].map(([id, e]) => ({ id, cwd: e.cwd }));
+  }
+
   /** Last-known cwd of `id`, or undefined if no such PTY. */
   cwdOf(id: string): string | undefined {
     return this.ptys.get(id)?.cwd;

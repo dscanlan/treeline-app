@@ -187,6 +187,41 @@ describe('PtyManager', () => {
     ]);
   });
 
+  it('list() snapshots each live PTY with its id and cwd (for reload re-attach)', () => {
+    const a = new FakePty();
+    a.pid = 1;
+    const b = new FakePty();
+    b.pid = 2;
+    const queue = [a, b];
+    const mgr = new PtyManager(() => queue.shift()!, undefined, 0);
+    const r1 = mgr.spawn({ cwd: '/repo/main', cols: 80, rows: 24 });
+    const r2 = mgr.spawn({ cwd: '/repo/feat', cols: 80, rows: 24 });
+
+    expect(mgr.list().sort((x, y) => x.cwd.localeCompare(y.cwd))).toEqual([
+      { id: r2.id, cwd: '/repo/feat' },
+      { id: r1.id, cwd: '/repo/main' },
+    ]);
+  });
+
+  it("list() reflects a PTY's latest cwd after an OSC 7 change", async () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+
+    fake.emitData('\x1b]7;file://host/tmp/moved\x07');
+    await flushSetImmediate();
+
+    expect(mgr.list()).toEqual([{ id, cwd: '/tmp/moved' }]);
+  });
+
+  it('list() drops a PTY once it exits (so no orphan is offered for re-attach)', () => {
+    const fake = new FakePty();
+    const mgr = new PtyManager(() => fake, undefined, 0);
+    mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    fake.emitExit(0);
+    expect(mgr.list()).toEqual([]);
+  });
+
   it('exit event carries code and signal', async () => {
     const fake = new FakePty();
     const mgr = new PtyManager(() => fake, undefined, 0);

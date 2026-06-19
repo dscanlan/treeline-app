@@ -21,6 +21,11 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
     return { id };
   });
 
+  // Live-PTY snapshot for reload re-attach. The renderer rebuilds a tab per
+  // entry and replays each `buffer` so a reloaded window re-adopts the still
+  // running shells instead of orphaning them.
+  ipcMain.handle(Channels.PtyList, async () => mgr.list());
+
   ipcMain.on(Channels.PtyWrite, (_e, id: unknown, data: unknown) => {
     if (typeof id !== 'string' || typeof data !== 'string') return;
     mgr.write(id, data);
@@ -58,6 +63,7 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
 
   return () => {
     ipcMain.removeHandler(Channels.PtySpawn);
+    ipcMain.removeHandler(Channels.PtyList);
     ipcMain.removeAllListeners(Channels.PtyWrite);
     ipcMain.removeAllListeners(Channels.PtyResize);
     ipcMain.removeHandler(Channels.PtyKill);

@@ -3,7 +3,7 @@
 import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
 import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
-import { findLeaf } from '@shared/pane-tree';
+import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
 
 export function attachIpc(): () => void {
@@ -248,6 +248,9 @@ export function attachIpc(): () => void {
       if (p.handoffByOriginPty !== undefined) {
         useStore.setState({ handoffByOriginPty: p.handoffByOriginPty });
       }
+      if (p.reattachNotice !== undefined) {
+        useStore.setState({ reattachNotice: p.reattachNotice });
+      }
       if (p.processesByWorktreePath !== undefined) {
         const flat = Object.values(p.processesByWorktreePath).flat();
         s.setProcesses(flat, p.processesByWorktreePath, p.portsByWorktreePath ?? {});
@@ -302,6 +305,37 @@ export function attachIpc(): () => void {
   return () => unsubs.forEach((fn) => fn());
 }
 
+/**
+ * Re-adopt PTYs that outlived a renderer reload. The renderer's tab state lives
+ * in memory and is wiped on reload, but main's `PtyManager` keeps every shell
+ * (and the agents inside them) running — without this they'd be orphaned,
+ * killable only by quitting the app. We rebuild one tab per surviving PTY; the
+ * re-mounted terminal nudges a resize so a TUI (e.g. an agent) repaints its
+ * current frame (see useXterm). We deliberately don't replay captured output —
+ * replaying a TUI's raw byte stream (alternate screen, partial frames) is
+ * fragile and can wedge the terminal.
+ *
+ * A no-op on a fresh launch (no PTYs yet). Split layouts aren't restored — the
+ * pane tree isn't persisted, so each surviving pane comes back as its own tab;
+ * the point is that no shell is leaked.
+ */
+async function reattachPtys(): Promise<void> {
+  const live = await window.treeline.pty.list().catch(() => []);
+  if (live.length === 0) return;
+  const s = useStore.getState();
+  // Skip any PTY the store already tracks, so a re-entrant call can't dupe tabs.
+  const known = new Set(s.tabs.flatMap((t) => leaves(t.root).map((l) => l.ptyId)));
+  let adopted = 0;
+  for (const { id, cwd } of live) {
+    if (known.has(id)) continue;
+    s.addTab({ ptyId: id, cwd });
+    adopted++;
+  }
+  // Tell the user their sessions came back — the panes are blank for the beat
+  // it takes each xterm to replay, so a silent restore reads as a hang.
+  s.noteReattached(adopted);
+}
+
 /** Hydrate initial state from disk + main: config, repos, worktrees. */
 export async function loadInitialState(): Promise<void> {
   const api = window.treeline;
@@ -310,6 +344,10 @@ export async function loadInitialState(): Promise<void> {
   useStore.getState().setFolders(cfg.folders);
   useStore.getState().setSidebarCollapsed(cfg.sidebarCollapsed);
   useStore.getState().setSettings(cfg.settings);
+
+  // Re-adopt shells that survived a reload before anything else paints, so a
+  // reloaded window comes back with its terminals instead of leaking them.
+  await reattachPtys();
 
   // Seed PR status from the monitor's latest-known snapshot so a reload paints
   // badges immediately rather than waiting for the next poll. Best-effort.

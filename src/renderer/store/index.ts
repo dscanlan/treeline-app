@@ -11,6 +11,7 @@ import { createScratchSlice, type ScratchSlice } from './scratch-slice';
 import { createEditorSlice, type EditorSlice } from './editor-slice';
 import { createBrowserSlice, type BrowserSlice } from './browser-slice';
 import { createSettingsSlice, type SettingsSlice } from './settings-slice';
+import { createReattachSlice, type ReattachSlice } from './reattach-slice';
 
 export type AppStore = ReposSlice &
   TabsSlice &
@@ -23,7 +24,8 @@ export type AppStore = ReposSlice &
   ScratchSlice &
   EditorSlice &
   BrowserSlice &
-  SettingsSlice;
+  SettingsSlice &
+  ReattachSlice;
 
 export const useStore = create<AppStore>()((...a) => ({
   ...createReposSlice(...a),
@@ -38,4 +40,5 @@ export const useStore = create<AppStore>()((...a) => ({
   ...createEditorSlice(...a),
   ...createBrowserSlice(...a),
   ...createSettingsSlice(...a),
+  ...createReattachSlice(...a),
 }));

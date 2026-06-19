@@ -59,6 +59,7 @@ ALL_SCENARIOS=(
   "35-worktree-open-toast"
   "36-agent-notifications"
   "37-session-paused"
+  "38-reattach-toast"
 )
 
 if [ $# -gt 0 ]; then

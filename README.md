@@ -219,6 +219,22 @@ running.
 
 ![A three-pane layout: a full-height shell on the left and the right column split into two stacked panes — claude above, npm run dev below — with the focused bottom-right pane ringed](docs/img/26-split-grid.png)
 
+### Sessions survive a reload
+
+![Two terminals re-adopted after a reload — a main tab showing a restored Claude session and a feat-auth tab — with a top-center "↻ Restored 2 terminals after reload" toast](docs/img/38-reattach-toast.png)
+
+Terminals live in treeline's background process, not in the window, so a window
+reload doesn't take them down with it. When the window reloads — an auto-update
+relaunch, a manual Reload (`⌘R`), or your **laptop suddenly restarting/shutting
+down** and reopening the app — treeline **re-adopts the PTYs that were still
+running** rather than orphaning them, shows a brief **"↻ Restored N terminals"**
+toast, and nudges each pane so a running TUI (a `claude` session, a `npm test`
+watcher) repaints where you left it. Your agents and long-running commands keep
+running across the reload instead of being silently killed or stranded as
+invisible orphan shells. (Each surviving terminal returns as its own tab; the
+split *layout* isn't restored, and this isn't a substitute for a full OS
+shutdown that terminates the background process itself.)
+
 ### Agent attention notifications
 
 ![A waiting Claude agent: its tab is a pulsing magenta "waiting" tab, the discovery-feat worktree row has a magenta unread dot, and the pane shows the agent's prompt](docs/img/36-agent-notifications.png)

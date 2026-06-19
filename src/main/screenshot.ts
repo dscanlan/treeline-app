@@ -577,6 +577,44 @@ const SCENARIOS: Record<string, Scenario> = {
     await delay(300);
   },
 
+  '38-reattach-toast': async (ctx) => {
+    // After a reload — the app restarting on its own, or the laptop rebooting
+    // and the app relaunching — treeline re-adopts the PTYs that survived in
+    // the main process and shows a transient "Restored N terminals" toast.
+    // Here two terminals (incl. a Claude session) have just been re-attached.
+    const a = await spawnTabPty(ctx, 'main');
+    const b = await spawnTabPty(ctx, 'feat-auth');
+    await Promise.all([
+      waitForPtySettle(ctx, a.ptyId),
+      waitForPtySettle(ctx, b.ptyId),
+    ]);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [a.tab, b.tab],
+      activeTabId: a.tab.id,
+      selected: REPO_TREELINE_APP.path,
+      terminalStatus: [
+        { ptyId: a.ptyId, status: 'running', foregroundCmd: 'claude' },
+        { ptyId: b.ptyId, status: 'idle', foregroundCmd: null },
+      ],
+    });
+    await delay(400);
+    await typeAndSettle(ctx, a.ptyId, [
+      "clear\n",
+      "printf '\\033[35m\\xe2\\x9c\\xa6 Claude Code session restored\\033[0m\\n'\n",
+      "printf 'Picking up where we left off after the reload.\\n'\n",
+    ]);
+    await typeAndSettle(ctx, b.ptyId, [
+      "clear\n",
+      "echo 'feat-auth · npm test (4 of 32 suites)'\n",
+    ]);
+    // Pop the auto-dismissing toast last so it's still on screen at capture.
+    sendHydrate(ctx.win, { reattachNotice: { count: 2, at: Date.now() } });
+    await delay(500);
+  },
+
   '14-status-dots': async (ctx) => {
     const a = await spawnTabPty(ctx, 'main'); // running
     const b = await spawnTabPty(ctx, 'feat-auth'); // idle

@@ -80,20 +80,35 @@ export function useXterm(
       }),
     );
 
-    term.open(container);
-
-    // First fit: needs to happen after the layout has settled. rAF gives the
-    // browser a tick to size the parent before FitAddon measures it.
     let disposed = false;
+    let opened = false; // term.open() has been called
     let lastCols = term.cols;
     let lastRows = term.rows;
 
-    const doFit = () => {
-      if (disposed) return;
+    // Avoid xterm's "Cannot read properties of undefined (reading 'dimensions')"
+    // throw, which wedges the terminal:
+    //   1. Only `term.open()` once the element is genuinely shown — xterm can't
+    //      measure/create its renderer under `visibility:hidden` or zero size.
+    //      On reload re-attach the inactive re-adopted tabs mount hidden.
+    //   2. xterm builds its renderer *asynchronously* after open(), so the fit
+    //      (which reads `dimensions`) is deferred a frame — the proven pattern
+    //      from before re-attach existed. Buffered output is flushed then too.
+    const isShown = () =>
+      container.isConnected &&
+      container.clientWidth > 0 &&
+      container.clientHeight > 0 &&
+      getComputedStyle(container).visibility !== 'hidden';
+
+    // PTY output that arrived before the terminal was ready (a re-attached tab
+    // still hidden, or the window between open() and the first render). Replayed
+    // in order the moment the renderer comes up.
+    const pending: string[] = [];
+
+    const fitAndResize = () => {
       try {
         fit.fit();
       } catch {
-        // Container has zero size — skip; the ResizeObserver will retry.
+        // Not measurable yet — the ResizeObserver / next refit retries.
         return;
       }
       if (term.cols !== lastCols || term.rows !== lastRows) {
@@ -102,19 +117,60 @@ export function useXterm(
         window.treeline.pty.resize(opts.ptyId, term.cols, term.rows);
       }
     };
+
+    // Open once shown, then defer fit/flush/nudge a frame so xterm's renderer is
+    // up before anything reads its dimensions.
+    const openIfShown = () => {
+      if (opened || disposed || !isShown()) return;
+      opened = true;
+      term.open(container);
+      requestAnimationFrame(() => {
+        if (disposed) return;
+        fitAndResize();
+        if (pending.length) {
+          term.write(pending.join(''));
+          pending.length = 0;
+        }
+        // Make a re-attached foreground TUI (e.g. an agent) repaint its current
+        // frame. Its screen lived in the old xterm, which the reload destroyed;
+        // the process only redraws on a SIGWINCH. Shrink then (on a later tick)
+        // restore the row count: the gap lets the child read each size change
+        // distinctly, so it actually re-renders. A same-tick wobble nets to no
+        // change and is ignored. Harmless for a plain shell.
+        const { cols, rows } = term;
+        window.treeline.pty.resize(opts.ptyId, cols, Math.max(1, rows - 1));
+        window.setTimeout(() => {
+          if (!disposed) window.treeline.pty.resize(opts.ptyId, cols, rows);
+        }, 80);
+      });
+    };
+
+    // refit doubles as the reveal trigger: PaneView calls it when a pane becomes
+    // active, which is exactly when a previously-hidden re-attached tab is first
+    // shown — so that's where the deferred open happens.
+    const doFit = () => {
+      if (disposed) return;
+      if (!opened) {
+        openIfShown();
+        return;
+      }
+      fitAndResize();
+    };
     handleRef.current.refit = doFit;
     handleRef.current.focus = () => {
-      if (!disposed) term.focus();
+      if (!disposed && opened) term.focus();
     };
     // Expose the live term + its refit to the settings effect below so it can
     // re-apply theme/font without tearing down the PTY connection.
     termRef.current = term;
     refitRef.current = doFit;
 
-    requestAnimationFrame(doFit);
+    // Try to open after layout settles (covers the active/visible tab).
+    requestAnimationFrame(openIfShown);
 
     // Resize observer with debounce — fires for the container *and* its parent
-    // sidebar collapse animation. Trailing edge is what we want.
+    // sidebar collapse animation. Trailing edge is what we want. Also opens a
+    // tab that became visible-with-size after mount.
     let resizeTimer: number | null = null;
     const ro = new ResizeObserver(() => {
       if (resizeTimer !== null) window.clearTimeout(resizeTimer);
@@ -125,13 +181,16 @@ export function useXterm(
     });
     ro.observe(container);
 
-    // PTY → xterm.
+    // PTY → xterm (buffer until opened so a hidden tab doesn't write too early).
     const offData = window.treeline.pty.onData(opts.ptyId, (chunk) => {
-      term.write(chunk);
+      if (opened) term.write(chunk);
+      else pending.push(chunk);
     });
 
     const offExit = window.treeline.pty.onExit(opts.ptyId, () => {
-      term.write('\r\n\x1b[2;90m[process exited]\x1b[0m\r\n');
+      const msg = '\r\n\x1b[2;90m[process exited]\x1b[0m\r\n';
+      if (opened) term.write(msg);
+      else pending.push(msg);
     });
 
     // xterm → PTY.
