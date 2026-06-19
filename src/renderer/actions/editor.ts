@@ -175,19 +175,24 @@ export function setPanelMode(mode: PanelMode): void {
 }
 
 /**
- * Toggle a directory node in the tree. On first expand we fetch its children
- * and cache them; subsequent toggles just flip the expanded flag.
+ * Toggle a directory node in the tree. Every expand (re-)reads the directory so
+ * files added since the last listing show up — the All tree has no fs watcher,
+ * so a stale cache would otherwise hide new entries forever. Cached children
+ * stay rendered while the fresh read is in flight (no "loading…" flash); a cold
+ * expand shows the placeholder until the first read lands.
  */
 export async function toggleDir(path: string): Promise<void> {
   const s = useStore.getState();
   const willExpand = !s.expandedDirs[path];
   s.setDirExpanded(path, willExpand);
-  if (willExpand && s.dirChildren[path] === undefined) {
-    try {
-      const entries = await window.treeline.files.readDir(path);
-      useStore.getState().setDirChildren(path, entries);
-    } catch {
-      // Leave children undefined; the row shows nothing rather than crashing.
+  if (!willExpand) return;
+  try {
+    const entries = await window.treeline.files.readDir(path);
+    useStore.getState().setDirChildren(path, entries);
+  } catch {
+    // Only a cold expand (nothing cached) falls back to empty; a failed refresh
+    // keeps the previously-listed children rather than blanking the row.
+    if (useStore.getState().dirChildren[path] === undefined) {
       useStore.getState().setDirChildren(path, []);
     }
   }

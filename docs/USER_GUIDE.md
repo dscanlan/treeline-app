@@ -156,6 +156,9 @@ also scriptable from the [CLI](./CLI.md#browser-verbs).
 
 Click the **folder icon** on a worktree row to expand its file tree.
 
+- **Refreshing a folder.** The **All** tree lists a folder's contents each time you
+  expand it. If you add or remove files in a folder that's already open, collapse and
+  re-expand it to pick up the change.
 - **All | Changed toggle.** **Changed** swaps the tree for a flat list of the
   worktree's working-tree changes, each tagged with a colored status letter:
 

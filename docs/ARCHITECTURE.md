@@ -81,7 +81,12 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 
 1. User clicks the folder icon on a worktree row. Renderer's
    `actions/editor.ts:toggleDir(path)` flips `expandedDirs[path]` in the
-   store and, on first expand, calls `window.treeline.files.readDir(path)`.
+   store and, on every expand, calls `window.treeline.files.readDir(path)`.
+   The All tree has no fs watcher, so re-reading on each expand is what
+   surfaces files added since the last listing — collapse + re-expand a
+   folder to pick up new entries. Cached children stay rendered while the
+   fresh read is in flight (no "loading…" flash); a failed refresh keeps
+   the previous listing rather than blanking the folder.
 2. Main's `files-io.ts:listDir()` reads one directory level (`.git`
    hidden, dirs-first sort) and returns `DirEntry[]`, cached in the editor
    slice's `dirChildren`. `<FileTree>` renders it; sub-dirs repeat step 1.
