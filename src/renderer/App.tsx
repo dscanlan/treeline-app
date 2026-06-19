@@ -7,6 +7,8 @@ import { Modals } from './components/modals/Modals';
 import { DiscoveredRepoToast } from './components/DiscoveredRepoToast';
 import { WorktreeDriftToast } from './components/WorktreeDriftToast';
 import { ReattachToast } from './components/ReattachToast';
+import { RestorePrompt } from './components/RestorePrompt';
+import { RestoreToast } from './components/RestoreToast';
 import { ScreenshotForceTooltip } from './components/ScreenshotForceTooltip';
 import { attachIpc, loadInitialState } from './ipc/client';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
@@ -42,6 +44,8 @@ export function App() {
       <DiscoveredRepoToast />
       <WorktreeDriftToast />
       <ReattachToast />
+      <RestoreToast />
+      <RestorePrompt />
       <ScreenshotForceTooltip />
     </>
   );

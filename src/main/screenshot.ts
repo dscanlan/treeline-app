@@ -615,6 +615,56 @@ const SCENARIOS: Record<string, Scenario> = {
     await delay(500);
   },
 
+  '39-restore-prompt': async (ctx) => {
+    // A *full* restart — an auto-update relaunch (quitAndInstall) or a reboot —
+    // kills the background process, so no PTYs survive to re-adopt. Instead the
+    // saved tab layout (session.json) drives a "Restore previous session?"
+    // prompt on the next cold launch; confirming respawns the tabs and resumes
+    // any Claude panes. The window behind is a fresh launch (populated sidebar,
+    // no open tabs yet) with the prompt staged over it.
+    const main = WORKTREES_TREELINE_APP[0]!;
+    const featWt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      selected: REPO_TREELINE_APP.path,
+      pendingRestore: {
+        version: 1,
+        tabs: [
+          {
+            id: 'restore-main',
+            cwd: main.path,
+            title: 'treeline-app',
+            focusedPaneId: 'restore-main-pane',
+            root: {
+              kind: 'leaf',
+              id: 'restore-main-pane',
+              cwd: main.path,
+              title: 'treeline-app',
+              claudePane: true,
+            },
+          },
+          {
+            id: 'restore-feat',
+            cwd: featWt.path,
+            title: 'feat-auth',
+            focusedPaneId: 'restore-feat-pane',
+            root: {
+              kind: 'leaf',
+              id: 'restore-feat-pane',
+              cwd: featWt.path,
+              title: 'feat-auth',
+              claudePane: false,
+            },
+          },
+        ],
+        activeTabId: 'restore-feat',
+      },
+    });
+    await delay(400);
+  },
+
   '14-status-dots': async (ctx) => {
     const a = await spawnTabPty(ctx, 'main'); // running
     const b = await spawnTabPty(ctx, 'feat-auth'); // idle

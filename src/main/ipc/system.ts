@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs';
 import { ipcMain, shell } from 'electron';
 import { Channels } from '@shared/ipc-channels';
 import { isSafeExternalUrl } from '../util/safe-url';
+import { validateAbsPath } from '../util/safe-path';
 
 /**
  * Renderer-initiated external link opens (today: clicking a PR badge). Routed
@@ -15,5 +17,20 @@ export function registerSystemIpc(): () => void {
       await shell.openExternal(url);
     }
   });
-  return () => ipcMain.removeHandler(Channels.SystemOpenExternal);
+
+  // Existence check for session-restore — skip tabs whose worktree was removed
+  // while the app was closed. Returns false for a malformed/relative path rather
+  // than throwing, since "doesn't exist" is the right answer for the caller.
+  ipcMain.handle(Channels.SystemPathExists, async (_e, rawPath: unknown) => {
+    try {
+      return existsSync(validateAbsPath(rawPath));
+    } catch {
+      return false;
+    }
+  });
+
+  return () => {
+    ipcMain.removeHandler(Channels.SystemOpenExternal);
+    ipcMain.removeHandler(Channels.SystemPathExists);
+  };
 }

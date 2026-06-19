@@ -8,6 +8,7 @@ import type {
   FileContents,
   FileDiff,
   Folder,
+  PersistedSession,
   PrInfo,
   PrSnapshot,
   ProcessSnapshot,
@@ -91,6 +92,8 @@ export interface ScreenshotHydratePayload {
   unreadByPtyId?: Record<string, { text: string; at: number }>;
   /** Seed the "↻ Restored N terminals" reload-reattach toast for capture. */
   reattachNotice?: { count: number; at: number } | null;
+  /** Seed the cold-start "Restore previous session?" prompt (RestorePrompt). */
+  pendingRestore?: PersistedSession | null;
   /** Replace processesByWorktreePath wholesale — drives the magenta `claude`/`opencode`/`aider` badges in WorktreeRow. */
   processesByWorktreePath?: Record<string, DetectedProcess[]>;
   /** Replace portsByWorktreePath wholesale — drives the listening-port chips in WorktreeRow. */
@@ -301,6 +304,23 @@ export interface TreelineApi {
     prepareResume(
       worktreePath: string,
     ): Promise<{ sessionId: string; originCwd: string } | null>;
+    /**
+     * The most-recently-modified Claude session id for `cwd`, or null when that
+     * directory has no transcript. Unlike {@link prepareResume} this copies
+     * nothing — restore uses it to re-run `claude --resume <id>` in a respawned
+     * pane that was running Claude when the session was last saved.
+     */
+    latestForCwd(cwd: string): Promise<string | null>;
+  };
+
+  /**
+   * Persisted tab layout (`session.json`). `get` is read once on launch to offer
+   * a restore after a full restart; `set` receives a debounced snapshot of the
+   * current tabs from the renderer. See {@link PersistedSession}.
+   */
+  session: {
+    get(): Promise<PersistedSession>;
+    set(session: PersistedSession): Promise<void>;
   };
 
   config: {
@@ -345,6 +365,11 @@ export interface TreelineApi {
      * terminal links (`isSafeExternalUrl`); non-web schemes are dropped.
      */
     openExternal(url: string): Promise<void>;
+    /**
+     * Whether an absolute path still exists on disk. Used by session-restore to
+     * skip tabs whose worktree was removed while the app was closed.
+     */
+    pathExists(path: string): Promise<boolean>;
   };
 
   /**

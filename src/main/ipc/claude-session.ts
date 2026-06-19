@@ -34,7 +34,18 @@ export function registerClaudeSessionIpc(): () => void {
     return { sessionId: session.id, originCwd: originRepo };
   });
 
+  // The latest session id for a cwd, no copy. Session-restore uses this to
+  // re-run `claude --resume <id>` in a respawned pane that was running Claude
+  // when the layout was saved — the transcript already lives in that cwd's
+  // project folder, so unlike prepareResume nothing needs copying across.
+  ipcMain.handle(Channels.ClaudeSessionLatestForCwd, async (_e, rawCwd: unknown) => {
+    const cwd = validateAbsPath(rawCwd);
+    const session = await latestSessionForCwd(cwd);
+    return session?.id ?? null;
+  });
+
   return () => {
     ipcMain.removeHandler(Channels.ClaudeSessionPrepareResume);
+    ipcMain.removeHandler(Channels.ClaudeSessionLatestForCwd);
   };
 }

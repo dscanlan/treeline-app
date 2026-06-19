@@ -12,6 +12,7 @@ import { createEditorSlice, type EditorSlice } from './editor-slice';
 import { createBrowserSlice, type BrowserSlice } from './browser-slice';
 import { createSettingsSlice, type SettingsSlice } from './settings-slice';
 import { createReattachSlice, type ReattachSlice } from './reattach-slice';
+import { createRestoreSlice, type RestoreSlice } from './restore-slice';
 
 export type AppStore = ReposSlice &
   TabsSlice &
@@ -25,7 +26,8 @@ export type AppStore = ReposSlice &
   EditorSlice &
   BrowserSlice &
   SettingsSlice &
-  ReattachSlice;
+  ReattachSlice &
+  RestoreSlice;
 
 export const useStore = create<AppStore>()((...a) => ({
   ...createReposSlice(...a),
@@ -41,4 +43,5 @@ export const useStore = create<AppStore>()((...a) => ({
   ...createBrowserSlice(...a),
   ...createSettingsSlice(...a),
   ...createReattachSlice(...a),
+  ...createRestoreSlice(...a),
 }));

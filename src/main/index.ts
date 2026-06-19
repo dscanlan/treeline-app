@@ -15,6 +15,7 @@ import {
 import { materializeCliShim } from './cli-install';
 import { resolveNotificationTargets } from './notification-targets';
 import { ReposStore } from './repos-store';
+import { SessionStore } from './session-store';
 import { buildAppMenu } from './menu';
 import { resolveKeybindings } from '@shared/keybindings';
 import { appPaletteForId } from '@shared/terminal-theme';
@@ -39,6 +40,7 @@ import { registerProcessesIpc, broadcastProcesses } from './ipc/processes';
 import { registerPrIpc, broadcastPr } from './ipc/pr';
 import { registerSystemIpc } from './ipc/system';
 import { registerConfigIpc } from './ipc/config';
+import { registerSessionIpc } from './ipc/session';
 import { registerFilesIpc } from './ipc/files';
 import { registerClaudeSessionIpc } from './ipc/claude-session';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
@@ -65,6 +67,7 @@ import {
 let mainWindow: BrowserWindow | null = null;
 let ptyManager: PtyManager | null = null;
 let reposStore: ReposStore | null = null;
+let sessionStore: SessionStore | null = null;
 let worktreeWatcher: WorktreeWatcher | null = null;
 let terminalStatusMonitor: TerminalStatusMonitor | null = null;
 let processMonitor: ProcessMonitor | null = null;
@@ -186,6 +189,8 @@ app.whenReady().then(() => {
 
   reposStore = new ReposStore(join(app.getPath('userData'), 'config.json'));
   const cfg = reposStore.load();
+  sessionStore = new SessionStore(join(app.getPath('userData'), 'session.json'));
+  sessionStore.load();
 
   // Make the `treeline` CLI reachable from agents in spawned terminals: write
   // the shim, then prepend its dir to every shell's PATH. Best-effort — a
@@ -323,6 +328,7 @@ app.whenReady().then(() => {
   });
   registerFilesIpc();
   registerClaudeSessionIpc();
+  registerSessionIpc(sessionStore);
 
   // Scriptable CLI: listen on a user-scoped unix socket so the `treeline` CLI
   // (and agents/hooks) can drive the running app. Verbs route through the same

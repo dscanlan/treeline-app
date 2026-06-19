@@ -95,35 +95,64 @@ back is instant.
 
 ---
 
-## Your sessions survive a reload or restart
+## Your sessions survive a window reload
 
 ![Two terminals re-adopted after a reload, with a "Restored 2 terminals" toast](img/38-reattach-toast.png)
 
 Your terminals live in treeline's background process, not in the window. So when
-the **window reloads** — the app auto-updates and relaunches, you hit Reload
-(⌘R), or **your laptop suddenly restarts or shuts down and reopens the app** —
-treeline **re-adopts the terminals that were still running** instead of leaving
-them orphaned. A brief **"↻ Restored N terminals"** toast confirms it, and each
-pane repaints itself (a long-running `claude` session, a watching `npm test`,
-that `ssh` you left open) so you pick up where you left off.
+the **window reloads** (you hit Reload, ⌘R) treeline **re-adopts the terminals
+that were still running** instead of leaving them orphaned. A brief
+**"↻ Restored N terminals"** toast confirms it, and each pane repaints itself (a
+long-running `claude` session, a watching `npm test`, that `ssh` you left open)
+so you pick up where you left off.
 
 What this means in practice:
 
-- A reload or an unexpected restart **doesn't kill your running agents or
-  commands** — they keep running and reappear in their tabs.
+- A reload **doesn't kill your running agents or commands** — they keep running
+  and reappear in their tabs.
 - You won't accumulate **invisible orphaned shells** eating resources behind a
   window that lost track of them.
 
 Notes:
 
 - Each surviving terminal comes back as its own tab. A split *layout* isn't
-  restored — the panes return as separate tabs.
+  restored on a reload — the panes return as separate tabs.
 - Scrollback from before the reload isn't replayed; a running full-screen tool
   (like an agent CLI) repaints its current view, and a plain shell shows a fresh
   prompt. The **process and its state are intact** either way.
-- This protects against window reloads and app relaunches — it is **not** a
-  substitute for a full machine shutdown that terminates every process. If the
-  OS kills the background process too, the sessions are gone.
+- A reload keeps the background process alive. When that process *ends* — an
+  auto-update relaunch or a reboot — see the next section.
+
+---
+
+## Your tabs come back after a full restart
+
+![A fresh launch with the worktree sidebar populated and a "Restore previous session?" dialog offering to reopen 2 saved tabs, with Not now / Restore buttons](img/39-restore-prompt.png)
+
+A reload keeps the background process running, so treeline can re-adopt the live
+shells. A **full restart doesn't** — when the app **auto-updates and relaunches**
+or your **machine reboots**, that process ends and the shells are gone for good.
+For that, treeline saves your **tab layout to disk** and offers it back on the
+next launch.
+
+On a cold start with a saved layout you'll see a **"Restore previous session?"**
+prompt. Nothing happens until you choose:
+
+- **Restore** rebuilds the session — a fresh terminal in each tab's folder, with
+  the **split layout** exactly as you left it (not flattened into separate tabs
+  like a reload), and any pane that was running **Claude** resumes its
+  conversation automatically. A **"↻ Restored N tabs"** toast confirms it.
+- **Not now** starts clean and forgets that saved layout.
+
+Good to know:
+
+- This is the case the reload-reattach **can't** cover: an auto-update or a
+  reboot kills every shell, so treeline respawns fresh ones from the saved
+  layout rather than re-adopting the originals.
+- A tab whose worktree you **deleted** while the app was closed is skipped, and
+  the toast tells you how many were skipped.
+- As with a reload, scrollback isn't replayed — a respawned shell starts at a
+  clean prompt, and a resumed Claude pane repaints its current view.
 
 ---
 

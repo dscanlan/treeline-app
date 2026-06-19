@@ -64,12 +64,24 @@ export const Channels = {
   ConfigSetSidebarCollapsed: 'config:setSidebarCollapsed',
   ConfigSetSettings: 'config:setSettings',
 
+  // session persistence — the saved tab layout (session.json) so a full restart
+  // (auto-update relaunch / reboot) can offer to restore tabs. `set` is the
+  // renderer pushing a debounced snapshot; `get` is read once on launch.
+  SessionGet: 'session:get',
+  SessionSet: 'session:set',
+
   // claude session resume (copy a conversation transcript into a worktree's
   // project folder so `claude --resume` can continue it there)
   ClaudeSessionPrepareResume: 'claudeSession:prepareResume',
+  // The most-recent Claude session id for a cwd (no copy) — used to re-run
+  // `claude --resume <id>` when restoring a persisted pane that was running it.
+  ClaudeSessionLatestForCwd: 'claudeSession:latestForCwd',
 
   // system (open external URLs via the safe-url allowlist)
   SystemOpenExternal: 'system:openExternal',
+  // Does an absolute path still exist? Used by session-restore to skip tabs
+  // whose worktree was removed while the app was closed.
+  SystemPathExists: 'system:pathExists',
 
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',

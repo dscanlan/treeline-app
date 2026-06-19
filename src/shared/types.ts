@@ -1,6 +1,6 @@
 // Shared types — imported by main, preload, and renderer.
 
-import type { PaneNode } from './pane-tree';
+import type { PaneNode, SplitDirection } from './pane-tree';
 
 export interface Repo {
   /** Absolute, canonicalized repo root path. */
@@ -132,6 +132,61 @@ export interface Tab {
   focusedPaneId: string;
   createdAt: number;
   lastActiveAt: number;
+}
+
+/**
+ * The serializable subset of a {@link Tab} written to disk (`session.json`) so a
+ * full process restart — an auto-update relaunch (`quitAndInstall` kills main and
+ * every child shell) or a laptop reboot — can offer to restore the layout. Unlike
+ * the reload-time reattach (which re-adopts PTYs still alive in main), a cold
+ * start has no surviving shells, so we persist the *shape* and respawn fresh ones.
+ *
+ * Dropped vs the live tree: `ptyId` (stale on restart), `status` / `foregroundCmd`
+ * (runtime-derived), `createdAt` (re-stamped on respawn). A leaf instead records
+ * {@link PersistedLeaf.claudePane} — whether it was running `claude` at save time
+ * — so restore can re-run `claude --resume <id>` (the id re-derived from disk).
+ */
+export interface PersistedLeaf {
+  kind: 'leaf';
+  /** Pane-tree node id; kept stable so `focusedPaneId` stays valid on restore. */
+  id: string;
+  cwd: string;
+  title: string;
+  /** True if this pane's foreground command was `claude` when last persisted. */
+  claudePane: boolean;
+  /**
+   * The Claude session id pinned at save time (the latest transcript for `cwd`
+   * when the layout was written). Restore resumes *this* id rather than
+   * re-deriving "newest for the cwd" at restore time, which a reload could race.
+   * Absent when the pane wasn't running Claude, or no transcript existed yet —
+   * restore then falls back to a fresh look-up. A best-effort heuristic still:
+   * with two app instances writing the same cwd it can't disambiguate them.
+   */
+  claudeSessionId?: string;
+}
+
+export interface PersistedSplit {
+  kind: 'split';
+  id: string;
+  direction: SplitDirection;
+  children: PersistedNode[];
+  sizes: number[];
+}
+
+export type PersistedNode = PersistedLeaf | PersistedSplit;
+
+export interface PersistedTab {
+  id: string;
+  cwd: string;
+  title: string;
+  root: PersistedNode;
+  focusedPaneId: string;
+}
+
+export interface PersistedSession {
+  version: 1;
+  tabs: PersistedTab[];
+  activeTabId: string | null;
 }
 
 /**

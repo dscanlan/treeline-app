@@ -45,8 +45,8 @@ worktree dance is optional.
 
 ## Status
 
-v0.16.0 — feature-complete for v1: macOS only, repos managed manually,
-tabs are session-only (no restore across launches).
+v0.16.0 — feature-complete for v1: macOS only, repos managed manually.
+Open tabs are saved and offered back after a full restart.
 
 ## Install
 
@@ -224,16 +224,36 @@ running.
 ![Two terminals re-adopted after a reload — a main tab showing a restored Claude session and a feat-auth tab — with a top-center "↻ Restored 2 terminals after reload" toast](docs/img/38-reattach-toast.png)
 
 Terminals live in treeline's background process, not in the window, so a window
-reload doesn't take them down with it. When the window reloads — an auto-update
-relaunch, a manual Reload (`⌘R`), or your **laptop suddenly restarting/shutting
-down** and reopening the app — treeline **re-adopts the PTYs that were still
-running** rather than orphaning them, shows a brief **"↻ Restored N terminals"**
-toast, and nudges each pane so a running TUI (a `claude` session, a `npm test`
-watcher) repaints where you left it. Your agents and long-running commands keep
-running across the reload instead of being silently killed or stranded as
-invisible orphan shells. (Each surviving terminal returns as its own tab; the
-split *layout* isn't restored, and this isn't a substitute for a full OS
-shutdown that terminates the background process itself.)
+**reload** (`⌘R`) doesn't take them down with it. treeline **re-adopts the PTYs
+that were still running** rather than orphaning them, shows a brief
+**"↻ Restored N terminals"** toast, and nudges each pane so a running TUI (a
+`claude` session, a `npm test` watcher) repaints where you left it. Your agents
+and long-running commands keep running across the reload instead of being
+silently killed or stranded as invisible orphan shells. (Each surviving terminal
+returns as its own tab.)
+
+A reload keeps the background *process* alive. A full restart that ends that
+process — an **auto-update relaunch** or a **reboot** — leaves no shells to
+re-adopt; that case is handled by
+[session restore](#tabs-come-back-after-a-full-restart) below.
+
+### Tabs come back after a full restart
+
+![A fresh launch with the worktree sidebar populated and a centered "Restore previous session?" dialog reading "2 tabs from your last session can be reopened. Terminals respawn in their folders, and panes that were running Claude resume their conversation." with Not now / Restore buttons](docs/img/39-restore-prompt.png)
+
+When treeline's background process itself ends — it **auto-updates and relaunches**,
+or your **machine reboots** — the terminals are gone for real, so re-adopting
+isn't possible. Instead treeline keeps the **tab layout saved to disk** and, on
+the next cold launch, offers to bring it back: a **"Restore previous session?"**
+prompt. Nothing respawns until you say so.
+
+Choose **Restore** and treeline rebuilds the session: one fresh shell per pane in
+its original folder, the **full split layout** intact (not flattened), and any
+pane that was running **Claude** picks its conversation back up via
+`claude --resume`. A **"↻ Restored N tabs"** toast confirms it. Tabs whose
+worktree was deleted while the app was closed are skipped, and the toast says how
+many. (Scrollback from before the restart isn't replayed — a fresh shell starts
+at a clean prompt, and a resumed agent repaints its current view.)
 
 ### Agent attention notifications
 

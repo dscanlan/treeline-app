@@ -5,6 +5,7 @@ import { refreshChangedFiles } from '../actions/editor';
 import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
 import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
+import { claudePaneCwds, toPersistedSession } from '@shared/session-serialize';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
@@ -251,6 +252,9 @@ export function attachIpc(): () => void {
       if (p.reattachNotice !== undefined) {
         useStore.setState({ reattachNotice: p.reattachNotice });
       }
+      if (p.pendingRestore !== undefined) {
+        useStore.setState({ pendingRestore: p.pendingRestore });
+      }
       if (p.processesByWorktreePath !== undefined) {
         const flat = Object.values(p.processesByWorktreePath).flat();
         s.setProcesses(flat, p.processesByWorktreePath, p.portsByWorktreePath ?? {});
@@ -302,6 +306,45 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // Persist the tab layout to disk (debounced) so a full restart can offer to
+  // restore it. We watch only the structural slices — adding/closing/splitting
+  // tabs and switching the active one — not every status tick. While a restore
+  // offer is still pending (cold start, user hasn't decided) we skip writing so
+  // the empty initial state can't clobber the saved session before they choose.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushSave = async (): Promise<void> => {
+    saveTimer = null;
+    const s = useStore.getState();
+    if (s.pendingRestore) return;
+    // Pin each Claude pane's session id by cwd *now*, while that pane is the live
+    // session, so restore resumes the exact conversation instead of re-deriving
+    // "newest for the cwd" later (a reload could race it). Best-effort: a failed
+    // look-up just omits the pin and restore falls back to a fresh resolve.
+    const cwds = claudePaneCwds(s.tabs);
+    const sessionIdByCwd = new Map<string, string>();
+    await Promise.all(
+      cwds.map(async (cwd) => {
+        const id = await window.treeline.claudeSession.latestForCwd(cwd).catch(() => null);
+        if (id) sessionIdByCwd.set(cwd, id);
+      }),
+    );
+    // Re-check after the await — a restore may have been staged meanwhile.
+    if (useStore.getState().pendingRestore) return;
+    void window.treeline.session.set(
+      toPersistedSession(s.tabs, s.activeTabId, sessionIdByCwd),
+    );
+  };
+  unsubs.push(
+    useStore.subscribe((state, prev) => {
+      if (state.tabs === prev.tabs && state.activeTabId === prev.activeTabId) return;
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => void flushSave(), 750);
+    }),
+  );
+  unsubs.push(() => {
+    if (saveTimer) clearTimeout(saveTimer);
+  });
+
   return () => unsubs.forEach((fn) => fn());
 }
 
@@ -317,11 +360,13 @@ export function attachIpc(): () => void {
  *
  * A no-op on a fresh launch (no PTYs yet). Split layouts aren't restored — the
  * pane tree isn't persisted, so each surviving pane comes back as its own tab;
- * the point is that no shell is leaked.
+ * the point is that no shell is leaked. Returns the number of live PTYs main was
+ * holding, so the caller can tell a warm reload (≥1) from a cold start (0) — the
+ * cold start is where the disk-backed session restore takes over.
  */
-async function reattachPtys(): Promise<void> {
+async function reattachPtys(): Promise<number> {
   const live = await window.treeline.pty.list().catch(() => []);
-  if (live.length === 0) return;
+  if (live.length === 0) return 0;
   const s = useStore.getState();
   // Skip any PTY the store already tracks, so a re-entrant call can't dupe tabs.
   const known = new Set(s.tabs.flatMap((t) => leaves(t.root).map((l) => l.ptyId)));
@@ -334,6 +379,7 @@ async function reattachPtys(): Promise<void> {
   // Tell the user their sessions came back — the panes are blank for the beat
   // it takes each xterm to replay, so a silent restore reads as a hang.
   s.noteReattached(adopted);
+  return live.length;
 }
 
 /** Hydrate initial state from disk + main: config, repos, worktrees. */
@@ -347,7 +393,19 @@ export async function loadInitialState(): Promise<void> {
 
   // Re-adopt shells that survived a reload before anything else paints, so a
   // reloaded window comes back with its terminals instead of leaking them.
-  await reattachPtys();
+  const liveCount = await reattachPtys();
+
+  // Cold start (no surviving PTYs — an auto-update relaunch or a reboot): if a
+  // non-empty tab layout was saved to disk, offer to restore it. The prompt
+  // (RestorePrompt) drives the actual respawn; we only stage the offer here, and
+  // the debounced save is suppressed while `pendingRestore` is set so the empty
+  // launch state can't overwrite the saved session first.
+  if (liveCount === 0) {
+    const saved = await api.session.get().catch(() => null);
+    if (saved && saved.tabs.length > 0) {
+      useStore.getState().setPendingRestore(saved);
+    }
+  }
 
   // Seed PR status from the monitor's latest-known snapshot so a reload paints
   // badges immediately rather than waiting for the next poll. Best-effort.

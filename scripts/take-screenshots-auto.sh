@@ -60,6 +60,7 @@ ALL_SCENARIOS=(
   "36-agent-notifications"
   "37-session-paused"
   "38-reattach-toast"
+  "39-restore-prompt"
 )
 
 if [ $# -gt 0 ]; then

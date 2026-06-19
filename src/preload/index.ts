@@ -9,6 +9,7 @@ import type {
   DirEntry,
   FileContents,
   FileDiff,
+  PersistedSession,
   PrInfo,
   PrSnapshot,
   ProcessSnapshot,
@@ -147,6 +148,14 @@ const api: TreelineApi = {
       ipcRenderer.invoke(Channels.ClaudeSessionPrepareResume, worktreePath) as Promise<
         { sessionId: string; originCwd: string } | null
       >,
+    latestForCwd: (cwd) =>
+      ipcRenderer.invoke(Channels.ClaudeSessionLatestForCwd, cwd) as Promise<string | null>,
+  },
+
+  session: {
+    get: () => ipcRenderer.invoke(Channels.SessionGet) as Promise<PersistedSession>,
+    set: (session) =>
+      ipcRenderer.invoke(Channels.SessionSet, session) as Promise<void>,
   },
 
   config: {
@@ -177,6 +186,8 @@ const api: TreelineApi = {
     homeDir: homeDirFromArgv(),
     openExternal: (url) =>
       ipcRenderer.invoke(Channels.SystemOpenExternal, url) as Promise<void>,
+    pathExists: (path) =>
+      ipcRenderer.invoke(Channels.SystemPathExists, path) as Promise<boolean>,
   },
 
   screenshot: {

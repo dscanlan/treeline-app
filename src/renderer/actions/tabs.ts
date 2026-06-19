@@ -2,6 +2,12 @@
 // close button. Keeps the IPC dance out of the components.
 import type { SplitDirection } from '@shared/pane-tree';
 import { findLeaf } from '@shared/pane-tree';
+import type { PersistedSession, Tab } from '@shared/types';
+import {
+  persistedLeaves,
+  persistedToLiveTree,
+  rebuildTabsByCwd,
+} from '@shared/session-serialize';
 import { useStore } from '../store';
 
 interface OpenOpts {
@@ -50,6 +56,79 @@ function writeWhenReady(id: string, data: string): void {
   };
   const unsub = window.treeline.pty.onData(id, fire);
   const timer = setTimeout(fire, 1500);
+}
+
+/**
+ * Restore a saved tab layout after a full restart (auto-update relaunch / reboot)
+ * where no PTYs survived. For each saved tab whose worktree still exists, we
+ * respawn one fresh shell per pane, rebuild the split tree around the new PTYs
+ * (layout + focus preserved), and re-run `claude --resume <id>` in any pane that
+ * was running Claude when the layout was saved — resolving the id from disk for
+ * that cwd. Tabs whose worktree was removed while the app was closed are skipped
+ * and counted. Commits the whole tab set in one `setState`, then surfaces a
+ * "Restored N tabs" toast. Only ever called from the user's Restore confirmation.
+ */
+export async function restoreSession(saved: PersistedSession): Promise<void> {
+  const api = window.treeline;
+  const builtTabs: Tab[] = [];
+  const claudeResumes: { ptyId: string; cwd: string; sessionId?: string }[] = [];
+  let skipped = 0;
+
+  for (const ptab of saved.tabs) {
+    // Skip a tab whose worktree no longer exists — respawning there would land
+    // the shell somewhere surprising (or fail).
+    if (!(await api.system.pathExists(ptab.cwd).catch(() => false))) {
+      skipped++;
+      continue;
+    }
+
+    // Spawn one PTY per leaf, mapping persisted leaf id → new pty id so the tree
+    // can be rebuilt with live PTYs while keeping node ids (and focus) intact.
+    const ptyByLeafId = new Map<string, string>();
+    for (const leaf of persistedLeaves(ptab.root)) {
+      const { id: ptyId } = await api.pty.spawn({ cwd: leaf.cwd, cols: 80, rows: 24 });
+      ptyByLeafId.set(leaf.id, ptyId);
+      // Prefer the id pinned at save time; fall back to resolving it now.
+      if (leaf.claudePane) {
+        claudeResumes.push({ ptyId, cwd: leaf.cwd, sessionId: leaf.claudeSessionId });
+      }
+    }
+
+    const now = Date.now();
+    builtTabs.push({
+      id: ptab.id,
+      cwd: ptab.cwd,
+      title: ptab.title,
+      root: persistedToLiveTree(ptab.root, ptyByLeafId),
+      focusedPaneId: ptab.focusedPaneId,
+      createdAt: now,
+      lastActiveAt: now,
+    });
+  }
+
+  // Commit the rebuilt tabs wholesale (mirrors the screenshot-hydrate path):
+  // bypasses addTab's per-tab MRU bookkeeping, so we seed tabsByCwd ourselves.
+  const activeTabId = builtTabs.some((t) => t.id === saved.activeTabId)
+    ? saved.activeTabId
+    : (builtTabs[0]?.id ?? null);
+  useStore.setState({
+    tabs: builtTabs,
+    activeTabId,
+    tabsByCwd: rebuildTabsByCwd(builtTabs),
+  });
+
+  // Resume Claude in the flagged panes once each shell is ready. Best-effort and
+  // independent per pane: a missing transcript just leaves a plain shell. Use the
+  // id pinned at save time when we have one; otherwise resolve the newest now.
+  for (const { ptyId, cwd, sessionId } of claudeResumes) {
+    const resume = (id: string | null): void => {
+      if (id) writeWhenReady(ptyId, `claude --resume ${id}\r`);
+    };
+    if (sessionId) resume(sessionId);
+    else void api.claudeSession.latestForCwd(cwd).then(resume);
+  }
+
+  useStore.getState().noteRestored(builtTabs.length, skipped);
 }
 
 /**
