@@ -330,8 +330,11 @@ export function attachIpc(): () => void {
     );
     // Re-check after the await — a restore may have been staged meanwhile.
     if (useStore.getState().pendingRestore) return;
+    // Flag scratch tabs (keyed by PTY id) so restore can re-seed the memory-only
+    // scratch slice — its sidebar row, cleanup wiring, and label numbering.
+    const scratchPtyIds = new Set(s.scratches.map((sc) => sc.ptyId));
     void window.treeline.session.set(
-      toPersistedSession(s.tabs, s.activeTabId, sessionIdByCwd),
+      toPersistedSession(s.tabs, s.activeTabId, sessionIdByCwd, scratchPtyIds),
     );
   };
   unsubs.push(

@@ -96,6 +96,41 @@ describe('toPersistedSession', () => {
   });
 });
 
+describe('toPersistedSession — scratch flag', () => {
+  function soloTab(ptyId: string): Tab {
+    return {
+      id: 'tab-s',
+      cwd: '/home/me',
+      title: 'Scratch 2',
+      root: liveLeaf('solo', { ptyId, cwd: '/home/me' }),
+      focusedPaneId: 'solo',
+      createdAt: 0,
+      lastActiveAt: 0,
+    };
+  }
+
+  it('flags an unsplit tab whose leaf PTY is a known scratch', () => {
+    const session = toPersistedSession(
+      [soloTab('scratch-pty')],
+      'tab-s',
+      new Map(),
+      new Set(['scratch-pty']),
+    );
+    expect(session.tabs[0].scratch).toBe(true);
+  });
+
+  it('omits the flag when the leaf PTY is not a scratch', () => {
+    const session = toPersistedSession([soloTab('plain-pty')], 'tab-s', new Map(), new Set(['other']));
+    expect('scratch' in session.tabs[0]).toBe(false);
+  });
+
+  it('never flags a split tab, even if a child PTY is a scratch', () => {
+    // splitTab()'s leaves use ptyIds `a-pty` / `b-pty`.
+    const session = toPersistedSession([splitTab()], 'tab-1', new Map(), new Set(['a-pty']));
+    expect('scratch' in session.tabs[0]).toBe(false);
+  });
+});
+
 describe('claudePaneCwds', () => {
   it('returns the distinct cwds of claude panes only', () => {
     const t1 = splitTab(); // leaf a (claude) + b (vim), both /wt

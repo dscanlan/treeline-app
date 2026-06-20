@@ -61,6 +61,7 @@ ALL_SCENARIOS=(
   "37-session-paused"
   "38-reattach-toast"
   "39-restore-prompt"
+  "40-scratch-restored"
 )
 
 if [ $# -gt 0 ]; then

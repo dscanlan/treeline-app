@@ -2,13 +2,14 @@
 // close button. Keeps the IPC dance out of the components.
 import type { SplitDirection } from '@shared/pane-tree';
 import { findLeaf } from '@shared/pane-tree';
-import type { PersistedSession, Tab } from '@shared/types';
+import type { PersistedSession, Scratch, Tab } from '@shared/types';
 import {
   persistedLeaves,
   persistedToLiveTree,
   rebuildTabsByCwd,
 } from '@shared/session-serialize';
 import { useStore } from '../store';
+import { registerScratchCleanup } from './scratch';
 
 interface OpenOpts {
   /** If true, always spawn a fresh tab instead of focusing the MRU on this cwd. */
@@ -72,6 +73,7 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
   const api = window.treeline;
   const builtTabs: Tab[] = [];
   const claudeResumes: { ptyId: string; cwd: string; sessionId?: string }[] = [];
+  const restoredScratches: Scratch[] = [];
   let skipped = 0;
 
   for (const ptab of saved.tabs) {
@@ -104,10 +106,23 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
       createdAt: now,
       lastActiveAt: now,
     });
+
+    // Re-seed the (memory-only) scratch slice for a restored scratch tab. It's
+    // always an unsplit single-leaf tab; its new PTY id keys the row, matching
+    // openScratchTerminal's `id === ptyId` convention.
+    if (ptab.scratch) {
+      const leafId = persistedLeaves(ptab.root)[0]?.id;
+      const ptyId = leafId ? ptyByLeafId.get(leafId) : undefined;
+      if (ptyId) {
+        restoredScratches.push({ id: ptyId, label: ptab.title, ptyId, cwd: ptab.cwd, createdAt: now });
+      }
+    }
   }
 
   // Commit the rebuilt tabs wholesale (mirrors the screenshot-hydrate path):
   // bypasses addTab's per-tab MRU bookkeeping, so we seed tabsByCwd ourselves.
+  // Scratch rows go in the same commit so the sidebar reflects them at once;
+  // we don't touch selectedScratchId — the active tab/selection is set above.
   const activeTabId = builtTabs.some((t) => t.id === saved.activeTabId)
     ? saved.activeTabId
     : (builtTabs[0]?.id ?? null);
@@ -115,7 +130,12 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
     tabs: builtTabs,
     activeTabId,
     tabsByCwd: rebuildTabsByCwd(builtTabs),
+    scratches: restoredScratches,
   });
+
+  // Wire each restored scratch's exit cleanup so typing `exit` (or closing the
+  // tab) tears the row down exactly like a freshly-opened scratch.
+  for (const sc of restoredScratches) registerScratchCleanup(sc.ptyId);
 
   // Resume Claude in the flagged panes once each shell is ready. Best-effort and
   // independent per pane: a missing transcript just leaves a plain shell. Use the

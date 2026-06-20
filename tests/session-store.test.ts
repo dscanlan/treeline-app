@@ -132,6 +132,27 @@ describe('coerceSession', () => {
     expect('claudeSessionId' in dropped).toBe(false);
   });
 
+  it('preserves a scratch tab flag, and drops a non-true value', () => {
+    const make = (scratch: unknown): unknown => ({
+      version: 1,
+      tabs: [
+        {
+          id: 't',
+          cwd: '/home/me',
+          title: 'Scratch 1',
+          focusedPaneId: 'a',
+          scratch,
+          root: { kind: 'leaf', id: 'a', cwd: '/home/me', title: 'Scratch 1', claudePane: false },
+        },
+      ],
+      activeTabId: 't',
+    });
+    expect(coerceSession(make(true)).tabs[0]).toMatchObject({ scratch: true });
+    // Anything other than the literal `true` (e.g. a truthy string) is dropped.
+    expect('scratch' in coerceSession(make('yes')).tabs[0]).toBe(false);
+    expect('scratch' in coerceSession(make(false)).tabs[0]).toBe(false);
+  });
+
   it('defaults mismatched split sizes to an even split', () => {
     const s = coerceSession({
       version: 1,

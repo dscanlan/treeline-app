@@ -84,6 +84,7 @@ function coerceTab(raw: unknown): PersistedTab | null {
     title: typeof t.title === 'string' ? t.title : '',
     root,
     focusedPaneId: typeof t.focusedPaneId === 'string' ? t.focusedPaneId : '',
+    ...(t.scratch === true ? { scratch: true } : {}),
   };
 }
 

@@ -42,13 +42,22 @@ function toPersistedNode(node: PaneNode, sessionIdByCwd: Map<string, string>): P
   };
 }
 
-function toPersistedTab(tab: Tab, sessionIdByCwd: Map<string, string>): PersistedTab {
+function toPersistedTab(
+  tab: Tab,
+  sessionIdByCwd: Map<string, string>,
+  scratchPtyIds: Set<string>,
+): PersistedTab {
+  // A scratch terminal is an unsplit tab whose sole pane is a known scratch PTY.
+  // A scratch the user split is no longer represented in the scratch slice, so
+  // it round-trips as a plain tab — matching the live model.
+  const isScratch = tab.root.kind === 'leaf' && scratchPtyIds.has(tab.root.ptyId);
   return {
     id: tab.id,
     cwd: tab.cwd,
     title: tab.title,
     root: toPersistedNode(tab.root, sessionIdByCwd),
     focusedPaneId: tab.focusedPaneId,
+    ...(isScratch ? { scratch: true } : {}),
   };
 }
 
@@ -56,15 +65,18 @@ function toPersistedTab(tab: Tab, sessionIdByCwd: Map<string, string>): Persiste
  * Snapshot the current tabs into the on-disk shape (drops runtime-only fields).
  * `sessionIdByCwd` pins each Claude pane's session id by its cwd; pass an empty
  * map to skip pinning (restore falls back to resolving the id on the fly).
+ * `scratchPtyIds` flags which tabs were scratch terminals so restore can
+ * re-seed the (memory-only) scratch slice; pass an empty set to skip flagging.
  */
 export function toPersistedSession(
   tabs: Tab[],
   activeTabId: string | null,
   sessionIdByCwd: Map<string, string> = new Map(),
+  scratchPtyIds: Set<string> = new Set(),
 ): PersistedSession {
   return {
     version: 1,
-    tabs: tabs.map((t) => toPersistedTab(t, sessionIdByCwd)),
+    tabs: tabs.map((t) => toPersistedTab(t, sessionIdByCwd, scratchPtyIds)),
     activeTabId,
   };
 }

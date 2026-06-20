@@ -19,16 +19,23 @@ export async function openScratchTerminal(): Promise<void> {
   s.addScratch({ id, label, ptyId: id, cwd: home, createdAt: Date.now() });
   s.addTab({ ptyId: id, cwd: home, title: label });
   s.setSelectedScratch(id);
+  registerScratchCleanup(id);
+}
 
-  // Auto-cleanup: when the shell exits — either the user typed `exit`, or the
-  // tab's × button killed the PTY via closeTab() — strip the scratch row and
-  // its tab from the store. Both removal calls are idempotent so a closeTab()
-  // → kill → exit chain doesn't double-remove.
-  const off = window.treeline.pty.onExit(id, () => {
+/**
+ * Wire a scratch PTY's auto-cleanup: when the shell exits — either the user
+ * typed `exit`, or the tab's × button killed the PTY via closeTab() — strip the
+ * scratch row and its tab from the store. Both removal calls are idempotent so a
+ * closeTab() → kill → exit chain doesn't double-remove. Shared by
+ * `openScratchTerminal` and `restoreSession` (which re-seeds scratch rows after
+ * a full restart), so a restored scratch tears down exactly like a fresh one.
+ */
+export function registerScratchCleanup(ptyId: string): void {
+  const off = window.treeline.pty.onExit(ptyId, () => {
     const st = useStore.getState();
-    st.removeScratchById(id);
-    st.removeTab(id);
-    if (st.selectedScratchId === id) st.setSelectedScratch(null);
+    st.removeScratchById(ptyId);
+    st.removeTab(ptyId);
+    if (st.selectedScratchId === ptyId) st.setSelectedScratch(null);
     off();
   });
 }

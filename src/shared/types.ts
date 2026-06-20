@@ -181,6 +181,12 @@ export interface PersistedTab {
   title: string;
   root: PersistedNode;
   focusedPaneId: string;
+  /**
+   * True if this tab was a scratch terminal. The `scratch` slice is memory-only,
+   * so this flag is how restore knows to re-seed the sidebar row (and its
+   * auto-cleanup wiring) — see {@link toPersistedSession} / `restoreSession`.
+   */
+  scratch?: boolean;
 }
 
 export interface PersistedSession {

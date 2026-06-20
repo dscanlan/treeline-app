@@ -665,6 +665,49 @@ const SCENARIOS: Record<string, Scenario> = {
     await delay(400);
   },
 
+  // The post-restore state for scratch terminals: after a full restart, the
+  // memory-only scratch slice is re-seeded from the persisted `scratch` tab
+  // flag, so the `>_ Scratch` rows return to the sidebar (with dense numbering)
+  // alongside their respawned tabs.
+  '40-scratch-restored': async (ctx) => {
+    const a = await spawnTabPty(ctx, 'Scratch 1');
+    const b = await spawnTabPty(ctx, 'Scratch 2');
+    await Promise.all([
+      waitForPtySettle(ctx, a.ptyId),
+      waitForPtySettle(ctx, b.ptyId),
+    ]);
+    const scratchA: Scratch = {
+      id: a.ptyId,
+      label: 'Scratch 1',
+      ptyId: a.ptyId,
+      cwd: '/Users/example',
+      createdAt: 1_730_000_000_000,
+    };
+    const scratchB: Scratch = {
+      id: b.ptyId,
+      label: 'Scratch 2',
+      ptyId: b.ptyId,
+      cwd: '/Users/example',
+      createdAt: 1_730_000_001_000,
+    };
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      scratches: [scratchA, scratchB],
+      selectedScratchId: scratchA.id,
+      tabs: [a.tab, b.tab],
+      activeTabId: a.tab.id,
+      terminalStatus: [
+        { ptyId: a.ptyId, status: 'idle', foregroundCmd: null },
+        { ptyId: b.ptyId, status: 'idle', foregroundCmd: null },
+      ],
+    });
+    await delay(400);
+    await typeAndSettle(ctx, a.ptyId, ['clear\n', "echo 'scratch shell — ~ (home)'\n"]);
+    await typeAndSettle(ctx, b.ptyId, ['clear\n']);
+  },
+
   '14-status-dots': async (ctx) => {
     const a = await spawnTabPty(ctx, 'main'); // running
     const b = await spawnTabPty(ctx, 'feat-auth'); // idle

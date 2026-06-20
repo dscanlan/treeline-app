@@ -153,6 +153,13 @@ Good to know:
   the toast tells you how many were skipped.
 - As with a reload, scrollback isn't replayed — a respawned shell starts at a
   clean prompt, and a resumed Claude pane repaints its current view.
+- **Scratch terminals** come back too: each restored scratch reappears in the
+  **`>_ Scratch`** sidebar group with its original label (`Scratch 1`, `Scratch 2`,
+  …), and numbering stays dense — the next one you open takes the lowest free
+  number rather than colliding with a restored row. Typing `exit` (or closing
+  the tab) tears the row down just like a freshly opened scratch.
+
+![Scratch terminals restored into the sidebar after a full restart, alongside the worktree tabs](img/40-scratch-restored.png)
 
 ---
 
