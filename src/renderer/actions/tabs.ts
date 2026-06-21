@@ -174,6 +174,24 @@ export async function resumeSessionInWorktree(toWorktree: string): Promise<void>
     ? (findLeaf(originTab.root, originTab.focusedPaneId)?.ptyId ?? null)
     : null;
 
+  // A session can only be handed off to one worktree at a time. If the same
+  // agent created several worktrees and we already resumed into one, the origin
+  // pane is already SIGSTOP-parked with a handoff recorded against its pty. The
+  // handoff map is keyed by origin pty, so resuming again would overwrite that
+  // record — orphaning the first fork and letting the origin thaw while that
+  // fork still runs (defeating the one-active-agent guarantee). Refuse here,
+  // before spawning a second fork; the error surfaces in the toast.
+  if (originPtyId) {
+    const existing = s.handoffByOriginPty[originPtyId];
+    if (existing) {
+      const wt =
+        existing.worktreeCwd.split('/').filter(Boolean).pop() ?? existing.worktreeCwd;
+      throw new Error(
+        `This Claude session is already continuing in ${wt}. Return to the original first to hand it off elsewhere.`,
+      );
+    }
+  }
+
   // Spawn the worktree fork and resume the copied conversation in it.
   const { id: forkPty } = await window.treeline.pty.spawn({
     cwd: toWorktree,
