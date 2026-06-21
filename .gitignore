@@ -15,5 +15,10 @@ coverage/
 # Claude Code scheduler lock (runtime, process-specific)
 .claude/scheduled_tasks.lock
 
+# Claude Code per-machine hooks, skills, and worktree state (local config)
+.claude/hooks/
+.claude/skills/
+.claude/worktrees/
+
 # Test-fixture dir created by scripts/setup-test-scenarios.sh
 .test-code-root/
