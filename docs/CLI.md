@@ -29,7 +29,7 @@ just call it:
 
 ```bash
 treeline ping
-# { "ok": true, "app": "treeline", "version": "0.17.1" }
+# { "ok": true, "app": "treeline", "version": "0.17.2" }
 ```
 
 This is the common case — agents driving the app live in its terminals.
@@ -240,7 +240,7 @@ The CLI pretty-prints the response `data` payload. Shapes:
 **`ping`**
 
 ```json
-{ "ok": true, "app": "treeline", "version": "0.17.1" }
+{ "ok": true, "app": "treeline", "version": "0.17.2" }
 ```
 
 **`repos`** — array of `Repo`:
