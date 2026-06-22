@@ -2,9 +2,11 @@
 // worktrees" (full process restart + cold-start session restore, v0.17.0).
 //
 // This is the worktree/Claude analogue of restart-scratch-harness.mjs. It:
-//   1. builds a throwaway git repo with two worktrees,
-//   2. seeds a fake `claude` transcript per worktree under a redirected $HOME
-//      (so nothing touches your real ~/.claude),
+//   1. builds a throwaway git repo with two worktrees under an underscore-bearing
+//      parent dir (so the cwd→project-folder encoding fix is exercised),
+//   2. seeds, per worktree, a real conversation transcript PLUS a newer
+//      non-conversation stub, both under a redirected $HOME (so nothing touches
+//      your real ~/.claude) — restore must pick the real one and skip the stub,
 //   3. puts a tiny compiled `claude` stub on PATH so a pane's foreground command
 //      is literally `claude` (the exact string the save path keys on) — a shell
 //      script would report its interpreter (`bash`), not `claude`,
@@ -26,6 +28,7 @@ import {
   readFileSync,
   existsSync,
   realpathSync,
+  utimesSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -34,7 +37,36 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MAIN = join(ROOT, 'out', 'main', 'index.js');
 const log = (...a) => console.log(...a);
-const encodeProjectDir = (cwd) => cwd.replace(/[/.]/g, '-'); // mirrors claude-session.ts
+
+// The encoder, derived from the single source of truth so this harness can never
+// silently disagree with the app under test (the previous inline copy drifted —
+// it still used the old `/[/.]/g` after the app moved to `/[^a-zA-Z0-9]/g`). We
+// can't `import` it: the main bundle in out/main/index.js pulls in Electron and
+// boots the app on import. So extract the regex literal from the source; if its
+// shape ever changes, this throws loudly rather than testing against a stale copy.
+function loadEncodeProjectDir() {
+  const src = readFileSync(join(ROOT, 'src', 'main', 'claude-session.ts'), 'utf8');
+  const m = src.match(
+    /export function encodeProjectDir[\s\S]*?return cwd\.replace\((\/[^\n]*?\/[a-z]*),\s*'-'\)/,
+  );
+  if (!m) {
+    throw new Error(
+      'harness: could not extract encodeProjectDir regex from src/main/claude-session.ts — ' +
+        'the source shape changed; update loadEncodeProjectDir().',
+    );
+  }
+  const lit = m[1]; // e.g. "/[^a-zA-Z0-9]/g"
+  const lastSlash = lit.lastIndexOf('/');
+  const re = new RegExp(lit.slice(1, lastSlash), lit.slice(lastSlash + 1));
+  return (cwd) => cwd.replace(re, '-');
+}
+const encodeProjectDir = loadEncodeProjectDir();
+
+// A resumable conversation has at least one `assistant` turn; a non-conversation
+// stub (a `/model`/bridge-session marker) has none. The fix skips stubs even when
+// they carry the NEWEST mtime — resolving one is what opened a blank `--resume`.
+const CONV = '{"type":"user","text":"hi"}\n{"type":"assistant","text":"yo"}\n';
+const STUB = '{"type":"user"}\n{"type":"bridge-session"}\n{"type":"mode"}\n';
 
 const git = (cwd, ...args) =>
   execFileSync('git', args, {
@@ -45,7 +77,11 @@ const git = (cwd, ...args) =>
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 function buildRepoWithWorktrees(codeRoot) {
-  const repo = join(codeRoot, 'api');
+  // Nest the repo under an underscore-bearing parent so every worktree path
+  // contains `_`. This exercises the encoding fix end-to-end: pre-fix the app
+  // looked under `...my_org...` (underscore kept) while Claude stores it as
+  // `...my-org...`, so the seeded transcript was never found.
+  const repo = join(codeRoot, 'my_org', 'api');
   mkdirSync(repo, { recursive: true });
   git(repo, 'init', '--quiet', '--initial-branch', 'main');
   git(repo, 'config', 'user.name', 'Test User');
@@ -91,13 +127,12 @@ int main(int argc, char** argv) {
   execFileSync('cc', ['-o', join(binDir, 'claude'), src], { stdio: 'pipe' });
 }
 
-function seedTranscript(home, cwd, sessionId) {
+function seedTranscript(home, cwd, sessionId, content, mtimeSec) {
   const dir = join(home, '.claude', 'projects', encodeProjectDir(cwd));
   mkdirSync(dir, { recursive: true });
-  writeFileSync(
-    join(dir, `${sessionId}.jsonl`),
-    JSON.stringify({ type: 'summary', summary: `fixture ${sessionId}` }) + '\n',
-  );
+  const file = join(dir, `${sessionId}.jsonl`);
+  writeFileSync(file, content);
+  utimesSync(file, mtimeSec, mtimeSec); // pin mtime so "newest" is deterministic
 }
 
 // ── playwright helpers ──────────────────────────────────────────────────────
@@ -145,9 +180,15 @@ async function main() {
   const { repo, worktrees } = buildRepoWithWorktrees(codeRoot);
   buildClaudeStub(binDir);
 
-  // One fake session id per worktree — these are exactly what restore must resume.
+  // Per worktree: a real conversation (OLDER) that restore must resume, plus a
+  // non-conversation stub (NEWER) that must be skipped. Pre-fix, "newest mtime
+  // wins" would pick the stub and `--resume` it into a blank session.
   const sessionIds = { [worktrees[0]]: 'sess-auth-AAAA1111', [worktrees[1]]: 'sess-apiv2-BBBB2222' };
-  for (const wt of worktrees) seedTranscript(home, wt, sessionIds[wt]);
+  const stubIds = { [worktrees[0]]: 'stub-auth-9999ZZZZ', [worktrees[1]]: 'stub-apiv2-9999ZZZZ' };
+  for (const wt of worktrees) {
+    seedTranscript(home, wt, sessionIds[wt], CONV, 1000); // older, real conversation
+    seedTranscript(home, wt, stubIds[wt], STUB, 9000); // newer, stub → must be skipped
+  }
 
   // Pre-add the repo so the sidebar lists its worktrees on launch.
   writeFileSync(
@@ -170,7 +211,15 @@ async function main() {
 
   log('Fixtures:');
   log('  repo      :', repo);
-  for (const wt of worktrees) log('  worktree  :', wt, '→ resume id', sessionIds[wt]);
+  for (const wt of worktrees)
+    log('  worktree  :', wt, '→ resume', sessionIds[wt], '(skip newer stub', stubIds[wt] + ')');
+
+  // Genuine encoding-regression guard (the round trip co-moves with source, so
+  // assert the derived encoder still replaces underscores the way the fix does).
+  findings.push([
+    'encoder replaces underscores like Claude (encoding fix in place)',
+    encodeProjectDir('/Users/me/obsidian_notes') === '-Users-me-obsidian-notes',
+  ]);
 
   // ─── PHASE 1: open a terminal per worktree, run claude, let save land ──────
   let app = await launch();
@@ -220,6 +269,10 @@ async function main() {
     savedLeaves.some((l) => l.cwd === wt && l.claudeSessionId === sessionIds[wt]),
   );
   findings.push(['each pane pinned the correct session id (by cwd)', idsPinnedRight]);
+  const stubsSkipped = worktrees.every((wt) =>
+    savedLeaves.every((l) => l.claudeSessionId !== stubIds[wt]),
+  );
+  findings.push(['the newer non-conversation stub was skipped (no stub id pinned)', stubsSkipped]);
 
   await app.close();
   log('  → full quit (PTYs + claude stubs killed)');
@@ -261,8 +314,12 @@ async function main() {
     const blob = texts.join('\n');
     for (const wt of worktrees) {
       const id = sessionIds[wt];
-      const resumed = blob.includes(`--resume ${id}`);
-      findings.push([`pane for ${wt.split('/').pop()} resumed ${id}`, resumed]);
+      const short = wt.split('/').pop();
+      findings.push([`pane for ${short} resumed ${id}`, blob.includes(`--resume ${id}`)]);
+      findings.push([
+        `pane for ${short} did NOT resume the stub`,
+        !blob.includes(`--resume ${stubIds[wt]}`),
+      ]);
     }
   }
 
@@ -272,7 +329,10 @@ async function main() {
   log('');
   log('════════════════ FINDINGS ════════════════');
   for (const [label, ok] of findings) log(`  ${ok ? '✅' : '❌'}  ${label}`);
-  const pass = findings.every((f) => f[1]);
+  // A run that recorded no findings asserted nothing — fail loudly rather than
+  // report a vacuous PASS (findings.every is true for an empty array).
+  if (findings.length === 0) log('  ❌  no findings recorded — the harness asserted nothing');
+  const pass = findings.length > 0 && findings.every((f) => f[1]);
   log('═══════════════════════════════════════════');
   log('RESULT:', pass ? 'PASS ✅' : 'FAIL ❌');
   process.exit(pass ? 0 : 1);

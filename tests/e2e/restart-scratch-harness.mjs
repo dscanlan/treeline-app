@@ -154,7 +154,10 @@ async function main() {
   log('');
   log('════════════════ FINDINGS ════════════════');
   for (const [label, ok] of findings) log(`  ${ok ? '✅' : '❌'}  ${label}`);
-  const pass = findings.every((f) => f[1]);
+  // A run that recorded no findings asserted nothing — fail loudly rather than
+  // report a vacuous PASS (findings.every is true for an empty array).
+  if (findings.length === 0) log('  ❌  no findings recorded — the harness asserted nothing');
+  const pass = findings.length > 0 && findings.every((f) => f[1]);
   log('═══════════════════════════════════════════');
   log('RESULT:', pass ? 'PASS ✅' : 'FAIL ❌');
   process.exit(pass ? 0 : 1);
