@@ -70,6 +70,11 @@ export const Channels = {
   SessionGet: 'session:get',
   SessionSet: 'session:set',
 
+  // scratchpad — a single persistent plain-text buffer (scratchpad.json). `get`
+  // is read once on launch; `set` is the renderer pushing a debounced snapshot.
+  ScratchpadGet: 'scratchpad:get',
+  ScratchpadSet: 'scratchpad:set',
+
   // claude session resume (copy a conversation transcript into a worktree's
   // project folder so `claude --resume` can continue it there)
   ClaudeSessionPrepareResume: 'claudeSession:prepareResume',
@@ -86,6 +91,9 @@ export const Channels = {
   // window-level events from main
   SidebarToggle: 'sidebar:toggle',
   BrowserToggle: 'browser:toggle',
+  // Toggle the scratchpad panel — menu accelerator (default ⌘⇧N), handled in
+  // the renderer.
+  ScratchpadToggle: 'scratchpad:toggle',
   SettingsOpen: 'settings:open',
   // Jump to the most-recently-notified (unread) terminal — menu accelerator
   // (default ⌘⇧U), handled in the renderer.

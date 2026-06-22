@@ -170,6 +170,29 @@ is also **scriptable** so an agent can verify its own change — see the CLI's
 `browser` verbs below; that surface is where the trust-widening actually bites,
 so its acting verbs are gated to local origins.
 
+### Scratchpad
+
+`⌘⇧N` (menu **View → Toggle Scratchpad**, channel `scratchpad:toggle`) flips
+`notesPanelOpen` in the **notes slice**, and `<MainArea>` mounts a
+`<NotesPanelResizer>` + `<NotesPanel>` region using the same split idiom. The
+panel is a plain `<textarea>` (not CodeMirror — lighter, native undo, and it
+restyles with the theme), for the paste → clean → copy loop; `copyToClipboard`
+(`renderer/util/clipboard.ts`) backs the **Copy** button.
+
+The scratchpad **shares the right-hand aux slot with the browser**: the two toggle
+handlers in `renderer/ipc/client.ts` close the other panel on open, and
+`<MainArea>` renders the scratchpad only when the browser is closed, so a
+port-chip-opened browser wins the slot rather than stacking a third panel (the
+terminal's minimum width is never squeezed worse than today's code + browser).
+
+The buffer text persists to `scratchpad.json` via `ScratchpadStore`
+(`main/scratchpad-store.ts`, the same atomic tmp+rename + defensive-coerce idiom
+as `SessionStore`, capped at 1 MiB and string-coerced since the payload is
+renderer-originated). It's kept out of `config.json` (whole-config rewrite per
+keystroke) and `session.json` (tab-shaped coercers). The renderer saves on a
+750 ms debounce independent of the session save, plus an immediate flush on
+textarea blur and on `beforeunload`, so a final edit survives an imminent quit.
+
 ### Scriptable CLI (socket → app)
 
 The app is driveable from outside the GUI over a unix domain socket, so scripts
@@ -570,7 +593,7 @@ src/
     │   ├── TabStatusDot.tsx
     │   ├── ProcessBadge.tsx
     │   ├── PrBadge.tsx           # #NNN colored by PR state + CI glyph; opens PR on click.
-    │   ├── MainArea.tsx          # Splits terminal + optional code panel.
+    │   ├── MainArea.tsx          # Splits terminal + optional code / browser / scratchpad panels.
     │   ├── TabBar.tsx
     │   ├── TabItem.tsx
     │   ├── TerminalHost.tsx      # Renders all tabs; only active is visible.
@@ -587,6 +610,8 @@ src/
     │   ├── CodePanelResizer.tsx  # Draggable terminal/panel divider.
     │   ├── BrowserPane.tsx       # Embedded <webview>; address bar + nav + states.
     │   ├── BrowserPanelResizer.tsx # Terminal/browser divider (pointer capture).
+    │   ├── NotesPanel.tsx        # Scratchpad: plain-text buffer + Copy/Clear.
+    │   ├── NotesPanelResizer.tsx # Terminal/scratchpad divider.
     │   ├── ScratchList.tsx       # Scratch (repo-less) terminals group.
     │   ├── ScratchRow.tsx
     │   ├── ScratchTerminalButton.tsx

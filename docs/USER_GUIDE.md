@@ -218,6 +218,23 @@ also scriptable from the [CLI](./CLI.md#browser-verbs).
 
 ---
 
+## Scratchpad
+
+Press **⌘⇧N** (or **View → Toggle Scratchpad**) to open a **scratchpad** beside the
+terminal — a single plain-text buffer for the quick **paste → clean → copy** loop.
+Drop a messy block an agent printed, delete the lines you don't want, and **Copy**
+the clean result into another chat, without opening a separate editor.
+
+- **Copy** (header) puts the whole buffer on the clipboard; **Clear** wipes it — click
+  it again to confirm, since it deletes saved content. `×` closes the panel.
+- **Drag the divider** on the left edge to resize; the terminal re-fits.
+- The text **persists** — it's restored after a reload or a full restart (saved as you
+  type, on blur, and on window close).
+- The scratchpad and the [browser pane](#dev-servers--the-browser-pane) share the
+  right-hand slot, so opening one closes the other.
+
+---
+
 ## Reading & editing files
 
 ![Code viewer showing a diff](img/21-code-viewer-diff.png)

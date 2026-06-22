@@ -5,12 +5,22 @@ import { CodePanel } from './CodePanel';
 import { CodePanelResizer } from './CodePanelResizer';
 import { BrowserPane } from './BrowserPane';
 import { BrowserPanelResizer } from './BrowserPanelResizer';
+import { NotesPanel } from './NotesPanel';
+import { NotesPanelResizer } from './NotesPanelResizer';
 
 export function MainArea() {
   const codePanelOpen = useStore((s) => s.codePanelOpen);
   const codePanelWidth = useStore((s) => s.codePanelWidth);
   const browserPanelOpen = useStore((s) => s.browserPanelOpen);
   const browserPanelWidth = useStore((s) => s.browserPanelWidth);
+  const notesPanelOpen = useStore((s) => s.notesPanelOpen);
+  const notesPanelWidth = useStore((s) => s.notesPanelWidth);
+  // The scratchpad and the embedded browser share the right-hand aux slot
+  // (toggling one closes the other in client.ts). The `!browserPanelOpen` guard
+  // is belt-and-braces: if the browser is opened by another path (e.g. a port
+  // chip) while the scratchpad is open, the browser wins and the scratchpad
+  // hides (its text is preserved) rather than stacking a third panel.
+  const showNotes = notesPanelOpen && !browserPanelOpen;
 
   return (
     <main className="flex min-w-0 flex-1 flex-col bg-treeline-surface">
@@ -33,6 +43,14 @@ export function MainArea() {
             <BrowserPanelResizer />
             <div className="shrink-0" style={{ width: browserPanelWidth }}>
               <BrowserPane />
+            </div>
+          </>
+        )}
+        {showNotes && (
+          <>
+            <NotesPanelResizer />
+            <div className="shrink-0" style={{ width: notesPanelWidth }}>
+              <NotesPanel />
             </div>
           </>
         )}

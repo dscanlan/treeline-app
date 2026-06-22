@@ -385,6 +385,22 @@ in a worktree terminal navigate it, read the page, and click/type into it, so it
 *act on its own change and verify the result*. See [Driving the browser (the agent
 loop)](#driving-the-browser-the-agent-loop) below.
 
+### Scratchpad
+
+Press `⌘⇧N` (or **View → Toggle Scratchpad**) to open a **scratchpad** — a single,
+always-available plain-text buffer beside the terminal, for the quick
+**paste → clean → copy** loop: drop a messy block an agent printed, delete the
+irrelevant lines, and copy the clean result into another chat — without leaving the
+app for a text editor.
+
+- **Copy** in the header puts the whole buffer on the clipboard; **Clear** wipes it
+  (click again to confirm — it deletes saved content); `×` closes the panel.
+- **Drag the divider** on the pane's left edge to resize (the terminal re-fits).
+- **Persistent.** The text is saved to `scratchpad.json` and restored across renderer
+  reloads and full restarts (flushed on edit, on blur, and on window close).
+- It **shares the right-hand slot with the [browser](#browser)** — opening one closes
+  the other, so the terminal is never squeezed by a third panel.
+
 ### Settings & theming
 
 ![The Settings modal: an Appearance section with a Theme dropdown (Graphite Dark) and the note "Applies to the whole app — chrome and terminals", a Terminal section with font family and size, and a Keybindings section listing Toggle Sidebar, Toggle Browser and Open Settings with their accelerators](docs/img/28-settings-modal.png)

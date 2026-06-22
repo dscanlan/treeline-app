@@ -71,10 +71,24 @@ export function attachIpc(): () => void {
     }),
   );
 
-  // Embedded browser pane toggle from the macOS menu (CmdOrCtrl+Shift+B).
+  // Embedded browser pane toggle from the macOS menu (CmdOrCtrl+Shift+B). The
+  // browser and scratchpad share the right-hand aux slot, so opening the browser
+  // closes the scratchpad.
   unsubs.push(
     api.window.onBrowserToggle(() => {
-      useStore.getState().toggleBrowserPanel();
+      const s = useStore.getState();
+      if (!s.browserPanelOpen) s.closeNotesPanel();
+      s.toggleBrowserPanel();
+    }),
+  );
+
+  // Scratchpad panel toggle from the macOS menu (CmdOrCtrl+Shift+N). Opening it
+  // closes the browser (they share the right-hand aux slot).
+  unsubs.push(
+    api.window.onScratchpadToggle(() => {
+      const s = useStore.getState();
+      if (!s.notesPanelOpen) s.closeBrowserPanel();
+      s.toggleNotesPanel();
     }),
   );
 
@@ -349,6 +363,40 @@ export function attachIpc(): () => void {
     if (saveTimer) clearTimeout(saveTimer);
   });
 
+  // Persist the scratchpad buffer (debounced), independent of the session save
+  // so note edits don't churn session.json. A blur in NotesPanel flushes
+  // immediately; this covers mid-typing. `lastSavedScratch` avoids a redundant
+  // write when loadInitialState seeds the buffer with what's already on disk.
+  let scratchTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSavedScratch = useStore.getState().scratchpadText;
+  const flushScratch = (): void => {
+    scratchTimer = null;
+    const text = useStore.getState().scratchpadText;
+    if (text === lastSavedScratch) return;
+    lastSavedScratch = text;
+    void window.treeline.scratchpad.set(text);
+  };
+  unsubs.push(
+    useStore.subscribe((state, prev) => {
+      if (state.scratchpadText === prev.scratchpadText) return;
+      if (scratchTimer) clearTimeout(scratchTimer);
+      scratchTimer = setTimeout(flushScratch, 750);
+    }),
+  );
+  // Flush a pending scratchpad edit on window close so the last keystrokes
+  // aren't lost during shutdown (the debounce may not have fired yet).
+  const onBeforeUnload = () => {
+    if (scratchTimer) {
+      clearTimeout(scratchTimer);
+      flushScratch();
+    }
+  };
+  window.addEventListener('beforeunload', onBeforeUnload);
+  unsubs.push(() => {
+    if (scratchTimer) clearTimeout(scratchTimer);
+    window.removeEventListener('beforeunload', onBeforeUnload);
+  });
+
   return () => unsubs.forEach((fn) => fn());
 }
 
@@ -405,6 +453,11 @@ export async function loadInitialState(): Promise<void> {
   useStore.getState().setFolders(cfg.folders);
   useStore.getState().setSidebarCollapsed(cfg.sidebarCollapsed);
   useStore.getState().setSettings(cfg.settings);
+
+  // Restore the persisted scratchpad buffer. Best-effort: a read failure just
+  // leaves the buffer empty.
+  const scratchpadText = await api.scratchpad.get().catch(() => '');
+  if (scratchpadText) useStore.getState().setScratchpadText(scratchpadText);
 
   // Re-adopt shells that survived a reload before anything else paints, so a
   // reloaded window comes back with its terminals instead of leaking them.

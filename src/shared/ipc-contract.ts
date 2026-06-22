@@ -330,6 +330,16 @@ export interface TreelineApi {
     set(session: PersistedSession): Promise<void>;
   };
 
+  /**
+   * The single persistent scratchpad buffer (`scratchpad.json`). `get` is read
+   * once on launch; `set` receives the (debounced / on-blur) current text. Main
+   * caps and string-coerces the payload — see src/main/scratchpad-store.ts.
+   */
+  scratchpad: {
+    get(): Promise<string>;
+    set(text: string): Promise<void>;
+  };
+
   config: {
     get(): Promise<AppConfig>;
     setCodeRoot(p: string | null): Promise<void>;
@@ -343,6 +353,8 @@ export interface TreelineApi {
     onSidebarToggle(cb: () => void): () => void;
     /** Subscribe to the ⌘⇧B accelerator that toggles the embedded browser pane. */
     onBrowserToggle(cb: () => void): () => void;
+    /** Subscribe to the ⌘⇧N accelerator that toggles the scratchpad panel. */
+    onScratchpadToggle(cb: () => void): () => void;
     /** Subscribe to the "Open Settings" menu item / accelerator from main. */
     onOpenSettings(cb: () => void): () => void;
     /** Subscribe to the ⌘⇧U accelerator that jumps to the most-recent unread. */

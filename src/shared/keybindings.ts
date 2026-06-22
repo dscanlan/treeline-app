@@ -17,6 +17,7 @@
 export type KeybindingCommand =
   | 'toggleSidebar'
   | 'toggleBrowser'
+  | 'toggleScratchpad'
   | 'openSettings'
   | 'jumpToUnread';
 
@@ -45,6 +46,11 @@ export const KEYBINDING_DEFS: readonly KeybindingDef[] = [
     command: 'toggleBrowser',
     label: 'Toggle Browser',
     defaultAccelerator: 'CmdOrCtrl+Shift+B',
+  },
+  {
+    command: 'toggleScratchpad',
+    label: 'Toggle Scratchpad',
+    defaultAccelerator: 'CmdOrCtrl+Shift+N',
   },
   {
     command: 'openSettings',

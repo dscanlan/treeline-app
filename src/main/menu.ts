@@ -69,6 +69,7 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
       win.webContents.send(Channels.BrowserToggle);
     }
   };
+  const sendScratchpadToggle = send(Channels.ScratchpadToggle);
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
@@ -131,6 +132,11 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
           label: 'Toggle Browser',
           accelerator: kb.toggleBrowser,
           click: sendBrowserToggle,
+        },
+        {
+          label: 'Toggle Scratchpad',
+          accelerator: kb.toggleScratchpad,
+          click: sendScratchpadToggle,
         },
         {
           label: 'Jump to Unread Agent',

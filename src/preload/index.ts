@@ -160,6 +160,11 @@ const api: TreelineApi = {
       ipcRenderer.invoke(Channels.SessionSet, session) as Promise<void>,
   },
 
+  scratchpad: {
+    get: () => ipcRenderer.invoke(Channels.ScratchpadGet) as Promise<string>,
+    set: (text) => ipcRenderer.invoke(Channels.ScratchpadSet, text) as Promise<void>,
+  },
+
   config: {
     get: () => ipcRenderer.invoke(Channels.ConfigGet) as Promise<AppConfig>,
     setCodeRoot: (p) =>
@@ -173,6 +178,7 @@ const api: TreelineApi = {
   window: {
     onSidebarToggle: (cb) => listen<void>(Channels.SidebarToggle, () => cb()),
     onBrowserToggle: (cb) => listen<void>(Channels.BrowserToggle, () => cb()),
+    onScratchpadToggle: (cb) => listen<void>(Channels.ScratchpadToggle, () => cb()),
     onOpenSettings: (cb) => listen<void>(Channels.SettingsOpen, () => cb()),
     onJumpToUnread: (cb) => listen<void>(Channels.JumpToUnread, () => cb()),
   },
