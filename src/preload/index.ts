@@ -85,7 +85,9 @@ const api: TreelineApi = {
     spawn: (opts) =>
       ipcRenderer.invoke(Channels.PtySpawn, opts) as Promise<{ id: string }>,
     list: () =>
-      ipcRenderer.invoke(Channels.PtyList) as Promise<{ id: string; cwd: string }[]>,
+      ipcRenderer.invoke(Channels.PtyList) as Promise<
+        { id: string; cwd: string; scratchLabel?: string }[]
+      >,
     write: (id, data) => ipcRenderer.send(Channels.PtyWrite, id, data),
     resize: (id, cols, rows) => ipcRenderer.send(Channels.PtyResize, id, cols, rows),
     kill: (id) => ipcRenderer.invoke(Channels.PtyKill, id) as Promise<void>,

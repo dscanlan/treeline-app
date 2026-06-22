@@ -214,14 +214,21 @@ export interface TreelineApi {
       shell?: string;
       cols: number;
       rows: number;
+      /**
+       * Sidebar label ("Scratch N") when spawning a scratch terminal. Main keeps
+       * it on the live PTY and echoes it back from {@link list}, so a reload
+       * re-attach can rebuild the scratch's sidebar row instead of dropping it.
+       */
+      scratchLabel?: string;
     }): Promise<{ id: string }>;
     /**
      * Every live PTY in the main process, so the renderer can re-attach after a
      * reload (its tab state is in-memory and wiped on reload, but these shells
      * keep running). The re-mounted terminal nudges a resize to make a TUI
-     * repaint its current frame — no captured output is replayed.
+     * repaint its current frame — no captured output is replayed. `scratchLabel`
+     * is present only for scratch PTYs (its sidebar label, for re-seeding the row).
      */
-    list(): Promise<{ id: string; cwd: string }[]>;
+    list(): Promise<{ id: string; cwd: string; scratchLabel?: string }[]>;
     write(id: string, data: string): void;
     resize(id: string, cols: number, rows: number): void;
     kill(id: string): Promise<void>;

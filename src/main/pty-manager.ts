@@ -27,6 +27,15 @@ export interface SpawnOpts {
    * the same directory are otherwise indistinguishable by cwd alone.
    */
   paneId?: string;
+  /**
+   * Sidebar label ("Scratch N") when this PTY backs a scratch terminal. The
+   * renderer's scratch slice is memory-only and is wiped on a reload, but the
+   * PTY survives here in main — echoing the label back through {@link
+   * PtyManager.list} lets the reload re-attach recover the scratch's sidebar row
+   * (and its exit cleanup) instead of degrading it to a plain tab. Undefined for
+   * ordinary terminals.
+   */
+  scratchLabel?: string;
 }
 
 export type SpawnFn = (opts: SpawnOpts) => IPtyLike;
@@ -68,6 +77,8 @@ interface PtyEntry {
   cwdPollTimer: NodeJS.Timeout | null;
   /** True while the pane's process subtree is SIGSTOP-frozen (see pause()). */
   paused: boolean;
+  /** Scratch-terminal sidebar label, if this PTY backs one (see SpawnOpts). */
+  scratchLabel?: string;
 }
 
 export interface PtyDataEvent {
@@ -162,6 +173,7 @@ export class PtyManager extends EventEmitter {
       lastOscAt: 0,
       cwdPollTimer: null,
       paused: false,
+      scratchLabel: opts.scratchLabel,
     };
 
     this.ptys.set(id, entry);
@@ -277,10 +289,15 @@ export class PtyManager extends EventEmitter {
    * Snapshot of every live PTY, for the renderer to re-attach after a reload.
    * The renderer's tab state is in-memory and wiped on reload, but these PTYs
    * (and the agents inside them) keep running here — without re-attach they'd
-   * be orphaned, killable only by quitting the app.
+   * be orphaned, killable only by quitting the app. `scratchLabel` is echoed
+   * back for scratch PTYs so re-attach can rebuild their sidebar row.
    */
-  list(): { id: string; cwd: string }[] {
-    return [...this.ptys.entries()].map(([id, e]) => ({ id, cwd: e.cwd }));
+  list(): { id: string; cwd: string; scratchLabel?: string }[] {
+    return [...this.ptys.entries()].map(([id, e]) => ({
+      id,
+      cwd: e.cwd,
+      ...(e.scratchLabel !== undefined ? { scratchLabel: e.scratchLabel } : {}),
+    }));
   }
 
   /** Last-known cwd of `id`, or undefined if no such PTY. */

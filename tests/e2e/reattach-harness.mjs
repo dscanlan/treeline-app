@@ -7,11 +7,19 @@
 // renderer console to decide PASS/FAIL — so the reattach behaviour can be
 // verified in a loop with no human driving the GUI.
 //
+// It also guards a scratch-specific reload regression: the scratch slice is
+// memory-only, so a naive re-attach rebuilds a scratch as a plain tab and the
+// next debounced save then strips `scratch:true` from session.json — silently
+// breaking the *next* cold-start restore (the sidebar row never comes back).
+// After the reload we assert (a) the scratch sidebar row survived and (b) the
+// persisted session still carries the scratch flag. main echoes a `scratchLabel`
+// back through pty.list so reattach can re-seed the row (see ipc/client.ts).
+//
 // Run:  node tests/e2e/reattach-harness.mjs
 // Needs:  npm run build   (uses out/main/index.js)
 
 import { _electron as electron } from 'playwright';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +50,14 @@ const xtermText = (page) =>
     return el ? el.innerText : '<no .xterm-rows>';
   });
 
+// Bare scratch labels from the sidebar rows (strip ">_ " prefix and " ×" close).
+const scratchRowLabels = (page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[data-ss="scratch-row"]')].map((el) =>
+      el.innerText.replace(/\s+/g, ' ').replace(/^>_\s*/, '').replace(/\s*×$/, '').trim(),
+    ),
+  );
+
 const log = (...a) => console.log(...a);
 
 // Resolve once the terminal text has stopped changing for `quietMs` — i.e. the
@@ -64,6 +80,7 @@ async function waitForStableText(page, quietMs = 700, timeoutMs = 10000) {
 
 async function main() {
   const userDataDir = mkdtempSync(join(tmpdir(), 'treeline-e2e-'));
+  const sessionPath = join(userDataDir, 'session.json');
   const app = await electron.launch({
     args: [MAIN, '--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`],
   });
@@ -110,11 +127,23 @@ async function main() {
   await page.waitForTimeout(2000); // let reattach + the resize-nudge land
   const after = (await xtermText(page)).trim();
 
+  // Scratch-reload regression: the sidebar row must survive the reload, and the
+  // debounced save the reattach triggers must NOT strip the scratch flag (which
+  // would break the next cold-start restore). Wait out the 750ms save first.
+  await page.waitForTimeout(1200);
+  const scratchRows = await scratchRowLabels(page);
+  const savedSession = existsSync(sessionPath)
+    ? JSON.parse(readFileSync(sessionPath, 'utf8'))
+    : null;
+  const flaggedScratch = (savedSession?.tabs ?? []).filter((t) => t.scratch === true).length;
+  const scratchRowSurvived = scratchRows.includes('Scratch 1');
+  const flagPersisted = flaggedScratch === 1;
+
   // 4. Verdict. Marker mode asserts the exact marker repainted; an arbitrary
   // command (e.g. `claude`) asserts the terminal came back non-blank and shares
   // real content with its pre-reload frame (i.e. the TUI repainted).
   const dimErr = consoleLines.some((l) => l.includes('dimensions'));
-  let pass;
+  let repainted;
   if (process.env.HARNESS_CMD) {
     const norm = (s) => s.replace(/\s+/g, ' ').trim();
     const a = norm(after);
@@ -123,16 +152,20 @@ async function main() {
     const shared = b
       .split(' ')
       .some((w) => w.length >= 6 && a.includes(w));
-    pass = a.length > 15 && shared && !dimErr;
+    repainted = a.length > 15 && shared && !dimErr;
     log('shared content before↔after:', shared);
   } else {
-    pass = after.includes('REATTACH_MARKER') && !dimErr;
+    repainted = after.includes('REATTACH_MARKER') && !dimErr;
   }
+  const pass = repainted && scratchRowSurvived && flagPersisted;
 
   log('────────────────────────────────────────');
   log('BEFORE reload :', JSON.stringify(before.slice(0, 60)));
   log('AFTER  reload :', JSON.stringify(after.slice(0, 60)));
-  log('terminal repainted after reload:', after.trim().length > 0);
+  log('terminal repainted after reload:', repainted);
+  log('scratch rows after reload     :', JSON.stringify(scratchRows));
+  log('scratch row survived reload   :', scratchRowSurvived);
+  log('session.json kept scratch flag:', flagPersisted, `(${flaggedScratch} flagged)`);
   log('dimensions error in console  :', dimErr);
   log('RESULT:', pass ? 'PASS ✅' : 'FAIL ❌');
   log('──── relevant post-reload console ────');

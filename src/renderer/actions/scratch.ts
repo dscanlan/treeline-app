@@ -15,7 +15,14 @@ export async function openScratchTerminal(): Promise<void> {
   const n = s.nextScratchNumber();
   const label = `Scratch ${n}`;
 
-  const { id } = await window.treeline.pty.spawn({ cwd: home, cols: 80, rows: 24 });
+  // Tag the PTY as scratch in main so a reload re-attach (which loses the
+  // memory-only scratch slice) can rebuild this row from the surviving shell.
+  const { id } = await window.treeline.pty.spawn({
+    cwd: home,
+    cols: 80,
+    rows: 24,
+    scratchLabel: label,
+  });
   s.addScratch({ id, label, ptyId: id, cwd: home, createdAt: Date.now() });
   s.addTab({ ptyId: id, cwd: home, title: label });
   s.setSelectedScratch(id);

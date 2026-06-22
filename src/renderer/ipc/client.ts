@@ -3,6 +3,7 @@
 import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
 import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
+import { registerScratchCleanup } from '../actions/scratch';
 import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
 import { claudePaneCwds, toPersistedSession } from '@shared/session-serialize';
@@ -363,9 +364,14 @@ export function attachIpc(): () => void {
  *
  * A no-op on a fresh launch (no PTYs yet). Split layouts aren't restored — the
  * pane tree isn't persisted, so each surviving pane comes back as its own tab;
- * the point is that no shell is leaked. Returns the number of live PTYs main was
- * holding, so the caller can tell a warm reload (≥1) from a cold start (0) — the
- * cold start is where the disk-backed session restore takes over.
+ * the point is that no shell is leaked. A scratch terminal is special-cased: its
+ * sidebar row lives in the memory-only scratch slice (wiped on reload), so we
+ * re-seed that row from the `scratchLabel` main echoes back for the surviving
+ * PTY — otherwise the scratch degrades to a plain tab, and the next debounced
+ * save would persist it *without* the scratch flag, losing the row for a later
+ * cold restart too. Returns the number of live PTYs main was holding, so the
+ * caller can tell a warm reload (≥1) from a cold start (0) — the cold start is
+ * where the disk-backed session restore takes over.
  */
 async function reattachPtys(): Promise<number> {
   const live = await window.treeline.pty.list().catch(() => []);
@@ -374,9 +380,15 @@ async function reattachPtys(): Promise<number> {
   // Skip any PTY the store already tracks, so a re-entrant call can't dupe tabs.
   const known = new Set(s.tabs.flatMap((t) => leaves(t.root).map((l) => l.ptyId)));
   let adopted = 0;
-  for (const { id, cwd } of live) {
+  for (const { id, cwd, scratchLabel } of live) {
     if (known.has(id)) continue;
-    s.addTab({ ptyId: id, cwd });
+    // addTab reuses the pty id as the tab id; a scratch row keys on that same id
+    // (scratch.id === ptyId === tab.id), so re-seeding here re-links the two.
+    s.addTab({ ptyId: id, cwd, title: scratchLabel });
+    if (scratchLabel !== undefined) {
+      s.addScratch({ id, label: scratchLabel, ptyId: id, cwd, createdAt: Date.now() });
+      registerScratchCleanup(id);
+    }
     adopted++;
   }
   // Tell the user their sessions came back — the panes are blank for the beat

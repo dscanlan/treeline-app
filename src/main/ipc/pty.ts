@@ -17,7 +17,9 @@ export function registerPtyIpc(mgr: PtyManager): () => void {
     const cols = Number(o.cols) | 0 || 80;
     const rows = Number(o.rows) | 0 || 24;
     const shell = typeof o.shell === 'string' ? o.shell : undefined;
-    const { id } = mgr.spawn({ cwd, cols, rows, shell });
+    const scratchLabel =
+      typeof o.scratchLabel === 'string' ? o.scratchLabel : undefined;
+    const { id } = mgr.spawn({ cwd, cols, rows, shell, scratchLabel });
     return { id };
   });
 

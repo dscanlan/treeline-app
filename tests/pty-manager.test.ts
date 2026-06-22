@@ -203,6 +203,24 @@ describe('PtyManager', () => {
     ]);
   });
 
+  it('list() echoes scratchLabel for scratch PTYs so a reload can rebuild the row', () => {
+    const scratch = new FakePty();
+    scratch.pid = 1;
+    const plain = new FakePty();
+    plain.pid = 2;
+    const queue = [scratch, plain];
+    const mgr = new PtyManager(() => queue.shift()!, undefined, 0);
+    const s = mgr.spawn({ cwd: '/home/me', cols: 80, rows: 24, scratchLabel: 'Scratch 2' });
+    const p = mgr.spawn({ cwd: '/repo', cols: 80, rows: 24 });
+
+    const byId = new Map(mgr.list().map((e) => [e.id, e]));
+    // The scratch PTY carries its sidebar label…
+    expect(byId.get(s.id)).toEqual({ id: s.id, cwd: '/home/me', scratchLabel: 'Scratch 2' });
+    // …while an ordinary terminal omits the key entirely (no spurious row on reload).
+    expect(byId.get(p.id)).toEqual({ id: p.id, cwd: '/repo' });
+    expect('scratchLabel' in byId.get(p.id)!).toBe(false);
+  });
+
   it("list() reflects a PTY's latest cwd after an OSC 7 change", async () => {
     const fake = new FakePty();
     const mgr = new PtyManager(() => fake, undefined, 0);
