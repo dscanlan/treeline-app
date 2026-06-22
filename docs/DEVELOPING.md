@@ -112,6 +112,21 @@ and notarizes on every tag.
 
 ## Releasing
 
+### Bump the version first
+
+`package.json` is the source of truth (the CLI's `ping` reports it and the
+release is named from the tag), but a few docs hardcode the current version
+and must be bumped in lockstep so they don't go stale:
+
+- `package.json` + `package-lock.json` — `npm version <x.y.z> --no-git-tag-version`
+- `README.md` — the `## Status` line (`vX.Y.Z — …`)
+- `docs/CLI.md` — the sample `ping` output (`"version": "X.Y.Z"`, three spots)
+- `docs/DEVELOPING.md` — the `git tag` example below
+
+Do **not** touch the historical provenance comment in
+`tests/e2e/restart-claude-worktrees-harness.mjs` — it records the version a
+feature *shipped in*, not the current one.
+
 Two ways to publish a downloadable build:
 
 **Tag a version.** Push a `v*` tag and the
@@ -121,8 +136,8 @@ universal `.dmg` + `.zip`, then creates a GitHub Release with them
 auto-generated release notes.
 
 ```bash
-git tag v0.17.0
-git push origin v0.17.0
+git tag v0.17.1
+git push origin v0.17.1
 ```
 
 **Manual dispatch.** Open the workflow on GitHub Actions and click
