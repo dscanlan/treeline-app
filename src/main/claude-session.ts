@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat, copyFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, copyFile, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,12 +19,15 @@ import { join } from 'node:path';
 
 /**
  * Encode a working directory into Claude Code's per-project folder name: every
- * `/` and `.` becomes `-` (e.g. `/Users/me/code/app/.claude/worktrees/x` →
- * `-Users-me-code-app--claude-worktrees-x`). This mirrors Claude's own scheme,
- * verified against the real `~/.claude/projects` layout.
+ * character that isn't `[a-zA-Z0-9]` becomes `-` (e.g.
+ * `/Users/me/code/app/.claude/worktrees/x` → `-Users-me-code-app--claude-worktrees-x`,
+ * and `/Users/me/obsidian_notes` → `-Users-me-obsidian-notes`). This mirrors
+ * Claude's own scheme, verified against the real `~/.claude/projects` layout —
+ * note it replaces `_` (and spaces, etc.) too, not just `/` and `.`, so a repo
+ * path containing an underscore still resolves to the right project folder.
  */
 export function encodeProjectDir(cwd: string): string {
-  return cwd.replace(/[/.]/g, '-');
+  return cwd.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 /** Absolute path to `~/.claude/projects` (overridable for tests). */
@@ -42,11 +45,32 @@ export interface ClaudeSession {
 }
 
 /**
- * The most-recently-modified Claude transcript for `cwd`, or null when that
- * directory has no Claude sessions (no project folder, or it holds no
- * `.jsonl`). "Newest mtime" is the heuristic for "the live session" — when an
- * agent in a repo's main checkout spins up a worktree, the conversation that
- * did so is, in practice, the most recently written one for that directory.
+ * True when a transcript is a *resumable conversation* — it contains at least
+ * one assistant turn. Claude also writes non-conversation `.jsonl` stubs into a
+ * project folder (e.g. a `bridge-session`/`/model` marker has `user`, `mode` and
+ * `bridge-session` lines but no `assistant` reply); these often have the NEWEST
+ * mtime, so a naive "newest wins" pick resumes a blank session. Note real
+ * conversations contain `bridge-session` lines too, so the discriminator is the
+ * presence of an `assistant` entry, not the absence of `bridge-session`.
+ */
+async function isResumableTranscript(path: string): Promise<boolean> {
+  try {
+    const text = await readFile(path, 'utf8');
+    return text.includes('"type":"assistant"');
+  } catch {
+    return false; // raced removal / unreadable
+  }
+}
+
+/**
+ * The most-recently-modified *resumable* Claude transcript for `cwd`, or null
+ * when that directory has no resumable session. "Newest mtime" is the heuristic
+ * for "the live session" — when an agent in a repo's main checkout spins up a
+ * worktree, the conversation that did so is, in practice, the most recently
+ * written one for that directory — but we skip non-conversation stubs (see
+ * {@link isResumableTranscript}) by scanning newest-first and returning the
+ * first transcript with an assistant turn. Resolving a stub as "the session" is
+ * what made `claude --resume` open a blank conversation.
  */
 export async function latestSessionForCwd(
   cwd: string,
@@ -60,7 +84,8 @@ export async function latestSessionForCwd(
     return null; // no project folder → no sessions for this cwd
   }
 
-  let best: ClaudeSession | null = null;
+  // All transcripts with their mtimes, newest first.
+  const candidates: ClaudeSession[] = [];
   for (const name of names) {
     if (!name.endsWith('.jsonl')) continue;
     const full = join(dir, name);
@@ -71,11 +96,15 @@ export async function latestSessionForCwd(
       continue; // raced removal / unreadable — skip
     }
     if (!info.isFile()) continue;
-    if (!best || info.mtimeMs > best.mtimeMs) {
-      best = { id: name.slice(0, -'.jsonl'.length), path: full, mtimeMs: info.mtimeMs };
-    }
+    candidates.push({ id: name.slice(0, -'.jsonl'.length), path: full, mtimeMs: info.mtimeMs });
   }
-  return best;
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  // Return the newest transcript that is an actual conversation, skipping stubs.
+  for (const c of candidates) {
+    if (await isResumableTranscript(c.path)) return c;
+  }
+  return null;
 }
 
 /**
