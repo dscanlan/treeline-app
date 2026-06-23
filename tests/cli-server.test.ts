@@ -105,4 +105,19 @@ describe('CliServer', () => {
     const [res] = await roundtrip(path, ['{"verb":"ping"}\n']);
     expect(res).toEqual({ ok: true, data: { pong: true } });
   });
+
+  it('refuses to start when a live instance already owns the socket', async () => {
+    const path = sockPath();
+    server = new CliServer(path, handlers);
+    await server.start();
+
+    // A second server on the same path must NOT clobber the live one — the bug
+    // that left the survivor listening on an orphaned inode.
+    const intruder = new CliServer(path, handlers);
+    await expect(intruder.start()).rejects.toThrow(/already owned by a live instance/);
+
+    // The original is untouched and still answering.
+    const [res] = await roundtrip(path, ['{"verb":"ping"}\n']);
+    expect(res).toEqual({ ok: true, data: { pong: true } });
+  });
 });

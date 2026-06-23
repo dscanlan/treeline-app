@@ -1,5 +1,5 @@
-import { createServer, type Server, type Socket } from 'node:net';
-import { chmodSync, unlinkSync } from 'node:fs';
+import { connect, createServer, type Server, type Socket } from 'node:net';
+import { chmodSync, statSync, unlinkSync } from 'node:fs';
 import {
   encodeFrame,
   type CliRequest,
@@ -27,17 +27,36 @@ export type CliHandlerMap = Record<string, CliHandler>;
 export class CliServer {
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
+  /**
+   * Inode of the socket file we bound, captured at listen time. `stop()` unlinks
+   * only when the path still resolves to *this* inode — so a successor instance
+   * that re-bound the same path (the relaunch-overlap race) doesn't get its live
+   * socket file deleted out from under it when we later shut down.
+   */
+  private boundInode: number | null = null;
 
   constructor(
     private readonly socketPath: string,
     private readonly handlers: CliHandlerMap,
   ) {}
 
-  /** Bind the socket. Removes a stale socket file from a prior crash first. */
+  /**
+   * Bind the socket. A leftover file at the path has two possible owners:
+   *   - a *dead* socket from a prior unclean shutdown — safe to remove; or
+   *   - a *live* instance currently listening — removing its file would silently
+   *     sever it (connections to the path would hit a now-orphaned inode and be
+   *     refused), which is exactly the bug that kills agent-attention rings.
+   * So we probe before unlinking: if anything accepts a connection, the path is
+   * owned by a live peer and we refuse to start. Only a confirmed-dead (or
+   * absent) file is unlinked. With the single-instance lock in main this is rare,
+   * but it backstops the auto-update relaunch overlap the lock can't cover.
+   */
   async start(): Promise<void> {
-    // A leftover socket file from an unclean shutdown would make listen() fail
-    // with EADDRINUSE even though nothing is listening. Best-effort unlink; if
-    // a *live* server still owns it, listen() below rejects and the caller logs.
+    if (await isSocketLive(this.socketPath)) {
+      throw new Error(
+        `CLI socket already owned by a live instance: ${this.socketPath}`,
+      );
+    }
     try {
       unlinkSync(this.socketPath);
     } catch {
@@ -54,6 +73,11 @@ export class CliServer {
           chmodSync(this.socketPath, 0o600);
         } catch {
           /* chmod is defense in depth; the dir is already user-scoped */
+        }
+        try {
+          this.boundInode = statSync(this.socketPath).ino;
+        } catch {
+          /* couldn't stat our own socket — leave inode unknown, stop() is then conservative */
         }
         this.server = server;
         resolve();
@@ -106,10 +130,38 @@ export class CliServer {
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+    // Only remove the file if it's still *our* socket. During an auto-update
+    // relaunch the successor may already have re-bound this exact path; deleting
+    // its file here would orphan it (the very failure this guards against). A
+    // mismatched or unknown inode means someone else owns the path now — leave it.
     try {
-      unlinkSync(this.socketPath);
+      if (this.boundInode !== null && statSync(this.socketPath).ino === this.boundInode) {
+        unlinkSync(this.socketPath);
+      }
     } catch {
-      /* already gone */
+      /* already gone, or can't stat — nothing safe to remove */
     }
+    this.boundInode = null;
   }
+}
+
+/**
+ * Probe whether a unix socket path has a live listener. Resolves true only when
+ * a connection is accepted; ECONNREFUSED (stale file, no listener) and ENOENT
+ * (no file) both resolve false. A short timeout guards against a wedged peer.
+ */
+function isSocketLive(socketPath: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (live: boolean) => {
+      if (settled) return;
+      settled = true;
+      sock.destroy();
+      resolve(live);
+    };
+    const sock = connect(socketPath);
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+    sock.setTimeout(500, () => done(false));
+  });
 }

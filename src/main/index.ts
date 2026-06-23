@@ -182,7 +182,24 @@ function hardenWebviews(win: BrowserWindow): void {
   });
 }
 
+// Only one Treeline may run at a time. Without this, a second launch starts a
+// second main process whose CliServer.start() unlinks the live instance's CLI
+// socket out from under it, leaving the original listening on an orphaned inode
+// — unreachable, so every `treeline notify-hook` connect is refused and the
+// agent-attention rings/badges silently stop firing. Bail before any of that
+// setup runs and surface the existing window instead.
+const hasInstanceLock = app.requestSingleInstanceLock();
+if (!hasInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => focusMainWindow());
+}
+
 app.whenReady().then(() => {
+  // A second instance loses the lock and is already quitting; do no setup (it
+  // would bind the CLI socket and clobber the primary's — the bug above).
+  if (!hasInstanceLock) return;
+
   // Dev mode shows Electron's default Dock icon because the .icns is only
   // embedded in the .app bundle at packaging time. Override at runtime so
   // `npm run dev` shows the project icon. Guarded so prod is untouched.

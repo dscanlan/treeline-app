@@ -202,8 +202,15 @@ and agents can issue the same verbs a user would click.
    `CliServer` (`main/cli-server.ts`) listening on `cliSocketPath(userData)` —
    `…/Application Support/treeline-app/cli.sock`. The socket is `chmod 0600` and
    never network-bound: it grants control of the app (and thus its PTYs), so it's
-   user-scoped by construction. A stale socket from an unclean exit is unlinked
-   before `listen`; `before-quit` closes it.
+   user-scoped by construction. `start()` first *probes* the path: if a live peer
+   answers it refuses to start (rather than stomping it); only a confirmed-dead or
+   absent file is unlinked before `listen`. `stop()` (on `before-quit`) unlinks
+   only when the path still resolves to the inode it bound, so an auto-update
+   successor that re-bound the path isn't severed. The harder guarantee comes from
+   the **single-instance lock** (`app.requestSingleInstanceLock()` in
+   `main/index.ts`): a second launch quits and focuses the existing window instead
+   of binding a second socket — without it, the second `start()` would orphan the
+   primary's listener and silently kill agent-attention notifications.
 2. The protocol is newline-delimited JSON (`shared/cli-protocol.ts`, kept free of
    node imports so the sandboxed preload can share its types). A client writes one
    `{verb,args}` line and reads one `{ok,…}` line.
