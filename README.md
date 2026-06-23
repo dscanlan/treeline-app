@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.18.0 — feature-complete for v1: macOS only, repos managed manually.
+v0.18.1 — feature-complete for v1: macOS only, repos managed manually.
 Open tabs are saved and offered back after a full restart, and a
 persistent scratchpad side panel rides alongside them.
 
