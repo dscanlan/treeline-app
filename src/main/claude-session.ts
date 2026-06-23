@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat, copyFile, readFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, copyFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -45,32 +45,19 @@ export interface ClaudeSession {
 }
 
 /**
- * True when a transcript is a *resumable conversation* — it contains at least
- * one assistant turn. Claude also writes non-conversation `.jsonl` stubs into a
- * project folder (e.g. a `bridge-session`/`/model` marker has `user`, `mode` and
- * `bridge-session` lines but no `assistant` reply); these often have the NEWEST
- * mtime, so a naive "newest wins" pick resumes a blank session. Note real
- * conversations contain `bridge-session` lines too, so the discriminator is the
- * presence of an `assistant` entry, not the absence of `bridge-session`.
- */
-async function isResumableTranscript(path: string): Promise<boolean> {
-  try {
-    const text = await readFile(path, 'utf8');
-    return text.includes('"type":"assistant"');
-  } catch {
-    return false; // raced removal / unreadable
-  }
-}
-
-/**
- * The most-recently-modified *resumable* Claude transcript for `cwd`, or null
- * when that directory has no resumable session. "Newest mtime" is the heuristic
- * for "the live session" — when an agent in a repo's main checkout spins up a
- * worktree, the conversation that did so is, in practice, the most recently
- * written one for that directory — but we skip non-conversation stubs (see
- * {@link isResumableTranscript}) by scanning newest-first and returning the
- * first transcript with an assistant turn. Resolving a stub as "the session" is
- * what made `claude --resume` open a blank conversation.
+ * The most-recently-modified Claude transcript for `cwd`, or null when that
+ * directory has no Claude sessions (no project folder, or it holds no
+ * `.jsonl`). "Newest mtime" is the heuristic for "the live session" — when an
+ * agent in a repo's main checkout spins up a worktree, the conversation that
+ * did so is, in practice, the most recently written one for that directory.
+ *
+ * We deliberately do NOT inspect transcript contents to skip "stubs" that lack
+ * an `assistant` turn. A `bridge-session` marker (written when a session
+ * continues across a model switch / compaction) has no `assistant` line yet IS
+ * the valid `--resume` pointer to the live conversation, and it carries the
+ * newest mtime right after the bridge. Filtering it out made `latestSessionForCwd`
+ * fall back to an older transcript, so a worktree handoff resumed the WRONG/older
+ * session — newest-by-mtime is the conversation the user is actually in.
  */
 export async function latestSessionForCwd(
   cwd: string,
@@ -84,8 +71,7 @@ export async function latestSessionForCwd(
     return null; // no project folder → no sessions for this cwd
   }
 
-  // All transcripts with their mtimes, newest first.
-  const candidates: ClaudeSession[] = [];
+  let best: ClaudeSession | null = null;
   for (const name of names) {
     if (!name.endsWith('.jsonl')) continue;
     const full = join(dir, name);
@@ -96,15 +82,11 @@ export async function latestSessionForCwd(
       continue; // raced removal / unreadable — skip
     }
     if (!info.isFile()) continue;
-    candidates.push({ id: name.slice(0, -'.jsonl'.length), path: full, mtimeMs: info.mtimeMs });
+    if (!best || info.mtimeMs > best.mtimeMs) {
+      best = { id: name.slice(0, -'.jsonl'.length), path: full, mtimeMs: info.mtimeMs };
+    }
   }
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-
-  // Return the newest transcript that is an actual conversation, skipping stubs.
-  for (const c of candidates) {
-    if (await isResumableTranscript(c.path)) return c;
-  }
-  return null;
+  return best;
 }
 
 /**

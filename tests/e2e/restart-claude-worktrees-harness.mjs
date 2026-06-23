@@ -4,9 +4,10 @@
 // This is the worktree/Claude analogue of restart-scratch-harness.mjs. It:
 //   1. builds a throwaway git repo with two worktrees under an underscore-bearing
 //      parent dir (so the cwd→project-folder encoding fix is exercised),
-//   2. seeds, per worktree, a real conversation transcript PLUS a newer
-//      non-conversation stub, both under a redirected $HOME (so nothing touches
-//      your real ~/.claude) — restore must pick the real one and skip the stub,
+//   2. seeds, per worktree, an older prior conversation PLUS a newer
+//      `bridge-session` continuation (the live `--resume` pointer), both under a
+//      redirected $HOME (so nothing touches your real ~/.claude) — restore must
+//      pick the newest (the bridge continuation), not the stale older one,
 //   3. puts a tiny compiled `claude` stub on PATH so a pane's foreground command
 //      is literally `claude` (the exact string the save path keys on) — a shell
 //      script would report its interpreter (`bash`), not `claude`,
@@ -62,11 +63,13 @@ function loadEncodeProjectDir() {
 }
 const encodeProjectDir = loadEncodeProjectDir();
 
-// A resumable conversation has at least one `assistant` turn; a non-conversation
-// stub (a `/model`/bridge-session marker) has none. The fix skips stubs even when
-// they carry the NEWEST mtime — resolving one is what opened a blank `--resume`.
+// The newest transcript for a cwd is the live session. A `bridge-session`
+// continuation (written across a model switch / compaction) has no `assistant`
+// turn but IS the valid `--resume` pointer, so newest-mtime wins and it is NOT
+// filtered out — filtering it resumed an older session. An older conversation in
+// the same folder is stale history that must not be resumed.
 const CONV = '{"type":"user","text":"hi"}\n{"type":"assistant","text":"yo"}\n';
-const STUB = '{"type":"user"}\n{"type":"bridge-session"}\n{"type":"mode"}\n';
+const BRIDGE = '{"type":"bridge-session","sessionId":"live"}\n{"type":"user"}\n';
 
 const git = (cwd, ...args) =>
   execFileSync('git', args, {
@@ -180,14 +183,14 @@ async function main() {
   const { repo, worktrees } = buildRepoWithWorktrees(codeRoot);
   buildClaudeStub(binDir);
 
-  // Per worktree: a real conversation (OLDER) that restore must resume, plus a
-  // non-conversation stub (NEWER) that must be skipped. Pre-fix, "newest mtime
-  // wins" would pick the stub and `--resume` it into a blank session.
+  // Per worktree: an older prior conversation (stale history) plus a NEWER
+  // `bridge-session` continuation — the live session. Newest mtime wins, so the
+  // bridge id is what gets pinned and resumed; the stale older one must not be.
   const sessionIds = { [worktrees[0]]: 'sess-auth-AAAA1111', [worktrees[1]]: 'sess-apiv2-BBBB2222' };
-  const stubIds = { [worktrees[0]]: 'stub-auth-9999ZZZZ', [worktrees[1]]: 'stub-apiv2-9999ZZZZ' };
+  const staleIds = { [worktrees[0]]: 'stale-auth-0000AAAA', [worktrees[1]]: 'stale-apiv2-0000BBBB' };
   for (const wt of worktrees) {
-    seedTranscript(home, wt, sessionIds[wt], CONV, 1000); // older, real conversation
-    seedTranscript(home, wt, stubIds[wt], STUB, 9000); // newer, stub → must be skipped
+    seedTranscript(home, wt, staleIds[wt], CONV, 1000); // older, stale prior conversation
+    seedTranscript(home, wt, sessionIds[wt], BRIDGE, 9000); // newer, live bridge continuation → resumed
   }
 
   // Pre-add the repo so the sidebar lists its worktrees on launch.
@@ -212,7 +215,7 @@ async function main() {
   log('Fixtures:');
   log('  repo      :', repo);
   for (const wt of worktrees)
-    log('  worktree  :', wt, '→ resume', sessionIds[wt], '(skip newer stub', stubIds[wt] + ')');
+    log('  worktree  :', wt, '→ resume', sessionIds[wt], '(newest; ignore stale', staleIds[wt] + ')');
 
   // Genuine encoding-regression guard (the round trip co-moves with source, so
   // assert the derived encoder still replaces underscores the way the fix does).
@@ -268,11 +271,11 @@ async function main() {
   const idsPinnedRight = worktrees.every((wt) =>
     savedLeaves.some((l) => l.cwd === wt && l.claudeSessionId === sessionIds[wt]),
   );
-  findings.push(['each pane pinned the correct session id (by cwd)', idsPinnedRight]);
-  const stubsSkipped = worktrees.every((wt) =>
-    savedLeaves.every((l) => l.claudeSessionId !== stubIds[wt]),
+  findings.push(['each pane pinned the newest session id (by cwd)', idsPinnedRight]);
+  const staleSkipped = worktrees.every((wt) =>
+    savedLeaves.every((l) => l.claudeSessionId !== staleIds[wt]),
   );
-  findings.push(['the newer non-conversation stub was skipped (no stub id pinned)', stubsSkipped]);
+  findings.push(['the older stale conversation was not pinned', staleSkipped]);
 
   await app.close();
   log('  → full quit (PTYs + claude stubs killed)');
@@ -317,8 +320,8 @@ async function main() {
       const short = wt.split('/').pop();
       findings.push([`pane for ${short} resumed ${id}`, blob.includes(`--resume ${id}`)]);
       findings.push([
-        `pane for ${short} did NOT resume the stub`,
-        !blob.includes(`--resume ${stubIds[wt]}`),
+        `pane for ${short} did NOT resume the stale session`,
+        !blob.includes(`--resume ${staleIds[wt]}`),
       ]);
     }
   }

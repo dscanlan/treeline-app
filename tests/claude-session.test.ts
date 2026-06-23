@@ -10,11 +10,13 @@ import {
   type ClaudeSession,
 } from '../src/main/claude-session';
 
-// A resumable conversation transcript has at least one `assistant` turn.
+// A normal conversation transcript (has an `assistant` turn).
 const CONV = '{"type":"user","text":"hi"}\n{"type":"assistant","text":"yo"}\n';
-// A non-conversation stub (e.g. a `/model`/bridge marker): user lines but no
-// assistant reply. Claude writes these with recent mtimes; they must be skipped.
-const STUB = '{"type":"user"}\n{"type":"bridge-session"}\n{"type":"mode"}\n';
+// A `bridge-session` marker — written when a session continues across a model
+// switch / compaction. It has no `assistant` turn but IS the valid `--resume`
+// pointer to the live conversation, and carries the newest mtime right after
+// the bridge. It must NOT be filtered out (doing so resumed an older session).
+const BRIDGE = '{"type":"bridge-session","sessionId":"live"}\n{"type":"user"}\n';
 
 describe('claude-session', () => {
   describe('encodeProjectDir', () => {
@@ -74,18 +76,15 @@ describe('claude-session', () => {
       expect(s?.id).toBe('a-real-session');
     });
 
-    it('skips a newer non-conversation stub and picks the newest REAL conversation', async () => {
-      // Regression: Claude writes `bridge-session`/`/model` stubs (no assistant
-      // reply) with recent mtimes. Resuming one opens a blank session.
-      seed('real.jsonl', CONV, 2000);
-      seed('stub.jsonl', STUB, 9000); // newest, but not a resumable conversation
+    it('picks a newer bridge-session over an older conversation (the live --resume pointer)', async () => {
+      // Regression guard: a `bridge-session` marker has no `assistant` turn but
+      // is the newest file and the correct resume target for the conversation
+      // the user is in. Filtering it out resumed the older transcript instead —
+      // the worktree-handoff "wrong/older session" bug. Newest mtime wins.
+      seed('older-real.jsonl', CONV, 2000);
+      seed('newer-bridge.jsonl', BRIDGE, 9000);
       const s = await latestSessionForCwd(cwd, root);
-      expect(s?.id).toBe('real');
-    });
-
-    it('returns null when the cwd holds only non-conversation stubs', async () => {
-      seed('stub.jsonl', STUB, 9000);
-      expect(await latestSessionForCwd(cwd, root)).toBeNull();
+      expect(s?.id).toBe('newer-bridge');
     });
 
     it('copies the transcript into the destination cwd’s folder, creating it', async () => {
