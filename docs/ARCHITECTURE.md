@@ -188,7 +188,8 @@ the live location (`browserAddress`, fed from the guest's `did-navigate` events)
 drives the address bar — so an in-page link click is never clobbered by a
 re-render. Back/forward/reload are imperative through the element ref; typed
 input is normalised by `shared/browser-url.ts` (bare `host:port` → `http://`,
-non-web schemes refused). The `<BrowserPanelResizer>` uses pointer *capture* (vs
+`file://` passed through for local HTML, other non-web schemes refused). The
+`<BrowserPanelResizer>` uses pointer *capture* (vs
 the code panel's window listeners) so the drag survives the cursor crossing into
 the webview's separate process.
 

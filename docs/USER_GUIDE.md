@@ -212,9 +212,12 @@ a server you launched outside treeline shows up).
 
 The pane is real Chromium (an Electron `<webview>` with its own isolated
 session), with an address bar, back/forward/reload, and a draggable divider. A
-bare host typed in the address bar is assumed `http://`; non-web schemes are
-refused. Links that try to open a new window go to your OS browser. The pane is
-also scriptable from the [CLI](./CLI.md#browser-verbs).
+bare host typed in the address bar is assumed `http://`, and `file://` URLs open
+local HTML (build output, coverage reports, generated pages); other non-web
+schemes (`javascript:`, `data:`, `chrome:`) are refused. Links that try to open a
+new window go to your OS browser. The pane is also scriptable from the
+[CLI](./CLI.md#browser-verbs), though acting (eval/click/fill) stays
+localhost-only — a `file://` page can be viewed but not scripted.
 
 ---
 
