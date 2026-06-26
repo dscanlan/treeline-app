@@ -67,6 +67,12 @@ describe('assertScriptableOrigin', () => {
     expect(() => assertScriptableOrigin(fakeGuest('https://example.com'))).toThrow(/non-local/);
   });
 
+  it('rejects a file:// page (viewable in the pane, but never scriptable)', () => {
+    // file:// is navigable (normalizeBrowserUrl) so local HTML can be opened,
+    // but it has no local host → eval/click/fill must stay blocked.
+    expect(() => assertScriptableOrigin(fakeGuest('file:///etc/passwd'))).toThrow(/non-local/);
+  });
+
   it('rejects a page with no parseable origin', () => {
     expect(() => assertScriptableOrigin(fakeGuest('about:blank'))).toThrow(/scripting blocked/);
   });
