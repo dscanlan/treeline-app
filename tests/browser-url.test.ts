@@ -25,8 +25,17 @@ describe('normalizeBrowserUrl', () => {
     expect(normalizeBrowserUrl('   ')).toBeNull();
   });
 
-  it('rejects non-web schemes', () => {
-    expect(normalizeBrowserUrl('file:///etc/passwd')).toBeNull();
+  it('passes through file:// URLs unchanged (open local HTML)', () => {
+    expect(normalizeBrowserUrl('file:///Users/me/build/index.html')).toBe(
+      'file:///Users/me/build/index.html',
+    );
+    expect(normalizeBrowserUrl('  file:///tmp/coverage/index.html  ')).toBe(
+      'file:///tmp/coverage/index.html',
+    );
+    expect(normalizeBrowserUrl('FILE:///tmp/x.html')).toBe('FILE:///tmp/x.html');
+  });
+
+  it('rejects other non-web schemes', () => {
     expect(normalizeBrowserUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeBrowserUrl('data:text/html,<h1>x</h1>')).toBeNull();
     expect(normalizeBrowserUrl('chrome://settings')).toBeNull();

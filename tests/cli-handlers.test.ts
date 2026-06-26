@@ -158,9 +158,17 @@ describe('buildCliHandlers', () => {
     expect(browserNavigate).toHaveBeenCalledWith('http://localhost:3000', true);
   });
 
+  it('browser navigate drives browserNavigate for a file:// URL (open local HTML)', async () => {
+    const browserNavigate = vi.fn();
+    const h = buildCliHandlers(makeDeps({ browserNavigate }));
+    const res = await h.browser({ action: 'navigate', url: 'file:///tmp/report.html' });
+    expect(browserNavigate).toHaveBeenCalledWith('file:///tmp/report.html', false);
+    expect(res).toEqual({ navigated: 'file:///tmp/report.html' });
+  });
+
   it('browser navigate rejects a non-web URL', async () => {
     const h = buildCliHandlers(makeDeps());
-    await expect(h.browser({ action: 'navigate', url: 'file:///etc/passwd' })).rejects.toThrow(
+    await expect(h.browser({ action: 'navigate', url: 'javascript:alert(1)' })).rejects.toThrow(
       /not a navigable/,
     );
   });
