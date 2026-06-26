@@ -31,6 +31,15 @@ mac:
       arch: universal
     - target: zip
       arch: universal
+  # We ship the ripgrep binary for BOTH arches (resources/rg/<arch>/rg) inside a
+  # single universal app, and rg-path.ts picks the matching slice at runtime via
+  # process.arch. Because extraResources stages the whole resources/rg folder
+  # into each single-arch sub-build, @electron/universal sees these Mach-O files
+  # as byte-identical across the x64 and arm64 builds and aborts the merge
+  # ("Detected file ... not covered by the x64ArchFiles rule"). Declaring them
+  # here tells universal they're intentionally per-arch standalone binaries —
+  # don't lipo-merge them, keep both as-is.
+  x64ArchFiles: '**/rg/*/rg'
   category: public.app-category.developer-tools
   hardenedRuntime: true
   gatekeeperAssess: false
