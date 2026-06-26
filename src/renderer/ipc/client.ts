@@ -106,6 +106,25 @@ export function attachIpc(): () => void {
     }),
   );
 
+  // "Quick Open File…" (⌘P): fuzzy file finder scoped to the selected target.
+  unsubs.push(
+    api.window.onQuickOpenFile(() => {
+      const root = resolveSearchRoot();
+      if (root) useStore.getState().openModal({ kind: 'quick-open', root });
+    }),
+  );
+
+  // "Find in Files…" (⌘⇧F): content search panel scoped to the selected target.
+  // Always opens (the panel itself prompts if no target is resolvable).
+  unsubs.push(
+    api.window.onFindInFiles(() => {
+      const root = resolveSearchRoot();
+      const s = useStore.getState();
+      if (root) s.openSearchPanel(root);
+      else s.closeSearchPanel(); // nothing to scope to — don't open a dead panel
+    }),
+  );
+
   // Untracked repos noticed via PTY cwds — surfaced as a toast.
   unsubs.push(
     api.repos.onDiscovered((e) => {
@@ -398,6 +417,23 @@ export function attachIpc(): () => void {
   });
 
   return () => unsubs.forEach((fn) => fn());
+}
+
+/**
+ * The directory a search is scoped to: the selected sidebar target (repo,
+ * worktree, or folder) if any, else the focused terminal's cwd as a fallback so
+ * ⌘P/⌘⇧F still do something useful when nothing is selected. Null when neither
+ * is available.
+ */
+function resolveSearchRoot(): string | null {
+  const s = useStore.getState();
+  if (s.selectedSidebarPath) return s.selectedSidebarPath;
+  const tab = s.tabs.find((t) => t.id === s.activeTabId);
+  if (tab) {
+    const leaf = findLeaf(tab.root, tab.focusedPaneId);
+    if (leaf?.cwd) return leaf.cwd;
+  }
+  return null;
 }
 
 /**

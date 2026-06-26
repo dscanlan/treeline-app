@@ -22,3 +22,6 @@ coverage/
 
 # Test-fixture dir created by scripts/setup-test-scenarios.sh
 .test-code-root/
+
+# Ripgrep binaries staged for packaging by scripts/fetch-ripgrep.mjs
+resources/rg/

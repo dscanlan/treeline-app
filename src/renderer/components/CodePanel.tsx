@@ -37,6 +37,8 @@ export function CodePanel() {
       saveError: st.saveError,
       startEditing: st.startEditing,
       setDraft: st.setDraft,
+      revealLine: st.revealLine,
+      revealTick: st.revealTick,
     })),
   );
 
@@ -142,6 +144,8 @@ export function CodePanel() {
             text={s.editing ? (s.draft ?? '') : s.openFileText}
             filename={basename(s.openFilePath)}
             onChange={s.setDraft}
+            revealLine={s.revealLine}
+            revealTick={s.revealTick}
           />
         )}
       </div>
@@ -157,6 +161,8 @@ function FileBody({
   text,
   filename,
   onChange,
+  revealLine,
+  revealTick,
 }: {
   loading: boolean;
   error: string | null;
@@ -165,6 +171,8 @@ function FileBody({
   text: string | null;
   filename: string;
   onChange: (value: string) => void;
+  revealLine: number | null;
+  revealTick: number;
 }) {
   if (loading) return <Centered>Loading…</Centered>;
   if (error) return <Centered tone="error">{error}</Centered>;
@@ -177,6 +185,8 @@ function FileBody({
         editable={editing}
         onChange={editing ? onChange : undefined}
         onSave={editing ? () => void saveOpenFile() : undefined}
+        revealLine={revealLine}
+        revealTick={revealTick}
       />
     );
   }

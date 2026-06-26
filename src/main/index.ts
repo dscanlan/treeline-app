@@ -44,6 +44,7 @@ import { registerConfigIpc } from './ipc/config';
 import { registerSessionIpc } from './ipc/session';
 import { registerScratchpadIpc } from './ipc/scratchpad';
 import { registerFilesIpc } from './ipc/files';
+import { registerSearchIpc } from './ipc/search';
 import { registerClaudeSessionIpc } from './ipc/claude-session';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
@@ -349,6 +350,7 @@ app.whenReady().then(() => {
     },
   });
   registerFilesIpc();
+  registerSearchIpc();
   registerClaudeSessionIpc();
   registerSessionIpc(sessionStore);
   registerScratchpadIpc(scratchpadStore);

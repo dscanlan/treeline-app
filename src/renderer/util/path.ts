@@ -8,6 +8,11 @@ export function basename(p: string): string {
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
 }
 
+/** Join an absolute `root` with a `rel` path under it (POSIX-only, like the rest). */
+export function joinPath(root: string, rel: string): string {
+  return `${root.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}`;
+}
+
 const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdx']);
 
 /** True for markdown files (.md / .markdown / .mdx) — drives the Preview view. */

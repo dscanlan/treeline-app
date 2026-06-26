@@ -1,5 +1,12 @@
-import { useMemo } from 'react';
-import CodeMirror, { EditorView, Prec, keymap, type Extension } from '@uiw/react-codemirror';
+import { useEffect, useMemo, useRef } from 'react';
+import CodeMirror, {
+  EditorSelection,
+  EditorView,
+  Prec,
+  keymap,
+  type Extension,
+  type ReactCodeMirrorRef,
+} from '@uiw/react-codemirror';
 import { loadLanguage, type LanguageName } from '@uiw/codemirror-extensions-langs';
 import { graphiteCodeMirrorTheme } from './codemirror-theme';
 
@@ -74,10 +81,45 @@ interface Props {
   onChange?: (value: string) => void;
   /** Called when the user presses ⌘S / Ctrl-S inside the editor. */
   onSave?: () => void;
+  /** 1-based line to scroll to + select (from a search hit); null = none. */
+  revealLine?: number | null;
+  /** Bumps on each reveal request so re-selecting the same line re-scrolls. */
+  revealTick?: number;
 }
 
 /** Syntax-highlighted CodeMirror view, read-only by default, editable on demand. */
-export function CodeMirrorView({ value, filename, editable = false, onChange, onSave }: Props) {
+export function CodeMirrorView({
+  value,
+  filename,
+  editable = false,
+  onChange,
+  onSave,
+  revealLine = null,
+  revealTick = 0,
+}: Props) {
+  const cmRef = useRef<ReactCodeMirrorRef>(null);
+
+  // Scroll to + select the target line when a search hit is opened. Keyed on
+  // revealTick so the same line re-reveals, and on `value` so it re-fires once
+  // the file text has actually loaded (the reveal is requested before the read
+  // resolves). A rAF lets CodeMirror finish its layout before we measure.
+  useEffect(() => {
+    if (revealLine === null) return;
+    const view = cmRef.current?.view;
+    if (!view) return;
+    const raf = requestAnimationFrame(() => {
+      const total = view.state.doc.lines;
+      const lineNo = Math.min(Math.max(revealLine, 1), total);
+      const line = view.state.doc.line(lineNo);
+      view.dispatch({
+        selection: EditorSelection.range(line.from, line.to),
+        effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTick, value]);
+
   const extensions = useMemo(() => {
     const exts: Extension[] = [...graphiteCodeMirrorTheme, EditorView.lineWrapping];
     const lang = languageExtensionFor(filename);
@@ -105,6 +147,7 @@ export function CodeMirrorView({ value, filename, editable = false, onChange, on
 
   return (
     <CodeMirror
+      ref={cmRef}
       value={value}
       height="100%"
       theme="none"

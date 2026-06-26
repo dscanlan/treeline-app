@@ -339,3 +339,58 @@ export interface Scratch {
   cwd: string;
   createdAt: number;
 }
+
+/**
+ * One highlighted span within a matched line. Offsets are **UTF-16 string
+ * indices** into the line's `text` (ripgrep reports byte offsets; the parser
+ * converts them so the renderer can slice the JS string directly).
+ */
+export interface SearchSubmatch {
+  /** The matched substring. */
+  text: string;
+  /** Start index within the line's `text` (inclusive). */
+  start: number;
+  /** End index within the line's `text` (exclusive). */
+  end: number;
+}
+
+/** One matching line within a file. */
+export interface SearchLineMatch {
+  /** 1-based line number. */
+  line: number;
+  /** Full line text, trailing newline stripped (may be truncated by rg). */
+  text: string;
+  /** Highlighted spans within `text`, in order. */
+  submatches: SearchSubmatch[];
+}
+
+/** All matches for a single file, in line order. */
+export interface SearchFileResult {
+  /** Absolute path — ready to open in the code viewer. */
+  path: string;
+  /** Path relative to the search root — for display. */
+  relPath: string;
+  matches: SearchLineMatch[];
+}
+
+/** Result of a content (grep) search scoped to one worktree/folder. */
+export interface ContentSearchResult {
+  results: SearchFileResult[];
+  /** Total matches across all files in `results`. */
+  totalMatches: number;
+  /**
+   * True when results were capped (byte or match limit hit) so the UI can show
+   * a "results limited" hint rather than implying completeness.
+   */
+  truncated: boolean;
+}
+
+/** Options for a content search. */
+export interface ContentSearchOptions {
+  /** Case-sensitive match. Default false → smart-case (rg `-S`). */
+  caseSensitive?: boolean;
+  /** Treat `query` as a regular expression rather than a literal substring. */
+  regex?: boolean;
+  /** Match whole words only (rg `-w`). */
+  wholeWord?: boolean;
+}

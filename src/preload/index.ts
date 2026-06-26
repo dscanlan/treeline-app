@@ -6,6 +6,7 @@ import type {
   AddPathResult,
   AppConfig,
   ChangedFile,
+  ContentSearchResult,
   DirEntry,
   FileContents,
   FileDiff,
@@ -140,6 +141,17 @@ const api: TreelineApi = {
       ipcRenderer.invoke(Channels.FilesWrite, path, content) as Promise<void>,
   },
 
+  search: {
+    content: (root, query, opts) =>
+      ipcRenderer.invoke(
+        Channels.SearchContent,
+        root,
+        query,
+        opts,
+      ) as Promise<ContentSearchResult>,
+    files: (root) => ipcRenderer.invoke(Channels.SearchFiles, root) as Promise<string[]>,
+  },
+
   folders: {
     remove: (path) =>
       ipcRenderer.invoke(Channels.FoldersRemove, path) as Promise<void>,
@@ -181,6 +193,8 @@ const api: TreelineApi = {
     onScratchpadToggle: (cb) => listen<void>(Channels.ScratchpadToggle, () => cb()),
     onOpenSettings: (cb) => listen<void>(Channels.SettingsOpen, () => cb()),
     onJumpToUnread: (cb) => listen<void>(Channels.JumpToUnread, () => cb()),
+    onQuickOpenFile: (cb) => listen<void>(Channels.QuickOpenFile, () => cb()),
+    onFindInFiles: (cb) => listen<void>(Channels.FindInFiles, () => cb()),
   },
 
   cli: {

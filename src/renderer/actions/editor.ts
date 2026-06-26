@@ -113,6 +113,19 @@ export async function openFileInPanel(path: string): Promise<void> {
   await doOpenFile(path);
 }
 
+/**
+ * Open `path` and scroll to + highlight `line` (1-based) — the action behind a
+ * find-in-files result click. Forces raw 'file' mode (not markdown Preview) so
+ * the matched line is actually navigable, then sets the reveal target the
+ * CodeMirror view consumes once the text loads.
+ */
+export async function openFileAtLine(path: string, line: number): Promise<void> {
+  if (!guardUnsaved({ type: 'open-file', path })) return;
+  useStore.getState().openInPanel(path, 'file');
+  await loadFileContent(path);
+  useStore.getState().setRevealLine(line);
+}
+
 /** Open a file in the panel showing its diff (used by the Changed list). */
 export async function openDiffInPanel(path: string): Promise<void> {
   if (!guardUnsaved({ type: 'open-diff', path })) return;

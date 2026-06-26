@@ -3,6 +3,8 @@ import type {
   AddPathResult,
   AppConfig,
   ChangedFile,
+  ContentSearchOptions,
+  ContentSearchResult,
   DetectedProcess,
   DirEntry,
   FileContents,
@@ -290,6 +292,22 @@ export interface TreelineApi {
   };
 
   /**
+   * Ripgrep-backed search scoped to a single worktree/folder `root` (the
+   * selected sidebar target). Respects `.gitignore`; works in git repos and
+   * plain folders alike. See `src/main/search.ts`.
+   */
+  search: {
+    /** Find-in-files (⌘⇧F): match line contents under `root`. */
+    content(
+      root: string,
+      query: string,
+      opts?: ContentSearchOptions,
+    ): Promise<ContentSearchResult>;
+    /** Enumerate files under `root` for the fuzzy quick-open list (⌘P). */
+    files(root: string): Promise<string[]>;
+  };
+
+  /**
    * Plain (non-git) folders pinned to the sidebar. They're added via
    * `repos.addPath` (which classifies repo vs folder) and listed through
    * `config.get().folders`; this namespace only handles removal.
@@ -359,6 +377,10 @@ export interface TreelineApi {
     onOpenSettings(cb: () => void): () => void;
     /** Subscribe to the ⌘⇧U accelerator that jumps to the most-recent unread. */
     onJumpToUnread(cb: () => void): () => void;
+    /** Subscribe to the ⌘⇧P accelerator that opens the fuzzy file quick-open. */
+    onQuickOpenFile(cb: () => void): () => void;
+    /** Subscribe to the ⌘⇧F accelerator that opens find-in-files. */
+    onFindInFiles(cb: () => void): () => void;
   };
 
   /**

@@ -58,6 +58,14 @@ describe('findKeybindingConflicts', () => {
     expect(findKeybindingConflicts(resolved)).toEqual([]);
   });
 
+  it('the factory defaults are free of reserved system collisions', () => {
+    // Guards new bindings (e.g. quickOpenFile ⌘⇧P, findInFiles ⌘⇧F): a default
+    // that lands on a reserved chord like ⌘V would never fire, and the Settings
+    // UI couldn't help since defaults bypass it.
+    const resolved = resolveKeybindings(undefined);
+    expect(findReservedConflicts(resolved)).toEqual([]);
+  });
+
   it('detects a direct collision between two commands', () => {
     // Rebind toggleBrowser onto toggleSidebar's default chord.
     const resolved = resolveKeybindings({ toggleBrowser: 'CmdOrCtrl+B' });

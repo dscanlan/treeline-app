@@ -12,6 +12,12 @@ files:
   - 'bin/**'
 asarUnpack:
   - 'bin/**'
+# Ripgrep binaries (both arches) staged by scripts/fetch-ripgrep.mjs. Shipped
+# into Contents/Resources/rg/<arch>/rg, outside the asar so they're executable;
+# src/main/rg-path.ts resolves the matching arch at runtime.
+extraResources:
+  - from: 'resources/rg'
+    to: 'rg'
 extraMetadata:
   main: out/main/index.js
 mac:

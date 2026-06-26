@@ -70,6 +70,8 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
     }
   };
   const sendScratchpadToggle = send(Channels.ScratchpadToggle);
+  const sendQuickOpenFile = send(Channels.QuickOpenFile);
+  const sendFindInFiles = send(Channels.FindInFiles);
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac
@@ -142,6 +144,17 @@ export function buildAppMenu(keybindings?: ResolvedKeybindings): void {
           label: 'Jump to Unread Agent',
           accelerator: kb.jumpToUnread,
           click: sendJumpToUnread,
+        },
+        { type: 'separator' as const },
+        {
+          label: 'Quick Open File…',
+          accelerator: kb.quickOpenFile,
+          click: sendQuickOpenFile,
+        },
+        {
+          label: 'Find in Files…',
+          accelerator: kb.findInFiles,
+          click: sendFindInFiles,
         },
         { type: 'separator' as const },
         { role: 'reload' as const },

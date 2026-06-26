@@ -19,7 +19,9 @@ export type KeybindingCommand =
   | 'toggleBrowser'
   | 'toggleScratchpad'
   | 'openSettings'
-  | 'jumpToUnread';
+  | 'jumpToUnread'
+  | 'quickOpenFile'
+  | 'findInFiles';
 
 /** One row of the central command table. */
 export interface KeybindingDef {
@@ -61,6 +63,16 @@ export const KEYBINDING_DEFS: readonly KeybindingDef[] = [
     command: 'jumpToUnread',
     label: 'Jump to Unread Agent',
     defaultAccelerator: 'CmdOrCtrl+Shift+U',
+  },
+  {
+    command: 'quickOpenFile',
+    label: 'Quick Open File',
+    defaultAccelerator: 'CmdOrCtrl+Shift+P',
+  },
+  {
+    command: 'findInFiles',
+    label: 'Find in Files',
+    defaultAccelerator: 'CmdOrCtrl+Shift+F',
   },
 ] as const;
 

@@ -18,10 +18,11 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:mac": "electron-vite build && electron-builder --mac --universal --publish never",
+    "package:mac": "node scripts/fetch-ripgrep.mjs && electron-vite build && electron-builder --mac --universal --publish never",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
+    "@vscode/ripgrep": "^1.15.9",
     "electron-updater": "^6.8.3",
     "highlight.js": "^11.11.1",
     "node-pty": "^1.0.0",

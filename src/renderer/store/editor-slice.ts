@@ -27,6 +27,14 @@ export interface EditorSlice {
   /** Whether the panel is showing the full file or its diff. */
   panelMode: PanelMode;
 
+  /**
+   * Line to scroll to + highlight in the File view (1-based), set when a search
+   * hit is opened. `revealTick` bumps on every request so re-selecting the same
+   * line re-fires the scroll even though `revealLine` is unchanged.
+   */
+  revealLine: number | null;
+  revealTick: number;
+
   openFileText: string | null;
   openFileTruncated: boolean;
   openFileBinary: boolean;
@@ -71,6 +79,9 @@ export interface EditorSlice {
   openInPanel: (path: string, mode: PanelMode) => void;
   /** Switch the panel between file and diff for the already-open path. */
   setPanelMode: (mode: PanelMode) => void;
+
+  /** Request the File view scroll to + highlight `line` (1-based); null clears. */
+  setRevealLine: (line: number | null) => void;
 
   /** Mark the file read in-flight (used when lazily loading on a mode switch). */
   setFileLoading: (loading: boolean) => void;
@@ -118,6 +129,8 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
 
   openFilePath: null,
   panelMode: 'file',
+  revealLine: null,
+  revealTick: 0,
   openFileText: null,
   openFileTruncated: false,
   openFileBinary: false,
@@ -151,6 +164,9 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
       codePanelOpen: true,
       openFilePath: path,
       panelMode: mode,
+      // A plain open (tree/changed click) clears any prior reveal target; an
+      // open-at-line follows up with setRevealLine after this.
+      revealLine: null,
       openFileText: null,
       openFileTruncated: false,
       openFileBinary: false,
@@ -168,6 +184,8 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
     }),
 
   setPanelMode: (mode) => set({ panelMode: mode }),
+
+  setRevealLine: (line) => set((s) => ({ revealLine: line, revealTick: s.revealTick + 1 })),
 
   setFileLoading: (loading) => set({ openFileLoading: loading }),
 

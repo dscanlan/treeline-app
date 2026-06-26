@@ -362,6 +362,23 @@ Editing existing files only — creating brand-new files from the tree isn't
 supported yet. (A directory that sits *inside* a git repo is detected as that
 repo, not added as a plain folder.)
 
+### Search (files & contents)
+
+Find code without leaving the window. Both surfaces are **scoped to the selected
+worktree/folder** (or, with nothing selected, the focused terminal's cwd), are
+powered by [ripgrep](https://github.com/BurntSushi/ripgrep) (bundled — no install),
+and respect `.gitignore` in git repos and plain folders alike.
+
+- **`⌘⇧P` — Quick Open File** (*View → Quick Open File…*). A fuzzy filename finder:
+  type any part of a path, `↑`/`↓` to move, `Enter` to open in the code panel,
+  `Esc` to dismiss. Matched characters are highlighted.
+- **`⌘⇧F` — Find in Files** (*View → Find in Files…*). A results panel on the right
+  lists matches grouped by file (line number + highlighted hit) as you type;
+  clicking a result opens that file **at the matched line**. Toggle **`Aa`** (match
+  case), **`ab`** (whole word), and **`.*`** (regex; literal text by default).
+
+Both accelerators are rebindable under **Settings → Keybindings**.
+
 ### Browser
 
 ![The embedded browser pane open beside a terminal: the left tab shows a worktree running npm run dev, and the right pane is a real Chromium webview with an address bar (http://localhost:3000), back/forward/reload controls, and a rendered dashboard page](docs/img/27-browser.png)

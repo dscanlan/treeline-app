@@ -141,6 +141,39 @@ This isn't a new trust boundary — PTYs already grant full shell access —
 so the guards are about robustness (don't freeze on a huge file, don't
 render garbage for a binary), not sandboxing.
 
+### Search (ripgrep, scoped to one target)
+
+Two surfaces — fuzzy **Quick Open** (`⌘⇧P`) and **Find in Files** (`⌘⇧F`) —
+share one ripgrep-backed IPC domain (`search:content` / `search:files`).
+Both are scoped to a single `root`: the selected sidebar target, or the
+focused terminal's cwd as a fallback (`resolveSearchRoot` in
+`renderer/ipc/client.ts`).
+
+- **Main.** `main/search.ts` is pure and electron-free (so it unit-tests
+  against the real `rg` binary): it spawns ripgrep via `child_process.spawn`
+  — not the shared `run()`/`execFile`, whose fixed `maxBuffer` would throw on
+  large output instead of degrading to a `truncated` result set — streams
+  stdout under byte/match caps, and parses `rg --json` into per-file/line/
+  submatch results (converting rg's *byte* offsets to UTF-16 string indices so
+  the renderer can slice match spans directly). `--no-require-git` makes
+  `.gitignore` apply in plain folders too; an explicit `.` path arg is
+  required because rg reads **stdin** when given no path under a piped stdin
+  (and would hang). The binary path is the one electron-dependent piece, so it
+  lives separately in `main/rg-path.ts` (packaged `<Resources>/rg/<arch>/rg`
+  vs the dev `node_modules` per-platform package).
+- **Renderer.** `⌘⇧P` opens `QuickOpenModal`, which enumerates files once via
+  `search.files` then fuzzy-filters client-side (`shared/fuzzy.ts`, a pure
+  subsequence scorer — no dependency). `⌘⇧F` opens `SearchPanel` (its own
+  right-hand region in `MainArea`, coexisting with the code panel), driven by
+  the transient `search-slice`; a debounced query hits `search.content`, and
+  clicking a hit calls `openFileAtLine` → the code panel reveals + selects the
+  line (`revealLine`/`revealTick` consumed by `CodeMirrorView`). Both
+  accelerators are rebindable menu commands (`shared/keybindings.ts`).
+- **Packaging.** `scripts/fetch-ripgrep.mjs` stages both arch binaries
+  (arm64 + x64) into `resources/rg/` for the universal build; `rg-path.ts`
+  picks by `process.arch` at runtime. ripgrep is an external executable, so —
+  unlike node-pty — there's no ABI rebuild to worry about.
+
 ### Embedded browser
 
 `⌘⇧B` (menu **View → Toggle Browser**, channel `browser:toggle`) flips
@@ -534,6 +567,7 @@ src/
 │   ├── ipc-contract.ts           # The TreelineApi interface (one source of truth).
 │   ├── cli-protocol.ts           # CLI socket protocol: verbs + NDJSON frames (no node imports).
 │   ├── pane-tree.ts              # PURE split-pane model: split/remove/focus-neighbour ops.
+│   ├── fuzzy.ts                  # PURE subsequence scorer for ⌘⇧P quick-open (fuzzyScore/fuzzyFilter).
 │   ├── browser-url.ts            # normalizeBrowserUrl() + isLocalDevUrl() for the browser pane.
 │   ├── changed-poll.ts           # Changed-files poll interval helper.
 │   ├── keybindings.ts            # Command table + resolve/conflict/reserved (pure).
@@ -562,6 +596,8 @@ src/
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
 │   ├── repos-create.ts           # `git init` flow with new/existing-folder validation.
 │   ├── files-io.ts              # Code-viewer fs: listDir + read + atomic write.
+│   ├── search.ts                # Pure ripgrep driver: searchContent + listFiles (parses rg --json).
+│   ├── rg-path.ts               # Resolve the rg binary (packaged Resources vs dev node_modules).
 │   ├── screenshot.ts             # Dev-only headless capture harness (TREELINE_SCREENSHOT_ID).
 │   ├── updater.ts                # electron-updater: launch + 4 h checks; manual menu check.
 │   ├── ipc/                      # One handler module per domain.
@@ -574,6 +610,7 @@ src/
 │   │   ├── system.ts             # system:openExternal (safe-url allowlist).
 │   │   ├── terminal-status.ts    # update events (broadcast helper).
 │   │   ├── files.ts             # files:readDir/read/changed/diff/write (validate → files-io/git).
+│   │   ├── search.ts            # search:content/files (validate root + resolve rg → search.ts).
 │   │   └── config.ts             # config:get/setSidebarCollapsed/setCodeRoot/setSettings.
 │   └── util/
 │       ├── exec.ts               # execFile with timeout + ProcessError.
@@ -610,7 +647,9 @@ src/
     │   ├── FileTree.tsx          # Lazy per-worktree file tree (+ FileTreeNode).
     │   ├── ChangedFilesList.tsx  # Flat git-status list (M/A/?/D/R letters).
     │   ├── CodePanel.tsx         # Viewer panel; Preview|Diff|File toggle + states.
-    │   ├── CodeMirrorView.tsx    # CodeMirror 6, language by extension.
+    │   ├── CodeMirrorView.tsx    # CodeMirror 6, language by extension; reveals search-hit line.
+    │   ├── SearchPanel.tsx       # ⌘⇧F find-in-files results (grouped, click → open at line).
+    │   ├── SearchPanelResizer.tsx # Draggable divider for the search panel.
     │   ├── MarkdownView.tsx      # Rendered markdown Preview (react-markdown + GFM).
     │   ├── DiffView.tsx          # Unified diff rows (line nums, +/- colors).
     │   ├── codemirror-theme.ts   # Graphite theme (chrome + syntax tokens).

@@ -17,6 +17,7 @@ export type Modal =
   | { kind: 'create-repo' }
   | { kind: 'confirm-discard'; filename: string; then: DiscardThen }
   | { kind: 'settings' }
+  | { kind: 'quick-open'; root: string }
   | null;
 
 export interface ModalSlice {

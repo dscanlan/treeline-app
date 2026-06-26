@@ -283,6 +283,38 @@ isn't supported yet.
 
 ---
 
+## Searching your code
+
+Two ways to find things, both **scoped to one worktree or folder** — whichever
+is selected in the sidebar (if nothing is selected, treeline falls back to the
+focused terminal's working directory). Both respect `.gitignore` and work in git
+repos *and* plain non-git folders.
+
+- **Go to a file by name — ⌘⇧P** (*View → Quick Open File…*). A fuzzy file
+  finder: start typing any part of a path and the list narrows as you go
+  (matched characters are highlighted). **↑ / ↓** move the selection, **Enter**
+  opens the file in the code panel, **Esc** closes. Great for jumping straight to
+  a file without expanding the tree.
+
+- **Search file contents — ⌘⇧F** (*View → Find in Files…*). Opens a results panel
+  on the right. Type a query and matches appear grouped by file as you type, each
+  row showing the line number and the matching line with the hit highlighted.
+  **Click any result** to open that file in the code panel **scrolled to — and
+  with — that line selected**.
+
+  Three toggles refine the search:
+
+  | Button | Meaning |
+  | ------ | ------- |
+  | `Aa` | match case (off = smart-case) |
+  | `ab` | match whole words only |
+  | `.*` | treat the query as a regular expression (off = literal text) |
+
+Both shortcuts are **rebindable** under *Settings → Keybindings* if they clash
+with your habits.
+
+---
+
 ## Creating repos & scratch terminals
 
 **Create a new repo.** Click **✱ New repo** to skip `mkdir && git init`: choose

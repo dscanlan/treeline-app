@@ -7,6 +7,8 @@ import { BrowserPane } from './BrowserPane';
 import { BrowserPanelResizer } from './BrowserPanelResizer';
 import { NotesPanel } from './NotesPanel';
 import { NotesPanelResizer } from './NotesPanelResizer';
+import { SearchPanel } from './SearchPanel';
+import { SearchPanelResizer } from './SearchPanelResizer';
 
 export function MainArea() {
   const codePanelOpen = useStore((s) => s.codePanelOpen);
@@ -15,6 +17,8 @@ export function MainArea() {
   const browserPanelWidth = useStore((s) => s.browserPanelWidth);
   const notesPanelOpen = useStore((s) => s.notesPanelOpen);
   const notesPanelWidth = useStore((s) => s.notesPanelWidth);
+  const searchPanelOpen = useStore((s) => s.searchPanelOpen);
+  const searchPanelWidth = useStore((s) => s.searchPanelWidth);
   // The scratchpad and the embedded browser share the right-hand aux slot
   // (toggling one closes the other in client.ts). The `!browserPanelOpen` guard
   // is belt-and-braces: if the browser is opened by another path (e.g. a port
@@ -51,6 +55,16 @@ export function MainArea() {
             <NotesPanelResizer />
             <div className="shrink-0" style={{ width: notesPanelWidth }}>
               <NotesPanel />
+            </div>
+          </>
+        )}
+        {/* Find-in-files results sit on the far right and coexist with the code
+          * panel (a result click opens the file in CodePanel beside them). */}
+        {searchPanelOpen && (
+          <>
+            <SearchPanelResizer />
+            <div className="shrink-0" style={{ width: searchPanelWidth }}>
+              <SearchPanel />
             </div>
           </>
         )}

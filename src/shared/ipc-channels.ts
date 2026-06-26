@@ -58,6 +58,10 @@ export const Channels = {
   FilesDiff: 'files:diff',
   FilesWrite: 'files:write',
 
+  // search (ripgrep-backed, scoped to one worktree/folder)
+  SearchContent: 'search:content',
+  SearchFiles: 'search:files',
+
   // config
   ConfigGet: 'config:get',
   ConfigSetCodeRoot: 'config:setCodeRoot',
@@ -98,6 +102,10 @@ export const Channels = {
   // Jump to the most-recently-notified (unread) terminal — menu accelerator
   // (default ⌘⇧U), handled in the renderer.
   JumpToUnread: 'window:jumpToUnread',
+  // Search menu accelerators, handled in the renderer (scoped to the selected
+  // sidebar target): fuzzy quick-open (⌘P) and find-in-files (⌘⇧F).
+  QuickOpenFile: 'search:quickOpen',
+  FindInFiles: 'search:findInFiles',
 
   // main → renderer command forwarded from the scriptable CLI socket
   // (see src/main/cli-server.ts). Today only carries `open`.
