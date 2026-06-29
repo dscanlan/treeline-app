@@ -257,6 +257,73 @@ export async function fileDiff(absPath: string): Promise<FileDiff> {
 }
 
 /**
+ * Resolve the repo's default branch — the branch merged-detection compares a
+ * worktree against. Prefers the remote's published default
+ * (`refs/remotes/origin/HEAD` → e.g. `origin/main`), then a conventional local
+ * `main`/`master`, and finally falls back to `fallback` (typically the main
+ * worktree's own branch). Returns null when nothing resolves, in which case
+ * merged-detection is skipped for the whole repo.
+ */
+export async function defaultBranchOf(
+  repoPath: string,
+  fallback?: string,
+): Promise<string | null> {
+  // origin/HEAD points at the remote's default branch when a remote exists.
+  const { stdout: head } = await git(
+    ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+    { cwd: repoPath, throwOnError: false },
+  );
+  const remote = head.trim();
+  if (remote) return remote.replace(/^origin\//, '');
+  // No remote (or no origin/HEAD set): try the conventional local defaults.
+  for (const candidate of ['main', 'master']) {
+    const { stdout } = await git(['rev-parse', '--verify', '--quiet', candidate], {
+      cwd: repoPath,
+      throwOnError: false,
+    });
+    if (stdout.trim()) return candidate;
+  }
+  return fallback && fallback.length > 0 ? fallback : null;
+}
+
+/** Branch placeholders git emits that aren't real, mergeable branch refs. */
+const NON_BRANCH = new Set(['', '(detached)', '(bare)']);
+
+/**
+ * Whether a worktree record is even a candidate for the "merged" treatment:
+ * a real, non-bare branch that isn't the default branch itself. Pure so the
+ * gating logic is unit-testable without spawning git.
+ */
+export function isMergeCandidate(
+  branch: string,
+  isBare: boolean,
+  defaultBranch: string,
+): boolean {
+  if (isBare) return false;
+  if (NON_BRANCH.has(branch)) return false;
+  return branch !== defaultBranch;
+}
+
+/**
+ * True if `ancestor` is an ancestor of (or equal to) `descendant`.
+ * `git merge-base --is-ancestor` exits 0 for yes, 1 for no, and >1 on a bad
+ * ref; we treat any non-zero exit (including unknown refs) as "not an
+ * ancestor", the safe default for merged-detection.
+ */
+async function isAncestor(
+  repoPath: string,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  try {
+    await git(['merge-base', '--is-ancestor', ancestor, descendant], { cwd: repoPath });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * List worktrees in the repo at `repoPath`. Stale entries (where the on-disk
  * path is gone) are filtered out, matching Treeline's `build_worktree`
  * behaviour at git.rs:148-170.
@@ -272,10 +339,23 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
   // check so we don't waste a subprocess on each.
   const live = records.filter((r) => r.isBare || existsSync(r.path));
 
-  // Run dirty checks in parallel.
-  const dirtyResults = await Promise.all(
-    live.map((r) => (r.isBare ? Promise.resolve(false) : isDirty(r.path))),
-  );
+  // Resolve the default branch once per refresh. Fall back to the first real
+  // branch (the main checkout `git worktree list` prints first) so single-repo
+  // setups with no remote still get sensible merged-detection.
+  const firstBranch = live.find((r) => !r.isBare && !NON_BRANCH.has(r.branch))?.branch;
+  const defaultBranch = await defaultBranchOf(repoPath, firstBranch);
+
+  // Run dirty checks and merged-detection in parallel across all worktrees.
+  const [dirtyResults, mergedResults] = await Promise.all([
+    Promise.all(live.map((r) => (r.isBare ? Promise.resolve(false) : isDirty(r.path)))),
+    Promise.all(
+      live.map((r) =>
+        defaultBranch && isMergeCandidate(r.branch, r.isBare, defaultBranch)
+          ? isAncestor(repoPath, r.branch, defaultBranch)
+          : Promise.resolve(false),
+      ),
+    ),
+  ]);
 
   return live.map((r, i) => ({
     path: r.path,
@@ -285,6 +365,7 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
     isDirty: dirtyResults[i] ?? false,
     isCurrent: false,
     isClaude: detectClaudeWorktree(r.path, r.branch),
+    merged: mergedResults[i] ?? false,
   }));
 }
 

@@ -15,6 +15,7 @@ function wt(path: string, branch: string, extra: Partial<Worktree> = {}): Worktr
     isDirty: false,
     isCurrent: false,
     isClaude: false,
+    merged: false,
     ...extra,
   };
 }

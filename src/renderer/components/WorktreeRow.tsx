@@ -27,6 +27,9 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
 
   const isClaude = worktree.isClaude;
+  // A worktree whose branch is already merged into the default branch is dead
+  // weight — grey the whole row and tag it so it reads as a prune candidate.
+  const merged = worktree.merged;
   const labelColor = isClaude ? 'text-treeline-magenta' : 'text-treeline-text';
   const icon = isClaude ? '✦' : worktree.isCurrent ? '●' : '○';
   const iconColor = isClaude
@@ -40,7 +43,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
       <div
         className={`flex flex-col gap-0.5 rounded px-2 py-1 ${
           selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'
-        }`}
+        } ${merged ? 'opacity-50' : ''}`}
       >
         {/* Top line: folder toggle, branch name (gets the full width), and the
           * hover-only delete affordance. */}
@@ -67,6 +70,15 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
             <span className={`truncate ${labelColor}`}>
               {worktree.branch || basename(worktree.path)}
             </span>
+            {merged && (
+              <span
+                data-ss="worktree-merged-badge"
+                title="Branch merged into the default branch — safe to prune"
+                className="shrink-0 rounded border border-current px-1 py-px text-[10px] uppercase tracking-wide text-treeline-dim"
+              >
+                merged
+              </span>
+            )}
             {hasUnread && (
               <span
                 className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-treeline-magenta"

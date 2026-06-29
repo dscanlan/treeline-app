@@ -59,6 +59,7 @@ const WORKTREES_TREELINE_APP: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: false,
+    merged: false,
   },
   {
     path: '/Users/example/code/treeline-app/feat-auth',
@@ -68,6 +69,7 @@ const WORKTREES_TREELINE_APP: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: false,
+    merged: false,
   },
   {
     path: '/Users/example/code/treeline-app/.claude/worktrees/discovery-feat',
@@ -77,6 +79,7 @@ const WORKTREES_TREELINE_APP: Worktree[] = [
     isDirty: true,
     isCurrent: false,
     isClaude: true,
+    merged: false,
   },
 ];
 
@@ -94,6 +97,7 @@ const WORKTREES_CGS: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: false,
+    merged: false,
   },
   {
     path: '/Users/example/code/cgs/.claude/worktrees/tender-conjuring-lamport',
@@ -103,6 +107,7 @@ const WORKTREES_CGS: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: true,
+    merged: false,
   },
   {
     path: '/Users/example/code/cgs/.claude/worktrees/serene-curious-knuth',
@@ -112,6 +117,7 @@ const WORKTREES_CGS: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: true,
+    merged: false,
   },
 ];
 
@@ -129,6 +135,7 @@ const WORKTREES_DASHBOARD: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: false,
+    merged: false,
   },
   {
     path: '/Users/example/code/dashboard/auth-worktree',
@@ -138,6 +145,7 @@ const WORKTREES_DASHBOARD: Worktree[] = [
     isDirty: false,
     isCurrent: false,
     isClaude: false,
+    merged: false,
   },
   {
     path: '/Users/example/code/dashboard/bug-fix-worktree',
@@ -147,6 +155,7 @@ const WORKTREES_DASHBOARD: Worktree[] = [
     isDirty: true,
     isCurrent: false,
     isClaude: false,
+    merged: false,
   },
 ];
 
@@ -706,6 +715,22 @@ const SCENARIOS: Record<string, Scenario> = {
     await delay(400);
     await typeAndSettle(ctx, a.ptyId, ['clear\n', "echo 'scratch shell — ~ (home)'\n"]);
     await typeAndSettle(ctx, b.ptyId, ['clear\n']);
+  },
+
+  '41-worktree-merged': async ({ win }) => {
+    // Merged-worktree treatment: a worktree whose branch is already merged into
+    // the default branch renders greyed-out with a "merged" badge, so stale
+    // prune-candidates are visually distinct at a glance. feat-auth is marked
+    // merged; the un-merged Claude worktree below it stays at full opacity, so
+    // the shot proves only merged rows are dimmed.
+    const worktrees = WORKTREES_TREELINE_APP.map((wt) =>
+      wt.branch === 'feat-auth' ? { ...wt, merged: true } : wt,
+    );
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: worktrees },
+    });
   },
 
   '14-status-dots': async (ctx) => {

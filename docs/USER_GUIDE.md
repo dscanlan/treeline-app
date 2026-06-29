@@ -58,6 +58,12 @@ running, cyan = idle, dim = exited), a magenta `claude`/`opencode`/`aider` badge
 if one of those CLIs is in that worktree, a **`:PORT`** chip per listening port,
 and a **`#NNN`** badge for the branch's linked GitHub PR.
 
+A worktree whose branch has already been **merged into the default branch** is
+greyed-out and tagged with a **`MERGED`** badge, so stale, safe-to-prune trees
+stand out from active work at a glance.
+
+![A merged worktree greyed-out with a MERGED badge beside un-merged rows](img/41-worktree-merged.png)
+
 Claude-managed worktrees (paths under `.claude/worktrees/` or branches starting
 with `worktree-`) get a magenta **`✦`** and group into a **`✦ Claude`**
 sub-section per repo.

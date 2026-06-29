@@ -49,6 +49,16 @@ export interface Worktree {
    */
   isCurrent: boolean;
   isClaude: boolean;
+  /**
+   * True when this worktree's branch has already been merged into the repo's
+   * default branch (its HEAD is an ancestor of the default branch). Such
+   * worktrees are dead weight — safe to prune — so the sidebar greys them out
+   * and tags them with a "merged" badge. The default branch itself, detached
+   * HEADs, and bare entries are never marked merged. Squash/rebase merges that
+   * don't preserve ancestry won't be detected (see the idea note's open
+   * questions); ancestor semantics are the cheap, correct-for-most-cases v1.
+   */
+  merged: boolean;
 }
 
 export type ProcessKind = 'claude' | 'opencode' | 'aider';

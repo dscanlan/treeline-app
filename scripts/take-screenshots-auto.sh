@@ -62,6 +62,7 @@ ALL_SCENARIOS=(
   "38-reattach-toast"
   "39-restore-prompt"
   "40-scratch-restored"
+  "41-worktree-merged"
 )
 
 if [ $# -gt 0 ]; then

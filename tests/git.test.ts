@@ -148,6 +148,42 @@ describe('git module', () => {
     expect(claude?.path.includes('/.claude/worktrees/')).toBe(true);
   });
 
+  // ── merged-state detection ────────────────────────────────────────────────
+  // A worktree whose branch is already merged into the default branch is dead
+  // weight; listWorktreesIn flags it (merged: true) so the sidebar greys it
+  // out. The pair is a two-sided control: the first fails if detection never
+  // fires, the second fails if it fires indiscriminately.
+
+  it('flags a worktree whose branch is merged into the default branch', async () => {
+    const opts = { cwd: repo, encoding: 'utf8' as const, env: ISOLATED_ENV };
+    const wt = join(repo, 'feat-merged');
+    addWorktreeRaw(repo, wt, 'feat-merged');
+    // Commit on the branch, then merge it back into main so the branch tip is
+    // an ancestor of main.
+    const wtOpts = { cwd: wt, encoding: 'utf8' as const, env: ISOLATED_ENV };
+    writeFileSync(join(wt, 'merged.txt'), 'done');
+    execFileSync('git', ['add', '.'], wtOpts);
+    execFileSync('git', ['commit', '-q', '--no-gpg-sign', '-m', 'feature work'], wtOpts);
+    execFileSync('git', ['merge', '--no-ff', '--no-edit', 'feat-merged'], opts);
+
+    const wts = await listWorktreesIn(repo);
+    expect(wts.find((w) => w.branch === 'feat-merged')?.merged).toBe(true);
+    // The default branch itself is never marked merged.
+    expect(wts.find((w) => w.branch === 'main')?.merged).toBe(false);
+  });
+
+  it('does not flag a worktree with un-merged commits', async () => {
+    const wt = join(repo, 'feat-active');
+    addWorktreeRaw(repo, wt, 'feat-active');
+    const wtOpts = { cwd: wt, encoding: 'utf8' as const, env: ISOLATED_ENV };
+    writeFileSync(join(wt, 'wip.txt'), 'wip');
+    execFileSync('git', ['add', '.'], wtOpts);
+    execFileSync('git', ['commit', '-q', '--no-gpg-sign', '-m', 'wip'], wtOpts);
+
+    const wts = await listWorktreesIn(repo);
+    expect(wts.find((w) => w.branch === 'feat-active')?.merged).toBe(false);
+  });
+
   // ── resolveParentRepoPath ─────────────────────────────────────────────────
   // Drives the "Add repo or worktree" flow: any path inside a repo (root,
   // subdir, worktree) must resolve to the parent working tree so the user

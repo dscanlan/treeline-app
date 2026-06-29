@@ -231,6 +231,12 @@ export function attachIpc(): () => void {
       // apply any per-scenario override so theme + keybinding-conflict captures
       // are deterministic regardless of the machine's saved config.
       if (p.reset) s.setSettings(DEFAULT_RENDERER_SETTINGS);
+      // A `reset` is meant to be a deterministic clean slate. The cold-start
+      // bootstrap may have raised a "restore previous session?" prompt from
+      // whatever session.json is on disk (e.g. a live dev instance sharing
+      // userData); clear it so captures don't inherit it. Scenarios that want
+      // the prompt set `pendingRestore` explicitly below, after this reset.
+      if (p.reset) useStore.setState({ pendingRestore: null });
       if (p.settings) s.setSettings(p.settings);
       if (p.repos) s.setRepos(p.repos);
       if (p.folders) s.setFolders(p.folders);
