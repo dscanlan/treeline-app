@@ -45,10 +45,11 @@ worktree dance is optional.
 
 ## Status
 
-v0.20.0 — feature-complete for v1: macOS only, repos managed manually.
+v0.21.0 — feature-complete for v1: macOS only, repos managed manually.
 Open tabs are saved and offered back after a full restart, a
 persistent scratchpad side panel rides alongside them, and a scoped
 fuzzy quick-open (⌘⇧P) plus find-in-files (⌘⇧F) search the active repo.
+Merged worktrees are greyed out in the sidebar with a "merged" badge.
 
 ## Install
 
