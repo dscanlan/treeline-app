@@ -74,7 +74,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
               <span
                 data-ss="worktree-merged-badge"
                 title="Branch merged into the default branch — safe to prune"
-                className="shrink-0 rounded border border-current px-1 py-px text-[10px] uppercase tracking-wide text-treeline-dim"
+                className="shrink-0 rounded border border-current px-1 py-px text-[10px] uppercase tracking-wide text-treeline-green"
               >
                 merged
               </span>

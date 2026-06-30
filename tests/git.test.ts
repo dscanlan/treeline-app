@@ -184,6 +184,17 @@ describe('git module', () => {
     expect(wts.find((w) => w.branch === 'feat-active')?.merged).toBe(false);
   });
 
+  it('does not flag a fresh branch sitting at the default branch tip', async () => {
+    // A branch created off main with no commits of its own has a tip that is
+    // (trivially) an ancestor of main, but nothing has been merged — it's
+    // unstarted, not dead. Greying it out is the regression we guard against.
+    const wt = join(repo, 'feat-fresh');
+    addWorktreeRaw(repo, wt, 'feat-fresh');
+
+    const wts = await listWorktreesIn(repo);
+    expect(wts.find((w) => w.branch === 'feat-fresh')?.merged).toBe(false);
+  });
+
   // ── resolveParentRepoPath ─────────────────────────────────────────────────
   // Drives the "Add repo or worktree" flow: any path inside a repo (root,
   // subdir, worktree) must resolve to the parent working tree so the user

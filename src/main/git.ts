@@ -291,17 +291,25 @@ const NON_BRANCH = new Set(['', '(detached)', '(bare)']);
 
 /**
  * Whether a worktree record is even a candidate for the "merged" treatment:
- * a real, non-bare branch that isn't the default branch itself. Pure so the
- * gating logic is unit-testable without spawning git.
+ * a real, non-bare branch that isn't the default branch itself, and that has
+ * commits of its own to have been merged. A freshly-created branch sits at the
+ * exact same commit as the default branch — `merge-base --is-ancestor` would
+ * call it an ancestor, but it has no merged work to prune, so we exclude the
+ * `branchCommit === defaultCommit` case here rather than greying it out. Pure
+ * so the gating logic is unit-testable without spawning git.
  */
 export function isMergeCandidate(
   branch: string,
   isBare: boolean,
   defaultBranch: string,
+  branchCommit: string,
+  defaultCommit: string,
 ): boolean {
   if (isBare) return false;
   if (NON_BRANCH.has(branch)) return false;
-  return branch !== defaultBranch;
+  if (branch === defaultBranch) return false;
+  // Strictly behind the default branch: no unique commits means nothing merged.
+  return branchCommit !== defaultCommit;
 }
 
 /**
@@ -345,12 +353,26 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
   const firstBranch = live.find((r) => !r.isBare && !NON_BRANCH.has(r.branch))?.branch;
   const defaultBranch = await defaultBranchOf(repoPath, firstBranch);
 
+  // The default branch's tip SHA lets merged-detection ignore branches that sit
+  // at the exact same commit (freshly-created, no unique work — see
+  // isMergeCandidate). Resolve it once and abbreviate to match the 7-char short
+  // SHA the porcelain parser stores in `r.commit`, so the comparison is
+  // apples-to-apples. Empty string if the ref doesn't exist.
+  const { stdout: defaultHead } = defaultBranch
+    ? await git(['rev-parse', '--verify', '--quiet', defaultBranch], {
+        cwd: repoPath,
+        throwOnError: false,
+      })
+    : { stdout: '' };
+  const defaultCommit = defaultHead.trim().slice(0, 7);
+
   // Run dirty checks and merged-detection in parallel across all worktrees.
   const [dirtyResults, mergedResults] = await Promise.all([
     Promise.all(live.map((r) => (r.isBare ? Promise.resolve(false) : isDirty(r.path)))),
     Promise.all(
       live.map((r) =>
-        defaultBranch && isMergeCandidate(r.branch, r.isBare, defaultBranch)
+        defaultBranch &&
+        isMergeCandidate(r.branch, r.isBare, defaultBranch, r.commit, defaultCommit)
           ? isAncestor(repoPath, r.branch, defaultBranch)
           : Promise.resolve(false),
       ),
