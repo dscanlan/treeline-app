@@ -292,11 +292,17 @@ const NON_BRANCH = new Set(['', '(detached)', '(bare)']);
 /**
  * Whether a worktree record is even a candidate for the "merged" treatment:
  * a real, non-bare branch that isn't the default branch itself, and that has
- * commits of its own to have been merged. A freshly-created branch sits at the
- * exact same commit as the default branch — `merge-base --is-ancestor` would
- * call it an ancestor, but it has no merged work to prune, so we exclude the
- * `branchCommit === defaultCommit` case here rather than greying it out. Pure
- * so the gating logic is unit-testable without spawning git.
+ * commits of its own to have been merged. Pure so the gating logic is
+ * unit-testable without spawning git.
+ *
+ * A branch sitting at the *exact* same commit as the default branch is
+ * ambiguous by ref state alone: a freshly-created branch (no work, unstarted)
+ * and a fast-forward-merged branch (work that landed, so the default tip *is*
+ * the branch tip) are byte-identical in git. We disambiguate with
+ * `branchHasOwnCommits` — derived from the reflog by the caller — so a merged
+ * release branch keeps its badge while a fresh branch is left alone. For the
+ * strictly-behind case `branchHasOwnCommits` is irrelevant (the SHAs differ),
+ * and the subsequent ancestor check decides whether it actually merged.
  */
 export function isMergeCandidate(
   branch: string,
@@ -304,12 +310,42 @@ export function isMergeCandidate(
   defaultBranch: string,
   branchCommit: string,
   defaultCommit: string,
+  branchHasOwnCommits: boolean,
 ): boolean {
   if (isBare) return false;
   if (NON_BRANCH.has(branch)) return false;
   if (branch === defaultBranch) return false;
-  // Strictly behind the default branch: no unique commits means nothing merged.
-  return branchCommit !== defaultCommit;
+  // Same commit as the default tip: only a candidate if the branch did work of
+  // its own (fast-forward-merged), not if it's a fresh branch off the tip.
+  if (branchCommit === defaultCommit) return branchHasOwnCommits;
+  return true;
+}
+
+/**
+ * Whether `branch` has commits authored on it, used to tell a fast-forward-
+ * merged branch (sits at the default tip, but did real work) apart from a
+ * freshly-created branch (sits there having done nothing) — they're
+ * indistinguishable by ref state. The reflog records the commit the branch was
+ * created at as its oldest entry and the current tip as its newest; if those
+ * differ, the branch advanced via its own commits. `git reflog show` lists
+ * newest-first, so the first line is the tip and the last is the creation
+ * point. A branch with no reflog (logging disabled, or a ref created without
+ * one) yields no lines and returns false: we can't prove work landed, so we
+ * leave it un-badged.
+ *
+ * The branch is addressed as `refs/heads/<branch>` rather than bare `<branch>`
+ * so git can't mistake it for a path — a worktree dir or file sharing the
+ * branch's name (e.g. a `feat-ff/` worktree for branch `feat-ff`) makes the
+ * short name ambiguous, which would fail and look like "no reflog".
+ */
+async function branchHasOwnCommits(repoPath: string, branch: string): Promise<boolean> {
+  const { stdout } = await git(['reflog', 'show', '--format=%H', `refs/heads/${branch}`], {
+    cwd: repoPath,
+    throwOnError: false,
+  });
+  const shas = stdout.trim().split('\n').filter(Boolean);
+  if (shas.length === 0) return false;
+  return shas[0] !== shas[shas.length - 1];
 }
 
 /**
@@ -353,8 +389,8 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
   const firstBranch = live.find((r) => !r.isBare && !NON_BRANCH.has(r.branch))?.branch;
   const defaultBranch = await defaultBranchOf(repoPath, firstBranch);
 
-  // The default branch's tip SHA lets merged-detection ignore branches that sit
-  // at the exact same commit (freshly-created, no unique work — see
+  // The default branch's tip SHA lets merged-detection disambiguate branches
+  // that sit at the exact same commit (fresh vs fast-forward-merged — see
   // isMergeCandidate). Resolve it once and abbreviate to match the 7-char short
   // SHA the porcelain parser stores in `r.commit`, so the comparison is
   // apples-to-apples. Empty string if the ref doesn't exist.
@@ -370,12 +406,25 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
   const [dirtyResults, mergedResults] = await Promise.all([
     Promise.all(live.map((r) => (r.isBare ? Promise.resolve(false) : isDirty(r.path)))),
     Promise.all(
-      live.map((r) =>
-        defaultBranch &&
-        isMergeCandidate(r.branch, r.isBare, defaultBranch, r.commit, defaultCommit)
-          ? isAncestor(repoPath, r.branch, defaultBranch)
-          : Promise.resolve(false),
-      ),
+      live.map(async (r) => {
+        if (!defaultBranch) return false;
+        // The reflog probe is only needed to break the fresh-vs-merged tie when
+        // the branch sits exactly at the default tip; skip it (one git call per
+        // worktree) for every other branch.
+        const atDefaultTip = r.commit === defaultCommit;
+        const hasOwnCommits = atDefaultTip
+          ? await branchHasOwnCommits(repoPath, r.branch)
+          : false;
+        if (
+          !isMergeCandidate(r.branch, r.isBare, defaultBranch, r.commit, defaultCommit, hasOwnCommits)
+        ) {
+          return false;
+        }
+        // A candidate sitting at the default tip is a fast-forward-merge: it's
+        // trivially its own ancestor, so skip the redundant git call. Otherwise
+        // it's strictly behind and the ancestor check confirms the merge.
+        return atDefaultTip ? true : isAncestor(repoPath, r.branch, defaultBranch);
+      }),
     ),
   ]);
 

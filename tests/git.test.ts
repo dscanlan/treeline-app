@@ -195,6 +195,29 @@ describe('git module', () => {
     expect(wts.find((w) => w.branch === 'feat-fresh')?.merged).toBe(false);
   });
 
+  it('flags a fast-forward-merged branch sitting at the default branch tip', async () => {
+    // When a branch's own commit is fast-forward-merged into main, main's tip
+    // *becomes* the branch tip — they're the exact same commit, identical to a
+    // fresh branch by ref state. But this one did real work that landed, so it
+    // must still be flagged. (Two-sided control with the fresh-branch case
+    // above, which sits at the same SHA but has no commits of its own.)
+    const opts = { cwd: repo, encoding: 'utf8' as const, env: ISOLATED_ENV };
+    const wt = join(repo, 'feat-ff');
+    addWorktreeRaw(repo, wt, 'feat-ff');
+    const wtOpts = { cwd: wt, encoding: 'utf8' as const, env: ISOLATED_ENV };
+    writeFileSync(join(wt, 'ff.txt'), 'done');
+    execFileSync('git', ['add', '.'], wtOpts);
+    execFileSync('git', ['commit', '-q', '--no-gpg-sign', '-m', 'ff work'], wtOpts);
+    // Fast-forward (default) merge: main advances to feat-ff's tip, so the two
+    // branches share one SHA.
+    execFileSync('git', ['merge', '--ff-only', '--no-edit', 'feat-ff'], opts);
+
+    const wts = await listWorktreesIn(repo);
+    const ff = wts.find((w) => w.branch === 'feat-ff');
+    expect(ff?.commit).toBe(wts.find((w) => w.branch === 'main')?.commit); // same SHA
+    expect(ff?.merged).toBe(true);
+  });
+
   // ── resolveParentRepoPath ─────────────────────────────────────────────────
   // Drives the "Add repo or worktree" flow: any path inside a repo (root,
   // subdir, worktree) must resolve to the parent working tree so the user
