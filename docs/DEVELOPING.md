@@ -136,8 +136,8 @@ universal `.dmg` + `.zip`, then creates a GitHub Release with them
 auto-generated release notes.
 
 ```bash
-git tag v0.21.1
-git push origin v0.21.1
+git tag v0.21.2
+git push origin v0.21.2
 ```
 
 **Manual dispatch.** Open the workflow on GitHub Actions and click
