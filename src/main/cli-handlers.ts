@@ -22,6 +22,13 @@ export interface CliDeps {
    * (ambiguous when two tabs share a directory); failing both, a native toast.
    */
   notify(text: string, cwd?: string, paneId?: string): void;
+  /**
+   * Record the Claude session id running in pane `paneId` (reported by the
+   * SessionStart hook over the socket). Returns false when the pane is unknown
+   * — the report is then dropped. Backs per-pane session pinning on save, so a
+   * restored layout resumes each pane's actual conversation.
+   */
+  recordClaudeSession(paneId: string, sessionId: string): boolean;
   /** Focus the window and open/focus the tab for `cwd` (drives the renderer). */
   openWorktree(cwd: string): void;
   /** Type `text` into the focused terminal pane (drives the renderer). */
@@ -114,6 +121,18 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
       const paneId =
         typeof args['paneId'] === 'string' && args['paneId'] ? args['paneId'] : undefined;
       deps.notify(text, cwd, paneId);
+    },
+
+    'claude-session': (args) => {
+      const paneId = reqString(args, 'paneId');
+      const sessionId = reqString(args, 'sessionId');
+      // The id is later typed into a shell as `claude --resume <id>` on restore,
+      // so accept only filename-shaped ids (Claude's are UUIDs) — never anything
+      // the shell could interpret.
+      if (!/^[A-Za-z0-9._-]{1,128}$/.test(sessionId)) {
+        throw new Error(`malformed sessionId: ${JSON.stringify(sessionId)}`);
+      }
+      return { recorded: deps.recordClaudeSession(paneId, sessionId) };
     },
 
     open: async (args) => {

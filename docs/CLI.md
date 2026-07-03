@@ -100,6 +100,7 @@ treeline <verb> [args]  ──{verb,args}\n──▶  app main process (CliServe
 | `treeline open <repo> [branch]` | Focus, or open, that worktree's terminal tab. |
 | `treeline send <text…>` | Type keystrokes into the focused terminal. |
 | `treeline notify <text…>` | Native desktop notification from the app. |
+| `treeline claude-session <session-id> [pane-id]` | Report the Claude session running in a pane (pane defaults to `$TREELINE_PANE_ID`); normally sent by the `SessionStart` hook. |
 | `treeline browser <action> …` | Drive the embedded browser pane (see below). |
 | `treeline hooks setup [--bin-dir D]` | Wire Claude Code hooks + symlink the CLI. |
 | `treeline hooks remove` | Remove the Claude Code hooks this tool added. |
@@ -178,8 +179,8 @@ treeline browser screenshot ./after.png         # verify
 
 ## Claude Code hooks
 
-`treeline hooks setup` wires agent-attention notifications for Claude Code and
-installs the CLI symlink in one step:
+`treeline hooks setup` wires agent-attention notifications and per-pane session
+pinning for Claude Code, and installs the CLI symlink, in one step:
 
 - Adds `Stop` and `Notification` hook entries to Claude Code's `settings.json`
   that call this script's internal `notify-hook`. When Claude finishes or asks
@@ -206,6 +207,16 @@ installs the CLI symlink in one step:
     `.mjs`, so it runs through the app's bundled Node (no system Node needed)
     and keeps working across app updates. From a **source checkout** it points
     at `bin/treeline.mjs` directly.
+- Adds a `SessionStart` hook entry calling the internal `claude-session-hook`.
+  Every time a Claude session starts in a treeline pane — a fresh `claude`, a
+  `--resume`, a `/clear`, or a compaction bridge — the hook reports that pane's
+  **actual session id** (`TREELINE_PANE_ID` → `session_id`) to the app. The
+  [session save/restore](./USER_GUIDE.md) path pins that exact id per pane, so
+  after a restart every restored pane resumes **its own** conversation — even
+  two tabs running different Claude sessions in the same directory. Without the
+  hook, restore falls back to the newest transcript for the pane's directory,
+  which can't tell such tabs apart. Like `notify-hook`, it never blocks Claude
+  and exits cleanly when the app is down or the pane isn't treeline's.
 - Symlinks `treeline` into `~/.local/bin` (override with `--bin-dir <dir>`),
   replacing any existing link there.
 - After running it, run `/hooks` in Claude Code (or restart it) to load the new
@@ -219,7 +230,8 @@ installs the CLI symlink in one step:
 These are **separate**:
 
 - `treeline hooks remove` strips only the hook entries this tool added (it
-  matches the `notify-hook` tag). It does **not** touch any symlink.
+  matches the `notify-hook` / `claude-session-hook` tags). It does **not**
+  touch any symlink.
 - To uninstall the global CLI, delete the symlink: `rm /usr/local/bin/treeline`
   (menu install) or `rm ~/.local/bin/treeline` (`hooks setup` / manual). The
   auto-injected launcher under `<userData>/bin` only exists inside the app's own

@@ -351,7 +351,7 @@ app.whenReady().then(() => {
   });
   registerFilesIpc();
   registerSearchIpc();
-  registerClaudeSessionIpc();
+  registerClaudeSessionIpc(ptyManager);
   registerSessionIpc(sessionStore);
   registerScratchpadIpc(scratchpadStore);
 
@@ -365,6 +365,11 @@ app.whenReady().then(() => {
       version: app.getVersion(),
       listRepos: () => reposStore?.get().repos ?? [],
       listWorktrees: (repoPath) => listWorktreesIn(repoPath),
+      // SessionStart hook → remember which Claude conversation each pane runs,
+      // so the debounced session save pins the exact id per pane (see
+      // PtyManager.setClaudeSession).
+      recordClaudeSession: (paneId, sessionId) =>
+        ptyManager?.setClaudeSession(paneId, sessionId) ?? false,
       notify: (text, cwd, paneId) => {
         // Tie the notification to the pane the agent ran in. The Claude Code hook
         // has no controlling tty to emit an OSC into, so it reports over the

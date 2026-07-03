@@ -20,7 +20,8 @@
 //   treeline browser query <selector>  inspect the first match of a CSS selector
 //   treeline browser click <selector>  synthetic-click the element (local origins only)
 //   treeline browser fill <selector> <text...>  type into the element (local origins only)
-//   treeline hooks setup [--bin-dir D] wire Claude Code Stop/Notification hooks → in-app rings
+//   treeline claude-session <session-id> [pane-id]  report the Claude session in a pane
+//   treeline hooks setup [--bin-dir D] wire Claude Code hooks → in-app rings + session pinning
 //   treeline hooks remove
 //
 // Socket: $TREELINE_SOCK, else the app's userData dir + /cli.sock.
@@ -73,7 +74,9 @@ const USAGE = `treeline — drive the running treeline-app
   treeline browser query <selector>  inspect the first match of a CSS selector
   treeline browser click <selector>  synthetic-click the element (local origins only)
   treeline browser fill <selector> <text...>  type into the element (local origins only)
-  treeline hooks setup [--bin-dir D] wire Claude Code Stop/Notification hooks → in-app rings
+  treeline claude-session <session-id> [pane-id]  report the Claude session in a pane
+                                     (pane defaults to $TREELINE_PANE_ID)
+  treeline hooks setup [--bin-dir D] wire Claude Code hooks → in-app rings + session pinning
   treeline hooks remove`;
 
 /** Decode the common backslash escapes so \`send "npm test\\n"\` runs the line. */
@@ -102,6 +105,13 @@ function buildRequest(argv) {
       const text = rest.join(' ').trim();
       if (!text) fail('notify requires <text>');
       return { verb, args: { text } };
+    }
+    case 'claude-session': {
+      const sessionId = rest[0];
+      const paneId = rest[1] || process.env.TREELINE_PANE_ID;
+      if (!sessionId) fail('claude-session requires a <session-id>');
+      if (!paneId) fail('claude-session requires a [pane-id] (or $TREELINE_PANE_ID)');
+      return { verb, args: { paneId, sessionId } };
     }
     case 'browser': {
       const action = rest[0];
@@ -207,9 +217,24 @@ function claudeConfigDir() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 }
 
-/** The two events worth a desktop ping: Claude finishing, and Claude asking for input. */
-const HOOK_EVENTS = ['Stop', 'Notification'];
-const HOOK_TAG = 'notify-hook'; // substring used to detect/remove our own hooks
+// Tags double as the hook subcommand AND the substring used to detect/remove
+// our own entries in settings.json.
+const HOOK_TAG = 'notify-hook';
+const SESSION_HOOK_TAG = 'claude-session-hook';
+
+/**
+ * Every hook we wire: Claude finishing + Claude asking for input (desktop
+ * pings), and each session's startup (reports the pane's session id so
+ * treeline's session-restore resumes the exact conversation per pane).
+ * SessionStart also fires on --resume, /clear, and compaction bridges, so the
+ * app's pane → session map stays current as the id changes.
+ */
+const HOOK_WIRING = [
+  { event: 'Stop', tag: HOOK_TAG },
+  { event: 'Notification', tag: HOOK_TAG },
+  { event: 'SessionStart', tag: SESSION_HOOK_TAG },
+];
+const HOOK_EVENTS = [...new Set(HOOK_WIRING.map((w) => w.event))];
 
 function readSettings(settingsPath) {
   if (!existsSync(settingsPath)) return {};
@@ -232,17 +257,17 @@ function hooksSetup(opts) {
   const settings = readSettings(settingsPath);
   settings.hooks ??= {};
 
-  // Point the hook at the CLI by ABSOLUTE path so it works regardless of
-  // whether the symlink dir made it onto PATH.
-  const command = `${ENTRY} ${HOOK_TAG}`;
+  // Point the hooks at the CLI by ABSOLUTE path so they work regardless of
+  // whether the symlink dir made it onto PATH. Re-running setup is additive:
+  // an install predating a newly-wired event just gains the missing entry.
   let added = 0;
-  for (const event of HOOK_EVENTS) {
+  for (const { event, tag } of HOOK_WIRING) {
     const groups = (settings.hooks[event] ??= []);
     const already = groups.some((g) =>
-      (g.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes(HOOK_TAG)),
+      (g.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes(tag)),
     );
     if (already) continue;
-    groups.push({ hooks: [{ type: 'command', command }] });
+    groups.push({ hooks: [{ type: 'command', command: `${ENTRY} ${tag}` }] });
     added++;
   }
   writeSettings(settingsPath, settings);
@@ -250,7 +275,7 @@ function hooksSetup(opts) {
   console.log(
     `hooks: ${added > 0 ? `added ${added}` : 'already present'} (${HOOK_EVENTS.join(', ')}) in ${settingsPath}`,
   );
-  console.log(`  command: ${command}`);
+  for (const { event, tag } of HOOK_WIRING) console.log(`  ${event}: ${ENTRY} ${tag}`);
 
   // Best-effort: put `treeline` on PATH for interactive use.
   const binDir = opts.binDir || join(homedir(), '.local', 'bin');
@@ -278,13 +303,14 @@ function hooksSetup(opts) {
 function hooksRemove() {
   const settingsPath = join(claudeConfigDir(), 'settings.json');
   const settings = readSettings(settingsPath);
+  const tags = HOOK_WIRING.map((w) => w.tag);
   let removed = 0;
   for (const event of HOOK_EVENTS) {
     const groups = settings.hooks?.[event];
     if (!Array.isArray(groups)) continue;
     const kept = groups.filter((g) => {
       const ours = (g.hooks || []).some(
-        (h) => typeof h.command === 'string' && h.command.includes(HOOK_TAG),
+        (h) => typeof h.command === 'string' && tags.some((t) => h.command.includes(t)),
       );
       if (ours) removed++;
       return !ours;
@@ -378,6 +404,60 @@ function notifyHook() {
   });
 }
 
+/**
+ * Internal verb wired as a Claude Code SessionStart hook. Reads the hook's
+ * JSON payload from stdin and reports {paneId → session_id} to the running app
+ * over the socket, so treeline knows which conversation each pane is actually
+ * running — session-restore then pins the exact id per pane instead of
+ * guessing "newest transcript for the cwd" (wrong whenever two panes share a
+ * directory, or anything else wrote a transcript there more recently).
+ *
+ * SessionStart fires on startup, --resume, /clear, and compaction bridges, so
+ * every id change re-reports itself — including right after a restore, which
+ * makes the mapping self-healing across restarts. No-op (exit 0) when Claude
+ * isn't running inside a treeline pane (no TREELINE_PANE_ID), when the payload
+ * has no session id, or when the app is down: like notifyHook, this must NEVER
+ * fail the hook or hang a Claude Code turn.
+ */
+function claudeSessionHook() {
+  let done = false;
+  const exit0 = () => {
+    if (!done) {
+      done = true;
+      process.exit(0);
+    }
+  };
+  setTimeout(exit0, 2000);
+
+  const paneId = process.env.TREELINE_PANE_ID;
+  if (!paneId) exit0();
+
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => (input += d));
+  process.stdin.on('end', () => {
+    let sessionId;
+    try {
+      const e = JSON.parse(input || '{}');
+      if (typeof e.session_id === 'string' && e.session_id) sessionId = e.session_id;
+    } catch {
+      /* malformed payload — nothing to report */
+    }
+    if (!sessionId) return exit0();
+    try {
+      const sock = connect(socketPath());
+      sock.on('connect', () =>
+        sock.end(JSON.stringify({ verb: 'claude-session', args: { paneId, sessionId } }) + '\n'),
+      );
+      sock.on('data', exit0);
+      sock.on('close', exit0);
+      sock.on('error', exit0);
+    } catch {
+      exit0();
+    }
+  });
+}
+
 // ----------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
@@ -388,4 +468,5 @@ if (!cmd || cmd === '-h' || cmd === '--help') {
 }
 if (cmd === 'hooks') hooksCmd(args.slice(1));
 else if (cmd === HOOK_TAG) notifyHook();
+else if (cmd === SESSION_HOOK_TAG) claudeSessionHook();
 else send(buildRequest(args));

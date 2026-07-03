@@ -15,15 +15,24 @@ import { leaves, makeLeaf, type PaneNode } from './pane-tree';
 
 /**
  * A pane was a "Claude pane" iff its foreground command was `claude` at save.
- * For those, pin the session id resolved for the pane's cwd (`sessionIdByCwd`)
- * so restore resumes that exact conversation instead of re-deriving the newest
- * one later. `sessionIdByCwd` is empty when the caller couldn't (or didn't) look
- * ids up — restore then falls back to a fresh look-up.
+ * For those, pin the session id so restore resumes that exact conversation
+ * instead of re-deriving the newest one later. `sessionIdByPane` (keyed by the
+ * live pty id, reported by the Claude Code SessionStart hook) identifies the
+ * pane's ACTUAL session and wins; `sessionIdByCwd` (newest transcript for the
+ * directory) is the fallback for panes with no reported id — it can't tell two
+ * panes in the same cwd apart. Both empty → no pin; restore then falls back to
+ * a fresh look-up.
  */
-function toPersistedNode(node: PaneNode, sessionIdByCwd: Map<string, string>): PersistedNode {
+function toPersistedNode(
+  node: PaneNode,
+  sessionIdByCwd: Map<string, string>,
+  sessionIdByPane: Map<string, string>,
+): PersistedNode {
   if (node.kind === 'leaf') {
     const claudePane = node.foregroundCmd === 'claude';
-    const claudeSessionId = claudePane ? sessionIdByCwd.get(node.cwd) : undefined;
+    const claudeSessionId = claudePane
+      ? (sessionIdByPane.get(node.ptyId) ?? sessionIdByCwd.get(node.cwd))
+      : undefined;
     return {
       kind: 'leaf',
       id: node.id,
@@ -37,7 +46,7 @@ function toPersistedNode(node: PaneNode, sessionIdByCwd: Map<string, string>): P
     kind: 'split',
     id: node.id,
     direction: node.direction,
-    children: node.children.map((c) => toPersistedNode(c, sessionIdByCwd)),
+    children: node.children.map((c) => toPersistedNode(c, sessionIdByCwd, sessionIdByPane)),
     sizes: [...node.sizes],
   };
 }
@@ -46,6 +55,7 @@ function toPersistedTab(
   tab: Tab,
   sessionIdByCwd: Map<string, string>,
   scratchPtyIds: Set<string>,
+  sessionIdByPane: Map<string, string>,
 ): PersistedTab {
   // A scratch terminal is an unsplit tab whose sole pane is a known scratch PTY.
   // A scratch the user split is no longer represented in the scratch slice, so
@@ -55,7 +65,7 @@ function toPersistedTab(
     id: tab.id,
     cwd: tab.cwd,
     title: tab.title,
-    root: toPersistedNode(tab.root, sessionIdByCwd),
+    root: toPersistedNode(tab.root, sessionIdByCwd, sessionIdByPane),
     focusedPaneId: tab.focusedPaneId,
     ...(isScratch ? { scratch: true } : {}),
   };
@@ -63,30 +73,37 @@ function toPersistedTab(
 
 /**
  * Snapshot the current tabs into the on-disk shape (drops runtime-only fields).
- * `sessionIdByCwd` pins each Claude pane's session id by its cwd; pass an empty
- * map to skip pinning (restore falls back to resolving the id on the fly).
- * `scratchPtyIds` flags which tabs were scratch terminals so restore can
- * re-seed the (memory-only) scratch slice; pass an empty set to skip flagging.
+ * `sessionIdByPane` pins each Claude pane's session id by its live pty id (the
+ * id its SessionStart hook reported — exact even when panes share a cwd);
+ * `sessionIdByCwd` is the per-directory fallback for panes with no reported id.
+ * Pass empty maps to skip pinning (restore falls back to resolving the id on
+ * the fly). `scratchPtyIds` flags which tabs were scratch terminals so restore
+ * can re-seed the (memory-only) scratch slice; pass an empty set to skip flagging.
  */
 export function toPersistedSession(
   tabs: Tab[],
   activeTabId: string | null,
   sessionIdByCwd: Map<string, string> = new Map(),
   scratchPtyIds: Set<string> = new Set(),
+  sessionIdByPane: Map<string, string> = new Map(),
 ): PersistedSession {
   return {
     version: 1,
-    tabs: tabs.map((t) => toPersistedTab(t, sessionIdByCwd, scratchPtyIds)),
+    tabs: tabs.map((t) => toPersistedTab(t, sessionIdByCwd, scratchPtyIds, sessionIdByPane)),
     activeTabId,
   };
 }
 
-/** The distinct cwds of every Claude pane across `tabs` (for save-time id pinning). */
-export function claudePaneCwds(tabs: Tab[]): string[] {
+/**
+ * The distinct cwds of every Claude pane across `tabs` (for save-time id
+ * pinning). Panes whose pty is in `pinnedPtyIds` already carry an exact
+ * per-pane id, so their cwds don't need the newest-transcript fallback look-up.
+ */
+export function claudePaneCwds(tabs: Tab[], pinnedPtyIds: Set<string> = new Set()): string[] {
   const cwds = new Set<string>();
   for (const t of tabs) {
     for (const leaf of leaves(t.root)) {
-      if (leaf.foregroundCmd === 'claude') cwds.add(leaf.cwd);
+      if (leaf.foregroundCmd === 'claude' && !pinnedPtyIds.has(leaf.ptyId)) cwds.add(leaf.cwd);
     }
   }
   return [...cwds];

@@ -356,11 +356,17 @@ export function attachIpc(): () => void {
     saveTimer = null;
     const s = useStore.getState();
     if (s.pendingRestore) return;
-    // Pin each Claude pane's session id by cwd *now*, while that pane is the live
+    // Pin each Claude pane's session id *now*, while that pane is the live
     // session, so restore resumes the exact conversation instead of re-deriving
-    // "newest for the cwd" later (a reload could race it). Best-effort: a failed
-    // look-up just omits the pin and restore falls back to a fresh resolve.
-    const cwds = claudePaneCwds(s.tabs);
+    // "newest for the cwd" later (a reload could race it). Primary source: the
+    // id each pane's SessionStart hook reported (keyed by pty id — exact even
+    // when two panes share a cwd). Fallback for panes with no reported id (hook
+    // not installed / session predates it): newest transcript for the cwd.
+    // Best-effort: a failed look-up just omits the pin and restore falls back
+    // to a fresh resolve.
+    const rawByPane = await window.treeline.claudeSession.idsByPane().catch(() => ({}));
+    const sessionIdByPane = new Map(Object.entries(rawByPane));
+    const cwds = claudePaneCwds(s.tabs, new Set(sessionIdByPane.keys()));
     const sessionIdByCwd = new Map<string, string>();
     await Promise.all(
       cwds.map(async (cwd) => {
@@ -368,13 +374,13 @@ export function attachIpc(): () => void {
         if (id) sessionIdByCwd.set(cwd, id);
       }),
     );
-    // Re-check after the await — a restore may have been staged meanwhile.
+    // Re-check after the awaits — a restore may have been staged meanwhile.
     if (useStore.getState().pendingRestore) return;
     // Flag scratch tabs (keyed by PTY id) so restore can re-seed the memory-only
     // scratch slice — its sidebar row, cleanup wiring, and label numbering.
     const scratchPtyIds = new Set(s.scratches.map((sc) => sc.ptyId));
     void window.treeline.session.set(
-      toPersistedSession(s.tabs, s.activeTabId, sessionIdByCwd, scratchPtyIds),
+      toPersistedSession(s.tabs, s.activeTabId, sessionIdByCwd, scratchPtyIds, sessionIdByPane),
     );
   };
   unsubs.push(

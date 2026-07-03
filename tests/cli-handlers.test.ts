@@ -29,6 +29,7 @@ function makeDeps(over: Partial<CliDeps> = {}): CliDeps {
       wt('/code/app/.claude/worktrees/feat', 'worktree-feat', { isClaude: true }),
     ],
     notify: vi.fn(),
+    recordClaudeSession: vi.fn(() => true),
     openWorktree: vi.fn(),
     sendKeys: vi.fn(),
     browserNavigate: vi.fn(async () => {}),
@@ -124,6 +125,40 @@ describe('buildCliHandlers', () => {
   it('notify rejects empty text', () => {
     const h = buildCliHandlers(makeDeps());
     expect(() => h.notify({})).toThrow(/missing required argument: text/);
+  });
+
+  it('claude-session records the pane → session mapping', async () => {
+    const recordClaudeSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordClaudeSession }));
+    const res = await h['claude-session']({ paneId: 'pane-1', sessionId: 'sess-1' });
+    expect(recordClaudeSession).toHaveBeenCalledWith('pane-1', 'sess-1');
+    expect(res).toEqual({ recorded: true });
+  });
+
+  it('claude-session echoes recorded:false for an unknown pane', async () => {
+    const h = buildCliHandlers(makeDeps({ recordClaudeSession: vi.fn(() => false) }));
+    expect(await h['claude-session']({ paneId: 'ghost', sessionId: 'sess-1' })).toEqual({
+      recorded: false,
+    });
+  });
+
+  it('claude-session requires both paneId and sessionId', () => {
+    const h = buildCliHandlers(makeDeps());
+    expect(() => h['claude-session']({ sessionId: 's' })).toThrow(
+      /missing required argument: paneId/,
+    );
+    expect(() => h['claude-session']({ paneId: 'p' })).toThrow(
+      /missing required argument: sessionId/,
+    );
+  });
+
+  it('claude-session rejects a shell-unsafe session id (typed into `claude --resume` later)', () => {
+    const recordClaudeSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordClaudeSession }));
+    expect(() => h['claude-session']({ paneId: 'p', sessionId: 'x; rm -rf ~' })).toThrow(
+      /malformed sessionId/,
+    );
+    expect(recordClaudeSession).not.toHaveBeenCalled();
   });
 
   it('open resolves the worktree then drives openWorktree', async () => {

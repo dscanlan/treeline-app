@@ -336,6 +336,14 @@ export interface TreelineApi {
      * pane that was running Claude when the session was last saved.
      */
     latestForCwd(cwd: string): Promise<string | null>;
+    /**
+     * pane (pty) id → session id, as reported by each pane's Claude Code
+     * SessionStart hook over the CLI socket. The debounced session save pins
+     * these per-pane — the exact conversation even when two panes share a cwd,
+     * where {@link latestForCwd}'s newest-transcript heuristic can't tell them
+     * apart. Panes with no reported session are absent.
+     */
+    idsByPane(): Promise<Record<string, string>>;
   };
 
   /**

@@ -76,11 +76,42 @@ describe('treeline hooks setup', () => {
       expect(cmd).toContain('notify-hook');
       expect(cmd).toContain(BIN); // absolute path, not PATH-dependent
     }
+    // …and the SessionStart hook that reports each pane's session id.
+    const sessionCmd = settings.hooks.SessionStart[0].hooks[0].command;
+    expect(sessionCmd).toContain('claude-session-hook');
+    expect(sessionCmd).toContain(BIN);
 
     // Symlink points back at the script.
     const link = join(bin, 'treeline');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readlinkSync(link)).toBe(BIN);
+  });
+
+  it('re-running setup upgrades an old install with the missing SessionStart hook', async () => {
+    const cfg = tmp();
+    const bin = tmp();
+    const env = { CLAUDE_CONFIG_DIR: cfg };
+    // An install from before per-pane pinning: notify hooks present, no SessionStart.
+    const { writeFileSync, mkdirSync } = await import('node:fs');
+    mkdirSync(cfg, { recursive: true });
+    writeFileSync(
+      join(cfg, 'settings.json'),
+      JSON.stringify({
+        hooks: {
+          Stop: [{ hooks: [{ type: 'command', command: `${BIN} notify-hook` }] }],
+          Notification: [{ hooks: [{ type: 'command', command: `${BIN} notify-hook` }] }],
+        },
+      }),
+    );
+
+    const res = await run(['hooks', 'setup', '--bin-dir', bin], { env });
+    expect(res.stdout).toContain('added 1');
+
+    const settings = JSON.parse(readFileSync(join(cfg, 'settings.json'), 'utf8'));
+    expect(settings.hooks.SessionStart[0].hooks[0].command).toContain('claude-session-hook');
+    // The notify hooks weren't duplicated.
+    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.Notification).toHaveLength(1);
   });
 
   it('is idempotent — a second setup adds nothing and preserves other keys', async () => {
@@ -124,6 +155,87 @@ describe('treeline hooks setup', () => {
     const stop = settings.hooks?.Stop ?? [];
     const cmds = stop.flatMap((g: { hooks: { command: string }[] }) => g.hooks.map((h) => h.command));
     expect(cmds.some((c: string) => c.includes('notify-hook'))).toBe(false);
+    // The SessionStart hook is ours too — removed along with the notify pair.
+    expect(settings.hooks?.SessionStart).toBeUndefined();
+  });
+});
+
+describe('treeline claude-session', () => {
+  it('sends the session id with the pane from $TREELINE_PANE_ID', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['claude-session', 'sess-42'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-abc' },
+    });
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({
+      verb: 'claude-session',
+      args: { paneId: 'pane-abc', sessionId: 'sess-42' },
+    });
+  });
+
+  it('an explicit pane-id argument beats the env var', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['claude-session', 'sess-42', 'pane-explicit'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-env' },
+    });
+    expect((await received).args).toEqual({ paneId: 'pane-explicit', sessionId: 'sess-42' });
+  });
+
+  it('fails (exit 2) without a session id or without any pane id', async () => {
+    const none = { TREELINE_SOCK: join(tmp(), 'x.sock'), TREELINE_PANE_ID: '' };
+    const noSession = await run(['claude-session'], { env: none });
+    expect(noSession.code).toBe(2);
+    expect(noSession.stderr).toContain('requires a <session-id>');
+    const noPane = await run(['claude-session', 'sess-42'], { env: none });
+    expect(noPane.code).toBe(2);
+    expect(noPane.stderr).toContain('pane-id');
+  });
+});
+
+describe('treeline claude-session-hook', () => {
+  it('reports {paneId, sessionId} from the SessionStart payload (exit 0)', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['claude-session-hook'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-abc' },
+      stdin: JSON.stringify({
+        hook_event_name: 'SessionStart',
+        session_id: 'f00dfeed-1234',
+        source: 'startup',
+        cwd: '/code/my-app',
+      }),
+    });
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({
+      verb: 'claude-session',
+      args: { paneId: 'pane-abc', sessionId: 'f00dfeed-1234' },
+    });
+  });
+
+  it('exits 0 without reporting when not inside a treeline pane', async () => {
+    // No stub server: were the hook to try the (absent) socket it would still
+    // exit 0, but the immediate no-pane path must not even need stdin to close.
+    const res = await run(['claude-session-hook'], {
+      env: { TREELINE_SOCK: join(tmp(), 'nope.sock'), TREELINE_PANE_ID: '' },
+      stdin: JSON.stringify({ session_id: 'sess-1' }),
+    });
+    expect(res.code).toBe(0);
+  });
+
+  it('exits 0 on a payload with no session id, and when the app is down', async () => {
+    const noSession = await run(['claude-session-hook'], {
+      env: { TREELINE_SOCK: join(tmp(), 'x.sock'), TREELINE_PANE_ID: 'pane-abc' },
+      stdin: JSON.stringify({ hook_event_name: 'SessionStart' }),
+    });
+    expect(noSession.code).toBe(0);
+
+    const appDown = await run(['claude-session-hook'], {
+      env: { TREELINE_SOCK: join(tmp(), 'gone.sock'), TREELINE_PANE_ID: 'pane-abc' },
+      stdin: JSON.stringify({ session_id: 'sess-1' }),
+    });
+    expect(appDown.code).toBe(0);
   });
 });
 

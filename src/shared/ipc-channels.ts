@@ -85,6 +85,9 @@ export const Channels = {
   // The most-recent Claude session id for a cwd (no copy) — used to re-run
   // `claude --resume <id>` when restoring a persisted pane that was running it.
   ClaudeSessionLatestForCwd: 'claudeSession:latestForCwd',
+  // pane id → session id reported by each pane's Claude SessionStart hook —
+  // the save path pins these per-pane (exact even when panes share a cwd).
+  ClaudeSessionIdsByPane: 'claudeSession:idsByPane',
 
   // system (open external URLs via the safe-url allowlist)
   SystemOpenExternal: 'system:openExternal',

@@ -164,6 +164,8 @@ const api: TreelineApi = {
       >,
     latestForCwd: (cwd) =>
       ipcRenderer.invoke(Channels.ClaudeSessionLatestForCwd, cwd) as Promise<string | null>,
+    idsByPane: () =>
+      ipcRenderer.invoke(Channels.ClaudeSessionIdsByPane) as Promise<Record<string, string>>,
   },
 
   session: {

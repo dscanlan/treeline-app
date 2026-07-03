@@ -3,6 +3,7 @@ import { Channels } from '@shared/ipc-channels';
 import { resolveParentRepoPath } from '../git';
 import { latestSessionForCwd, copySessionToCwd } from '../claude-session';
 import { validateAbsPath } from '../util/safe-path';
+import type { PtyManager } from '../pty-manager';
 
 /**
  * IPC for resuming a Claude conversation inside a freshly-created worktree.
@@ -18,7 +19,7 @@ import { validateAbsPath } from '../util/safe-path';
  * Returns null when there's no parent repo or no Claude session to resume — the
  * renderer surfaces that as "nothing to resume" rather than an error.
  */
-export function registerClaudeSessionIpc(): () => void {
+export function registerClaudeSessionIpc(ptyManager: PtyManager): () => void {
   ipcMain.handle(Channels.ClaudeSessionPrepareResume, async (_e, rawPath: unknown) => {
     const worktreePath = validateAbsPath(rawPath);
 
@@ -44,8 +45,15 @@ export function registerClaudeSessionIpc(): () => void {
     return session?.id ?? null;
   });
 
+  // pane id → session id, as reported by each pane's Claude SessionStart hook
+  // (over the CLI socket). The renderer's debounced session save pins these
+  // per-pane — exact even when two panes share a cwd, where latestForCwd can't
+  // tell the conversations apart.
+  ipcMain.handle(Channels.ClaudeSessionIdsByPane, () => ptyManager.claudeSessionIds());
+
   return () => {
     ipcMain.removeHandler(Channels.ClaudeSessionPrepareResume);
     ipcMain.removeHandler(Channels.ClaudeSessionLatestForCwd);
+    ipcMain.removeHandler(Channels.ClaudeSessionIdsByPane);
   };
 }

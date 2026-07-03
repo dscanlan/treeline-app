@@ -79,6 +79,16 @@ interface PtyEntry {
   paused: boolean;
   /** Scratch-terminal sidebar label, if this PTY backs one (see SpawnOpts). */
   scratchLabel?: string;
+  /**
+   * The Claude Code session id last reported for this pane (by the SessionStart
+   * hook, via the CLI socket). Identifies the pane's ACTUAL conversation for
+   * save-time pinning — unlike the per-cwd newest-transcript heuristic, it can
+   * tell two panes in the same directory apart. Overwritten on every report
+   * (new session / --resume / /clear / compaction bridge all re-fire the hook);
+   * dies with the entry. A stale value is harmless: the renderer only pins it
+   * onto panes whose foreground command is still `claude`.
+   */
+  claudeSessionId?: string;
 }
 
 export interface PtyDataEvent {
@@ -303,6 +313,27 @@ export class PtyManager extends EventEmitter {
   /** Last-known cwd of `id`, or undefined if no such PTY. */
   cwdOf(id: string): string | undefined {
     return this.ptys.get(id)?.cwd;
+  }
+
+  /**
+   * Record the Claude session id reported for pane `id` (SessionStart hook →
+   * CLI socket). Returns false when no such PTY exists — unknown pane ids are
+   * dropped rather than accumulated.
+   */
+  setClaudeSession(id: string, sessionId: string): boolean {
+    const entry = this.ptys.get(id);
+    if (!entry) return false;
+    entry.claudeSessionId = sessionId;
+    return true;
+  }
+
+  /** Every pane's last-reported Claude session id, for save-time pinning. */
+  claudeSessionIds(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [id, e] of this.ptys) {
+      if (e.claudeSessionId !== undefined) out[id] = e.claudeSessionId;
+    }
+    return out;
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
