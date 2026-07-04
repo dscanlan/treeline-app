@@ -1,3 +1,4 @@
+import { AGENTS } from '@shared/agents';
 import type { DetectedProcess } from '@shared/types';
 
 interface Props {
@@ -5,11 +6,12 @@ interface Props {
 }
 
 /**
- * Badge for an AI CLI detected running in a worktree. Magenta when active,
- * dim when idle (no CPU change for ≥10s — see ProcessMonitor).
+ * Badge for an AI CLI detected running in a worktree. The agent's registry
+ * colour when active (magenta for every kind today), dim when idle (no CPU
+ * change for ≥10s — see ProcessMonitor).
  */
 export function ProcessBadge({ proc }: Props) {
-  const baseColor = proc.idle ? 'text-treeline-dim' : 'text-treeline-magenta';
+  const baseColor = proc.idle ? 'text-treeline-dim' : AGENTS[proc.kind].colorClass;
   return (
     <span
       title={`${proc.kind} (pid ${proc.pid})${proc.idle ? ' — idle' : ''}`}

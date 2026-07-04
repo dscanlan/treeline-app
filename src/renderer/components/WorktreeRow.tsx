@@ -1,4 +1,5 @@
 import { useStore } from '../store';
+import { AGENTS } from '@shared/agents';
 import type { Worktree } from '@shared/types';
 import { basename } from '../util/path';
 import { openTabAt } from '../actions/tabs';
@@ -26,14 +27,15 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const openModal = useStore((s) => s.openModal);
   const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
 
-  const isClaude = worktree.isClaude;
+  // Glyph/colour for agent-convention worktrees come from the shared registry.
+  const agent = worktree.isClaude ? AGENTS.claude : null;
   // A worktree whose branch is already merged into the default branch is dead
   // weight — grey the whole row and tag it so it reads as a prune candidate.
   const merged = worktree.merged;
-  const labelColor = isClaude ? 'text-treeline-magenta' : 'text-treeline-text';
-  const icon = isClaude ? '✦' : worktree.isCurrent ? '●' : '○';
-  const iconColor = isClaude
-    ? 'text-treeline-magenta'
+  const labelColor = agent ? agent.colorClass : 'text-treeline-text';
+  const icon = agent ? agent.glyph : worktree.isCurrent ? '●' : '○';
+  const iconColor = agent
+    ? agent.colorClass
     : worktree.isCurrent
       ? 'text-treeline-green'
       : 'text-treeline-cyan';

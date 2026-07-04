@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AGENTS } from '@shared/agents';
 import type { Repo } from '@shared/types';
 import { useStore } from '../store';
 import { WorktreeRow } from './WorktreeRow';
@@ -97,8 +98,10 @@ export function RepoNode({ repo }: Props) {
               ))}
               {claude.length > 0 && (
                 <>
-                  <li className="mt-1 px-2 py-0.5 text-[10px] uppercase tracking-wide text-treeline-magenta/70">
-                    ✦ Claude
+                  <li
+                    className={`mt-1 px-2 py-0.5 text-[10px] uppercase tracking-wide ${AGENTS.claude.colorClassDim}`}
+                  >
+                    {AGENTS.claude.glyph} {AGENTS.claude.label}
                   </li>
                   {claude.map((w) => (
                     <WorktreeRow key={w.path} worktree={w} repoPath={repo.path} />

@@ -1,5 +1,6 @@
 // Shared types — imported by main, preload, and renderer.
 
+import type { AgentKind } from './agents';
 import type { PaneNode, SplitDirection } from './pane-tree';
 
 export interface Repo {
@@ -61,7 +62,8 @@ export interface Worktree {
   merged: boolean;
 }
 
-export type ProcessKind = 'claude' | 'opencode' | 'aider';
+/** The union itself lives on the agent registry (`shared/agents.ts`). */
+export type ProcessKind = AgentKind;
 
 export interface DetectedProcess {
   pid: number;

@@ -5,14 +5,9 @@
 
 import { EventEmitter } from 'node:events';
 import { basename } from 'node:path';
+import { KIND_BY_BASENAME } from '@shared/agents';
 import type { DetectedProcess, ProcessKind } from '@shared/types';
 import { run } from './util/exec';
-
-const KIND_BY_BASENAME: Record<string, ProcessKind> = {
-  claude: 'claude',
-  opencode: 'opencode',
-  aider: 'aider',
-};
 
 const IDLE_THRESHOLD_MS = 10_000;
 

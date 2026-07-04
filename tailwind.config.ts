@@ -17,7 +17,9 @@ import type { Config } from 'tailwindcss';
 // (src/shared/terminal-theme.ts). So one theme setting repaints both the
 // terminal panes (xterm ITheme) and the whole app chrome.
 export default {
-  content: ['./src/renderer/**/*.{ts,tsx,html}'],
+  // The agent registry lives outside renderer/ but declares Tailwind colour
+  // classes (per-agent `colorClass`) — scan it so they aren't purged.
+  content: ['./src/renderer/**/*.{ts,tsx,html}', './src/shared/agents.ts'],
   theme: {
     extend: {
       colors: {

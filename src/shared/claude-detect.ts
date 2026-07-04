@@ -1,10 +1,13 @@
-// Mirrors the Claude-worktree detection rule from
-// /Users/dominicscanlan/code/treeline/src/git.rs:19-22 — a worktree counts as
-// "Claude" if its on-disk path lives under a `.claude/worktrees/` directory or
-// if its branch name uses the `worktree-*` convention.
+// Compatibility shim over the shared agent registry. The detection rule
+// itself now lives on the `claude` entry in `shared/agents.ts`.
 
+import { detectAgentWorktree } from './agents';
+
+/**
+ * @deprecated Use `detectAgentWorktree(absPath, branch)` from
+ * `@shared/agents` instead — this shim only answers the Claude-or-not
+ * question and is removed once the sidebar groups worktrees by agent kind.
+ */
 export function detectClaudeWorktree(absPath: string, branch: string): boolean {
-  if (absPath.includes('/.claude/worktrees/')) return true;
-  if (branch.startsWith('worktree-')) return true;
-  return false;
+  return detectAgentWorktree(absPath, branch) === 'claude';
 }
