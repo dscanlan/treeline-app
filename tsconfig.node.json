@@ -18,13 +18,15 @@
     "useDefineForClassFields": true,
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@/*": ["src/renderer/*"]
     }
   },
   "include": [
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    "src/renderer/store/browser-slice.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts"
   ]

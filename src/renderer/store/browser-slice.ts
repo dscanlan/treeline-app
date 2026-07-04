@@ -27,6 +27,15 @@ export interface BrowserSlice {
 
   /** URL committed into the webview's `src`; only set on explicit navigation. */
   browserSrc: string;
+  /**
+   * Monotonic counter bumped on every explicit navigation commit. The guest may
+   * have moved on (link clicks, redirects), leaving `browserSrc` already equal
+   * to the *next* commit's URL — a plain string compare would make that commit
+   * unobservable and the pane would never re-navigate. BrowserPane keys its
+   * imperative `loadURL` on this instead, so committing the same URL twice
+   * still navigates (and address-bar re-submit doubles as reload).
+   */
+  browserNavId: number;
   /** Live location reported by the guest — what the address bar shows. */
   browserAddress: string;
 
@@ -61,6 +70,7 @@ export const createBrowserSlice: StateCreator<BrowserSlice, [], [], BrowserSlice
   browserPanelWidth: BROWSER_PANEL_DEFAULT_WIDTH,
 
   browserSrc: DEFAULT_BROWSER_URL,
+  browserNavId: 0,
   browserAddress: DEFAULT_BROWSER_URL,
   browserLoading: false,
   browserError: null,
@@ -77,9 +87,15 @@ export const createBrowserSlice: StateCreator<BrowserSlice, [], [], BrowserSlice
     }),
 
   openBrowserPanel: (url) =>
-    set(
+    set((s) =>
       url
-        ? { browserPanelOpen: true, browserSrc: url, browserAddress: url, browserError: null }
+        ? {
+            browserPanelOpen: true,
+            browserSrc: url,
+            browserNavId: s.browserNavId + 1,
+            browserAddress: url,
+            browserError: null,
+          }
         : { browserPanelOpen: true },
     ),
 
@@ -88,7 +104,12 @@ export const createBrowserSlice: StateCreator<BrowserSlice, [], [], BrowserSlice
   toggleBrowserPanel: () => set((s) => ({ browserPanelOpen: !s.browserPanelOpen })),
 
   navigateBrowser: (url) =>
-    set({ browserSrc: url, browserAddress: url, browserError: null }),
+    set((s) => ({
+      browserSrc: url,
+      browserNavId: s.browserNavId + 1,
+      browserAddress: url,
+      browserError: null,
+    })),
 
   setBrowserLoading: (loading) => set({ browserLoading: loading }),
 

@@ -19,14 +19,19 @@ type WebviewTitleEvent = Event & { title: string };
  * pointed at a dev server (or any typed URL) so you can view — and an agent can
  * later script (see follow-up idea) — the running app without leaving treeline.
  *
- * Navigation is split: `browserSrc` is bound to the webview's `src` and only
- * changes on an explicit address-bar submit; back/forward/reload are driven
- * imperatively through the element ref so in-page navigation isn't clobbered.
+ * Navigation is split: the webview's `src` is fixed at mount, and every
+ * explicit commit after that (`browserSrc` + `browserNavId`) is applied
+ * imperatively via `loadURL`; back/forward/reload also go through the element
+ * ref. Nothing re-renders the `src` attribute, so in-page navigation isn't
+ * clobbered — and because commits are keyed on `browserNavId`, re-committing
+ * the URL the store already holds still navigates (the guest may have wandered
+ * off it in the meantime).
  */
 export function BrowserPane() {
   const s = useStore(
     useShallow((st) => ({
       browserSrc: st.browserSrc,
+      browserNavId: st.browserNavId,
       browserAddress: st.browserAddress,
       browserLoading: st.browserLoading,
       browserError: st.browserError,
@@ -41,6 +46,36 @@ export function BrowserPane() {
   // doesn't fight the store; navigation events re-sync it.
   const [input, setInput] = useState(s.browserAddress);
   useEffect(() => setInput(s.browserAddress), [s.browserAddress]);
+
+  // The webview loads `initialSrc` when it attaches; that commit is already
+  // handled, so the navigation effect below must skip it. Both refs are seeded
+  // from the store at mount (a pane opened via openBrowserPanel(url) has the
+  // commit in place before the first render).
+  const [initialSrc] = useState(s.browserSrc);
+  const handledNav = useRef({ src: s.browserSrc, navId: s.browserNavId });
+
+  // Apply post-mount navigation commits imperatively. Keyed on browserNavId so
+  // a commit whose URL matches the previous one (guest wandered off, user
+  // re-submits / re-clicks a port chip / CLI re-navigates) still loads.
+  useEffect(() => {
+    const el = webviewRef.current;
+    const src = s.browserSrc;
+    const navId = s.browserNavId;
+    if (!el) return;
+    if (handledNav.current.src === src && handledNav.current.navId === navId) return;
+    handledNav.current = { src, navId };
+    el.loadURL(src).catch(() => {
+      // loadURL rejects when superseded by a newer navigation (fine, drop it)
+      // or when the guest hasn't attached yet. Only in the latter case, steer
+      // the pending initial load by rewriting `src` — the attribute is inert
+      // after attach-time, so this can't fight a live guest.
+      try {
+        el.getWebContentsId(); // throws until the guest is attached
+      } catch {
+        el.src = src;
+      }
+    });
+  }, [s.browserSrc, s.browserNavId]);
 
   // Wire the webview's lifecycle events into the store. Attached once; handlers
   // pull the latest setters from the store so there are no stale closures.
@@ -108,7 +143,11 @@ export function BrowserPane() {
 
   const goBack = () => webviewRef.current?.goBack();
   const goForward = () => webviewRef.current?.goForward();
-  const reload = () => webviewRef.current?.reload();
+  const stop = () => webviewRef.current?.stop();
+  // Shift-click bypasses the persisted session's HTTP cache — dev servers that
+  // serve stale bundles are the common case for this pane.
+  const reload = (e: React.MouseEvent) =>
+    e.shiftKey ? webviewRef.current?.reloadIgnoringCache() : webviewRef.current?.reload();
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-treeline-surface">
@@ -121,9 +160,9 @@ export function BrowserPane() {
           disabled={!s.browserCanGoForward}
         />
         <NavButton
-          label={s.browserLoading ? 'Stop loading' : 'Reload'}
+          label={s.browserLoading ? 'Stop loading' : 'Reload (⇧-click: ignore cache)'}
           symbol={s.browserLoading ? '×' : '⟳'}
-          onClick={reload}
+          onClick={s.browserLoading ? stop : reload}
         />
 
         <form onSubmit={submit} className="min-w-0 flex-1">
@@ -132,6 +171,14 @@ export function BrowserPane() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              // Escape abandons the draft: restore the live location and hand
+              // focus back to the app (matches every browser's address bar).
+              if (e.key === 'Escape') {
+                setInput(s.browserAddress);
+                e.currentTarget.blur();
+              }
+            }}
             spellCheck={false}
             autoCapitalize="off"
             autoCorrect="off"
@@ -153,15 +200,24 @@ export function BrowserPane() {
       </header>
 
       {s.browserError && (
-        <div className="shrink-0 border-b border-treeline-highlight bg-treeline-red/10 px-3 py-1 text-xs text-treeline-red">
-          {s.browserError}
+        <div className="flex shrink-0 items-center gap-2 border-b border-treeline-highlight bg-treeline-red/10 px-3 py-1 text-xs text-treeline-red">
+          <span className="min-w-0 flex-1 truncate" title={s.browserError}>
+            {s.browserError}
+          </span>
+          <button
+            type="button"
+            onClick={() => useStore.getState().navigateBrowser(s.browserSrc)}
+            className="shrink-0 rounded border border-treeline-red/40 px-1.5 py-px hover:bg-treeline-red/20"
+          >
+            Retry
+          </button>
         </div>
       )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden bg-white">
         <webview
           ref={webviewRef}
-          src={s.browserSrc}
+          src={initialSrc}
           // `partition` isn't a standard DOM attribute (it's Electron's), so the
           // react plugin flags it; it gives the guest its own isolated session.
           // eslint-disable-next-line react/no-unknown-property
@@ -186,7 +242,7 @@ function NavButton({
 }: {
   label: string;
   symbol: string;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
   disabled?: boolean;
 }) {
   return (
