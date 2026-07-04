@@ -183,6 +183,16 @@ function hardenWebviews(win: BrowserWindow): void {
   });
 }
 
+// Dev-only escape hatch from the single-instance rule below: relocating
+// userData gives this process its own instance lock, config store, and CLI
+// socket path, so a dev build can run beside the installed app for e2e
+// verification (`TREELINE_USER_DATA=<dir> TREELINE_SOCK=<sock> npm run dev`).
+// Ignored in packaged builds — the userData-scoped security posture of the
+// CLI socket must not be steerable by environment there.
+if (!app.isPackaged && process.env['TREELINE_USER_DATA']) {
+  app.setPath('userData', process.env['TREELINE_USER_DATA']);
+}
+
 // Only one Treeline may run at a time. Without this, a second launch starts a
 // second main process whose CliServer.start() unlinks the live instance's CLI
 // socket out from under it, leaving the original listening on an orphaned inode
