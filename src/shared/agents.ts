@@ -4,8 +4,9 @@
 // `claude-detect.ts` before it.
 //
 // Adding an agent = adding an entry here (plus extending the AgentKind
-// union). Consumers derive labels, glyphs, colours, process detection and
-// worktree conventions from the entry instead of hard-coding them.
+// union). Consumers derive labels, glyphs, colours, process detection,
+// worktree conventions and resume commands from the entry instead of
+// hard-coding them.
 //
 // NOTE: Tailwind only generates classes it finds literally in scanned
 // sources, and this file is on the scan list (tailwind.config.ts `content`)
@@ -13,6 +14,42 @@
 // plain string literals.
 
 export type AgentKind = 'claude' | 'opencode' | 'aider';
+// codex: detection has not landed (no `codex` process basename below) — when
+// it does, add a fourth entry; `codex resume <id>` is the verified resume
+// shape (checked against codex CLI, 2026-07).
+
+/**
+ * How an agent resumes a saved session. Commands are pure string builders so
+ * they can live in shared/ (renderer-safe). SECURITY: a session id is later
+ * typed into a shell — NEVER interpolate an id that fails
+ * {@link ResumeCapability.isValidSessionId}; {@link buildRestoreCommand}
+ * enforces this, matching the filename-shaped guard on the CLI socket verb
+ * (`cli-handlers.ts`).
+ */
+export interface ResumeCapability {
+  /**
+   * Build the command that resumes session `id` in the pane's cwd. Absent
+   * when the agent has no id-based resume (aider's history is cwd-keyed).
+   */
+  restore?(id: string): string;
+  /** Build the fork/branch variant used by worktree handoff; absent = no handoff offer. */
+  fork?(id: string): string;
+  /** Strict validator for ids that will be typed into a shell. */
+  isValidSessionId(id: string): boolean;
+  /**
+   * The literal command resuming with no explicit id (cwd-keyed history),
+   * e.g. `aider --restore-chat-history`. Used when no valid pinned id exists.
+   */
+  resumeWithoutId?: string;
+}
+
+/**
+ * Filename-shaped ids only (Claude's are UUIDs; opencode's are `ses_…`) —
+ * identical to the guard on the CLI socket's session-report verb. Anything a
+ * shell could interpret (spaces, quotes, `;`, `$`, …) fails.
+ */
+const FILENAME_SHAPED_ID = /^[A-Za-z0-9._-]{1,128}$/;
+const isFilenameShapedId = (id: string): boolean => FILENAME_SHAPED_ID.test(id);
 
 export interface AgentDefinition {
   kind: AgentKind;
@@ -31,11 +68,12 @@ export interface AgentDefinition {
   /** Static worktree convention, or null if the agent has none. */
   worktreeDetect: ((absPath: string, branch: string) => boolean) | null;
   /**
-   * Capability slots — filled in by later roadmap ideas. Absence of a
+   * Capability slots — filled in by roadmap ideas as they land. Absence of a
    * capability means the feature is not offered for that agent
    * (capability-gating, not pretending).
    */
-  resume: null; // → per-agent resume commands
+  /** How to resume this agent's sessions, or null → restore as a plain shell. */
+  resume: ResumeCapability | null;
   sessionStore: null; // → per-agent session stores (main-process registry)
   hooks: null; // → per-agent hook wiring (CLI side)
 }
@@ -55,7 +93,13 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
     // `worktree-*` convention.
     worktreeDetect: (absPath, branch) =>
       absPath.includes('/.claude/worktrees/') || branch.startsWith('worktree-'),
-    resume: null,
+    resume: {
+      restore: (id) => `claude --resume ${id}`,
+      // --fork-session gives the resumed copy its own id so the original
+      // conversation stays untouched (worktree handoff relies on this).
+      fork: (id) => `claude --resume ${id} --fork-session`,
+      isValidSessionId: isFilenameShapedId,
+    },
     sessionStore: null,
     hooks: null,
   },
@@ -68,7 +112,15 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
     order: 1,
     processBasenames: ['opencode'],
     worktreeDetect: null,
-    resume: null,
+    // Verified against the installed opencode CLI (2026-07): `--session <id>`
+    // continues that session; `--fork` forks when continuing. Handoff is still
+    // not offered for opencode — that additionally needs a session store with
+    // copy support (see WorktreeDriftToast gating).
+    resume: {
+      restore: (id) => `opencode --session ${id}`,
+      fork: (id) => `opencode --session ${id} --fork`,
+      isValidSessionId: isFilenameShapedId,
+    },
     sessionStore: null,
     hooks: null,
   },
@@ -81,7 +133,13 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
     order: 2,
     processBasenames: ['aider'],
     worktreeDetect: null,
-    resume: null,
+    // aider has no session ids: chat history is a cwd-keyed file
+    // (.aider.chat.history.md), so resume is id-less. Flag documented in
+    // aider's manual (not binary-verified — aider isn't installed here).
+    resume: {
+      isValidSessionId: () => false,
+      resumeWithoutId: 'aider --restore-chat-history',
+    },
     sessionStore: null,
     hooks: null,
   },
@@ -107,4 +165,29 @@ export function detectAgentWorktree(absPath: string, branch: string): AgentKind 
     if (agent.worktreeDetect?.(absPath, branch)) return agent.kind;
   }
   return null;
+}
+
+/**
+ * The restore command for a pane persisted as `kind`, given the pinned (or
+ * freshly resolved) session id — or null when nothing should be typed and the
+ * pane stays a plain shell at its saved cwd. This is the single funnel every
+ * restore write goes through, so the injection guard cannot be bypassed: an
+ * id failing the agent's validator is treated as absent (falling back to the
+ * agent's id-less resume, if any), never interpolated.
+ */
+export function buildRestoreCommandFor(
+  cap: ResumeCapability | null,
+  id: string | null | undefined,
+): string | null {
+  if (!cap) return null;
+  if (id && cap.restore && cap.isValidSessionId(id)) return cap.restore(id);
+  return cap.resumeWithoutId ?? null;
+}
+
+/** {@link buildRestoreCommandFor}, looked up from the registry by kind. */
+export function buildRestoreCommand(
+  kind: AgentKind,
+  id: string | null | undefined,
+): string | null {
+  return buildRestoreCommandFor(AGENTS[kind].resume, id);
 }

@@ -1,6 +1,12 @@
 import { useState } from 'react';
+import { AGENTS } from '@shared/agents';
 import { useStore } from '../store';
 import { openDriftedWorktree, resumeSessionInWorktree } from '../actions/tabs';
+
+// Worktree handoff is Claude-only until per-agent session stores land
+// (prepareResume only knows Claude's transcript layout), so the toast's
+// labels come from the claude registry entry.
+const HANDOFF_AGENT = AGENTS.claude;
 
 /**
  * Bottom-right toast offering to open a terminal in a worktree, surfaced when
@@ -60,7 +66,7 @@ export function WorktreeDriftToast() {
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <h3 className="text-sm text-treeline-cyan">
           {head.reason === 'created'
-            ? `Continue Claude in ${basename}?`
+            ? `Continue ${HANDOFF_AGENT.label} in ${basename}?`
             : `Open a terminal in ${basename}?`}
         </h3>
         {queueLen > 1 && (
@@ -87,10 +93,10 @@ export function WorktreeDriftToast() {
             type="button"
             onClick={onResume}
             disabled={busy}
-            title="Copy this repo's active Claude conversation into the worktree and continue it in a new tab (the original is paused)"
+            title={`Copy this repo's active ${HANDOFF_AGENT.label} conversation into the worktree and continue it in a new tab (the original is paused)`}
             className="rounded border border-treeline-cyan bg-treeline-cyan px-2 py-1 text-xs text-treeline-surface hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? 'Continuing…' : 'Continue Claude in new tab'}
+            {busy ? 'Continuing…' : `Continue ${HANDOFF_AGENT.label} in new tab`}
           </button>
         )}
         <button

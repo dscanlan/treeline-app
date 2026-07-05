@@ -1,5 +1,6 @@
 // Tab-orchestration helpers shared by Sidebar clicks, the + button, and the
 // close button. Keeps the IPC dance out of the components.
+import { AGENTS, buildRestoreCommand, type AgentKind } from '@shared/agents';
 import type { SplitDirection } from '@shared/pane-tree';
 import { findLeaf } from '@shared/pane-tree';
 import type { PersistedSession, Scratch, Tab } from '@shared/types';
@@ -63,16 +64,23 @@ function writeWhenReady(id: string, data: string): void {
  * Restore a saved tab layout after a full restart (auto-update relaunch / reboot)
  * where no PTYs survived. For each saved tab whose worktree still exists, we
  * respawn one fresh shell per pane, rebuild the split tree around the new PTYs
- * (layout + focus preserved), and re-run `claude --resume <id>` in any pane that
- * was running Claude when the layout was saved — resolving the id from disk for
- * that cwd. Tabs whose worktree was removed while the app was closed are skipped
- * and counted. Commits the whole tab set in one `setState`, then surfaces a
- * "Restored N tabs" toast. Only ever called from the user's Restore confirmation.
+ * (layout + focus preserved), and re-run the saved agent's resume command in
+ * any pane that was running one — via the registry's resume capability, with
+ * the id resolved from disk when not pinned. An agent with no resume
+ * capability restores as a plain shell at the saved cwd. Tabs whose worktree
+ * was removed while the app was closed are skipped and counted. Commits the
+ * whole tab set in one `setState`, then surfaces a "Restored N tabs" toast.
+ * Only ever called from the user's Restore confirmation.
  */
 export async function restoreSession(saved: PersistedSession): Promise<void> {
   const api = window.treeline;
   const builtTabs: Tab[] = [];
-  const claudeResumes: { ptyId: string; cwd: string; sessionId?: string }[] = [];
+  const agentResumes: {
+    ptyId: string;
+    cwd: string;
+    kind: AgentKind;
+    sessionId?: string;
+  }[] = [];
   const restoredScratches: Scratch[] = [];
   let skipped = 0;
 
@@ -91,11 +99,15 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
       const { id: ptyId } = await api.pty.spawn({ cwd: leaf.cwd, cols: 80, rows: 24 });
       ptyByLeafId.set(leaf.id, ptyId);
       // Prefer the id pinned at save time; fall back to resolving it now.
-      // Restore only acts on claude panes today — other kinds round-trip
-      // through the snapshot but respawn as plain shells until their resume
-      // commands exist.
-      if (leaf.agentKind === 'claude') {
-        claudeResumes.push({ ptyId, cwd: leaf.cwd, sessionId: leaf.agentSessionId });
+      // Capability-gated: a kind with no resume entry respawns as a plain
+      // shell (skipped here), same as any non-agent pane.
+      if (leaf.agentKind && AGENTS[leaf.agentKind].resume) {
+        agentResumes.push({
+          ptyId,
+          cwd: leaf.cwd,
+          kind: leaf.agentKind,
+          sessionId: leaf.agentSessionId,
+        });
       }
     }
 
@@ -140,15 +152,19 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
   // tab) tears the row down exactly like a freshly-opened scratch.
   for (const sc of restoredScratches) registerScratchCleanup(sc.ptyId);
 
-  // Resume Claude in the flagged panes once each shell is ready. Best-effort and
-  // independent per pane: a missing transcript just leaves a plain shell. Use the
-  // id pinned at save time when we have one; otherwise resolve the newest now.
-  for (const { ptyId, cwd, sessionId } of claudeResumes) {
+  // Resume each agent in its flagged panes once each shell is ready.
+  // Best-effort and independent per pane: a missing session just leaves a
+  // plain shell. Use the id pinned at save time when we have one; otherwise
+  // resolve the newest now (Claude-only look-up until per-agent session
+  // stores exist — other kinds fall through to their id-less resume, if any).
+  for (const { ptyId, cwd, kind, sessionId } of agentResumes) {
     const resume = (id: string | null): void => {
-      if (id) writeWhenReady(ptyId, `claude --resume ${id}\r`);
+      const cmd = buildRestoreCommand(kind, id);
+      if (cmd) writeWhenReady(ptyId, `${cmd}\r`);
     };
     if (sessionId) resume(sessionId);
-    else void api.claudeSession.latestForCwd(cwd).then(resume);
+    else if (kind === 'claude') void api.claudeSession.latestForCwd(cwd).then(resume);
+    else resume(null);
   }
 
   useStore.getState().noteRestored(builtTabs.length, skipped);
@@ -159,8 +175,8 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
  * worktree. Asks main to copy the session transcript into the worktree's project
  * folder (Claude keys transcripts by directory, so this is the only way to
  * resume the *same* conversation there), opens a fresh terminal in the worktree,
- * and runs `claude --resume <id> --fork-session` once its shell is ready.
- * `--fork-session` gives the worktree copy its own id so the original stays
+ * and runs the registry's fork command (`resume.fork`) once its shell is ready
+ * — the fork gives the worktree copy its own id so the original stays
  * untouched. Throws when there's no session to resume, so callers can surface it.
  */
 export async function resumeSessionInWorktree(toWorktree: string): Promise<void> {
@@ -195,7 +211,14 @@ export async function resumeSessionInWorktree(toWorktree: string): Promise<void>
     }
   }
 
-  // Spawn the worktree fork and resume the copied conversation in it.
+  // Spawn the worktree fork and resume the copied conversation in it. The
+  // handoff is Claude-only until per-agent session stores land (prepareResume
+  // only knows Claude's transcript layout), so the fork command comes from
+  // the claude registry entry — validated like every id typed into a shell.
+  const forkCap = AGENTS.claude.resume;
+  if (!forkCap?.fork || !forkCap.isValidSessionId(prep.sessionId)) {
+    throw new Error('No forkable session to continue in the worktree.');
+  }
   const { id: forkPty } = await window.treeline.pty.spawn({
     cwd: toWorktree,
     cols: 80,
@@ -203,7 +226,7 @@ export async function resumeSessionInWorktree(toWorktree: string): Promise<void>
   });
   const forkTabId = s.addTab({ ptyId: forkPty, cwd: toWorktree });
   s.setSelected(toWorktree);
-  writeWhenReady(forkPty, `claude --resume ${prep.sessionId} --fork-session\r`);
+  writeWhenReady(forkPty, `${forkCap.fork(prep.sessionId)}\r`);
   s.dismissWorktreeOpen(toWorktree);
 
   // Park the origin so the same conversation can't run in two places at once.

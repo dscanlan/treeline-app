@@ -6,7 +6,7 @@ import type { PersistedSession } from '@shared/types';
  * auto-update relaunch, a reboot — main died, so `reattachPtys` finds nothing)
  * and a non-empty session was saved to disk, `pendingRestore` holds it and the
  * `RestorePrompt` modal offers to bring the tabs back. Nothing respawns (and no
- * `claude --resume` runs) until the user confirms — so this is gated behind the
+ * agent resume command runs) until the user confirms — so this is gated behind the
  * prompt, unlike the silent reload-time reattach.
  *
  * `restoreNotice` is the post-restore confirmation toast (mirrors
