@@ -158,15 +158,17 @@ const api: TreelineApi = {
       ipcRenderer.invoke(Channels.FoldersRemove, path) as Promise<void>,
   },
 
-  claudeSession: {
-    prepareResume: (worktreePath) =>
-      ipcRenderer.invoke(Channels.ClaudeSessionPrepareResume, worktreePath) as Promise<
+  agentSession: {
+    prepareResume: (worktreePath, kind) =>
+      ipcRenderer.invoke(Channels.AgentSessionPrepareResume, worktreePath, kind) as Promise<
         { sessionId: string; originCwd: string } | null
       >,
-    latestForCwd: (cwd) =>
-      ipcRenderer.invoke(Channels.ClaudeSessionLatestForCwd, cwd) as Promise<string | null>,
+    latestForCwd: (cwd, kind) =>
+      ipcRenderer.invoke(Channels.AgentSessionLatestForCwd, cwd, kind) as Promise<
+        string | null
+      >,
     idsByPane: () =>
-      ipcRenderer.invoke(Channels.ClaudeSessionIdsByPane) as Promise<
+      ipcRenderer.invoke(Channels.AgentSessionIdsByPane) as Promise<
         Record<string, { kind: AgentKind; sessionId: string }>
       >,
   },

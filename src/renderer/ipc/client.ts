@@ -365,7 +365,7 @@ export function attachIpc(): () => void {
     // for the cwd — Claude-only until other agents grow session stores.
     // Best-effort: a failed look-up just omits the pin and restore falls back
     // to a fresh resolve.
-    const rawByPane = await window.treeline.claudeSession.idsByPane().catch(() => ({}));
+    const rawByPane = await window.treeline.agentSession.idsByPane().catch(() => ({}));
     const sessionIdByPane = new Map(Object.entries(rawByPane));
     const pinnedClaudePtys = new Set(
       [...sessionIdByPane].filter(([, v]) => v.kind === 'claude').map(([k]) => k),
@@ -374,7 +374,7 @@ export function attachIpc(): () => void {
     const sessionIdByCwd = new Map<string, string>();
     await Promise.all(
       cwds.map(async (cwd) => {
-        const id = await window.treeline.claudeSession.latestForCwd(cwd).catch(() => null);
+        const id = await window.treeline.agentSession.latestForCwd(cwd, 'claude').catch(() => null);
         if (id) sessionIdByCwd.set(cwd, id);
       }),
     );

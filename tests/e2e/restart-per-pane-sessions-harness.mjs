@@ -51,13 +51,13 @@ const log = (...a) => console.log(...a);
 // harness must agree with the app about the projects-folder name or the decoy
 // lands somewhere the app never looks (and the test silently proves nothing).
 function loadEncodeProjectDir() {
-  const src = readFileSync(join(ROOT, 'src', 'main', 'claude-session.ts'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src', 'main', 'agent-sessions', 'claude.ts'), 'utf8');
   const m = src.match(
     /export function encodeProjectDir[\s\S]*?return cwd\.replace\((\/[^\n]*?\/[a-z]*),\s*'-'\)/,
   );
   if (!m) {
     throw new Error(
-      'harness: could not extract encodeProjectDir regex from src/main/claude-session.ts — ' +
+      'harness: could not extract encodeProjectDir regex from src/main/agent-sessions/claude.ts — ' +
         'the source shape changed; update loadEncodeProjectDir().',
     );
   }

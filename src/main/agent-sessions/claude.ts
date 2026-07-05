@@ -1,6 +1,7 @@
 import { mkdir, readdir, stat, copyFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { AgentSessionStore } from './types';
 
 /**
  * Claude Code persists each conversation's transcript at
@@ -14,7 +15,8 @@ import { join } from 'node:path';
  * can continue in a freshly-created worktree.
  *
  * It's intentionally a pure fs module (no Electron) so it's unit-testable; the
- * IPC layer in ipc/claude-session.ts resolves the origin repo and calls in.
+ * IPC layer in ipc/agent-session.ts resolves the origin repo and calls in
+ * through the {@link claudeSessionStore} adapter.
  */
 
 /**
@@ -105,3 +107,11 @@ export async function copySessionToCwd(
   await copyFile(session.path, dest);
   return dest;
 }
+
+/** The Claude adapter — thin binding of the pure functions above. */
+export const claudeSessionStore: AgentSessionStore = {
+  kind: 'claude',
+  latestSessionForCwd: (cwd) => latestSessionForCwd(cwd),
+  copySessionToCwd: (session, toCwd) =>
+    copySessionToCwd({ ...session, mtimeMs: 0 }, toCwd),
+};

@@ -8,7 +8,7 @@ import {
   latestSessionForCwd,
   copySessionToCwd,
   type ClaudeSession,
-} from '../src/main/claude-session';
+} from '../src/main/agent-sessions/claude';
 
 // A normal conversation transcript (has an `assistant` turn).
 const CONV = '{"type":"user","text":"hi"}\n{"type":"assistant","text":"yo"}\n';

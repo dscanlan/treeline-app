@@ -155,33 +155,38 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
   // Resume each agent in its flagged panes once each shell is ready.
   // Best-effort and independent per pane: a missing session just leaves a
   // plain shell. Use the id pinned at save time when we have one; otherwise
-  // resolve the newest now (Claude-only look-up until per-agent session
-  // stores exist — other kinds fall through to their id-less resume, if any).
+  // resolve the newest now through the kind's session store (a kind with no
+  // store resolves null and falls through to its id-less resume, if any).
   for (const { ptyId, cwd, kind, sessionId } of agentResumes) {
     const resume = (id: string | null): void => {
       const cmd = buildRestoreCommand(kind, id);
       if (cmd) writeWhenReady(ptyId, `${cmd}\r`);
     };
     if (sessionId) resume(sessionId);
-    else if (kind === 'claude') void api.claudeSession.latestForCwd(cwd).then(resume);
-    else resume(null);
+    else void api.agentSession.latestForCwd(cwd, kind).then(resume, () => resume(null));
   }
 
   useStore.getState().noteRestored(builtTabs.length, skipped);
 }
 
 /**
- * Continue the parent repo's active Claude conversation inside a newly-created
- * worktree. Asks main to copy the session transcript into the worktree's project
- * folder (Claude keys transcripts by directory, so this is the only way to
- * resume the *same* conversation there), opens a fresh terminal in the worktree,
- * and runs the registry's fork command (`resume.fork`) once its shell is ready
- * — the fork gives the worktree copy its own id so the original stays
- * untouched. Throws when there's no session to resume, so callers can surface it.
+ * Continue the parent repo's active agent conversation inside a newly-created
+ * worktree. Asks main to copy the session into the worktree's store (agents
+ * key sessions by directory, so this is the only way to resume the *same*
+ * conversation there), opens a fresh terminal in the worktree, and runs the
+ * registry's fork command (`resume.fork`) once its shell is ready — the fork
+ * gives the worktree copy its own id so the original stays untouched.
+ * Capability-gated: callers (the drift toast) only offer this for kinds with
+ * both `resume.fork` and a copy-capable session store. Throws when there's no
+ * session to resume, so callers can surface it.
  */
-export async function resumeSessionInWorktree(toWorktree: string): Promise<void> {
-  const prep = await window.treeline.claudeSession.prepareResume(toWorktree);
-  if (!prep) throw new Error('No Claude session found in the parent repo to resume.');
+export async function resumeSessionInWorktree(
+  toWorktree: string,
+  kind: AgentKind = 'claude',
+): Promise<void> {
+  const label = AGENTS[kind].label;
+  const prep = await window.treeline.agentSession.prepareResume(toWorktree, kind);
+  if (!prep) throw new Error(`No ${label} session found in the parent repo to resume.`);
 
   const s = useStore.getState();
 
@@ -212,12 +217,11 @@ export async function resumeSessionInWorktree(toWorktree: string): Promise<void>
   }
 
   // Spawn the worktree fork and resume the copied conversation in it. The
-  // handoff is Claude-only until per-agent session stores land (prepareResume
-  // only knows Claude's transcript layout), so the fork command comes from
-  // the claude registry entry — validated like every id typed into a shell.
-  const forkCap = AGENTS.claude.resume;
+  // fork command comes from the kind's registry entry — validated like every
+  // id typed into a shell.
+  const forkCap = AGENTS[kind].resume;
   if (!forkCap?.fork || !forkCap.isValidSessionId(prep.sessionId)) {
-    throw new Error('No forkable session to continue in the worktree.');
+    throw new Error(`No forkable ${label} session to continue in the worktree.`);
   }
   const { id: forkPty } = await window.treeline.pty.spawn({
     cwd: toWorktree,

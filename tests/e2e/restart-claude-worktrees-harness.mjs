@@ -46,13 +46,13 @@ const log = (...a) => console.log(...a);
 // boots the app on import. So extract the regex literal from the source; if its
 // shape ever changes, this throws loudly rather than testing against a stale copy.
 function loadEncodeProjectDir() {
-  const src = readFileSync(join(ROOT, 'src', 'main', 'claude-session.ts'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src', 'main', 'agent-sessions', 'claude.ts'), 'utf8');
   const m = src.match(
     /export function encodeProjectDir[\s\S]*?return cwd\.replace\((\/[^\n]*?\/[a-z]*),\s*'-'\)/,
   );
   if (!m) {
     throw new Error(
-      'harness: could not extract encodeProjectDir regex from src/main/claude-session.ts — ' +
+      'harness: could not extract encodeProjectDir regex from src/main/agent-sessions/claude.ts — ' +
         'the source shape changed; update loadEncodeProjectDir().',
     );
   }

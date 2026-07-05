@@ -74,7 +74,15 @@ export interface AgentDefinition {
    */
   /** How to resume this agent's sessions, or null → restore as a plain shell. */
   resume: ResumeCapability | null;
-  sessionStore: null; // → per-agent session stores (main-process registry)
+  /**
+   * Whether a main-process session store exists for this agent (the
+   * implementation lives in `main/agent-sessions/` — it touches node:fs, so
+   * this shared entry only carries discriminant flags for UI gating).
+   * `canCopyToCwd` = the store can carry a session into another directory
+   * (worktree handoff); with `resume.fork` it gates the "Continue in new
+   * tab" offer.
+   */
+  sessionStore: { canCopyToCwd: boolean } | null;
   hooks: null; // → per-agent hook wiring (CLI side)
 }
 
@@ -100,7 +108,7 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
       fork: (id) => `claude --resume ${id} --fork-session`,
       isValidSessionId: isFilenameShapedId,
     },
-    sessionStore: null,
+    sessionStore: { canCopyToCwd: true },
     hooks: null,
   },
   opencode: {
@@ -140,7 +148,9 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
       isValidSessionId: () => false,
       resumeWithoutId: 'aider --restore-chat-history',
     },
-    sessionStore: null,
+    // Latest-session look-up only — history can't (verifiably) follow a
+    // directory move, so no handoff.
+    sessionStore: { canCopyToCwd: false },
     hooks: null,
   },
 };

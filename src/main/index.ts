@@ -45,7 +45,7 @@ import { registerSessionIpc } from './ipc/session';
 import { registerScratchpadIpc } from './ipc/scratchpad';
 import { registerFilesIpc } from './ipc/files';
 import { registerSearchIpc } from './ipc/search';
-import { registerClaudeSessionIpc } from './ipc/claude-session';
+import { registerAgentSessionIpc } from './ipc/agent-session';
 import { broadcastTerminalStatus } from './ipc/terminal-status';
 import { getScreenshotId, runScreenshot } from './screenshot';
 import { setupAutoUpdater } from './updater';
@@ -361,7 +361,7 @@ app.whenReady().then(() => {
   });
   registerFilesIpc();
   registerSearchIpc();
-  registerClaudeSessionIpc(ptyManager);
+  registerAgentSessionIpc(ptyManager);
   registerSessionIpc(sessionStore);
   registerScratchpadIpc(scratchpadStore);
 

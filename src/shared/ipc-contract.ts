@@ -319,24 +319,27 @@ export interface TreelineApi {
   };
 
   /**
-   * Continue an existing Claude Code conversation inside a freshly-created
-   * worktree. Claude keys transcripts by directory, so the same session can't be
-   * resumed from a worktree natively; `prepareResume` finds the active session in
-   * the worktree's parent repo and copies its transcript into the worktree's
-   * project folder, returning the session id to pass to `claude --resume`.
-   * Resolves null when the parent repo has no Claude session to resume.
+   * Continue an existing agent conversation inside a freshly-created
+   * worktree, dispatched per-kind through the main-process session-store
+   * registry (main/agent-sessions/). Agents key sessions by directory, so the
+   * same session can't be resumed from a worktree natively; `prepareResume`
+   * finds the active session in the worktree's parent repo and copies it into
+   * the worktree's store, returning the session id to pass to the agent's
+   * resume command. Resolves null when the parent repo has no session to
+   * resume, or the kind has no store / no copy support.
    */
-  claudeSession: {
+  agentSession: {
     prepareResume(
       worktreePath: string,
+      kind: AgentKind,
     ): Promise<{ sessionId: string; originCwd: string } | null>;
     /**
-     * The most-recently-modified Claude session id for `cwd`, or null when that
-     * directory has no transcript. Unlike {@link prepareResume} this copies
-     * nothing — restore uses it to re-run `claude --resume <id>` in a respawned
-     * pane that was running Claude when the session was last saved.
+     * The most-recently-modified session id for `cwd` under `kind`, or null
+     * when that directory has no session (or the kind has no store). Unlike
+     * {@link prepareResume} this copies nothing — restore uses it to re-run
+     * the agent's resume command in a respawned pane.
      */
-    latestForCwd(cwd: string): Promise<string | null>;
+    latestForCwd(cwd: string, kind: AgentKind): Promise<string | null>;
     /**
      * pane (pty) id → kind-tagged session id, as reported by each pane's agent
      * session-start hook over the CLI socket. The debounced session save pins

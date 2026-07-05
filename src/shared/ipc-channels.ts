@@ -79,15 +79,16 @@ export const Channels = {
   ScratchpadGet: 'scratchpad:get',
   ScratchpadSet: 'scratchpad:set',
 
-  // claude session resume (copy a conversation transcript into a worktree's
-  // project folder so `claude --resume` can continue it there)
-  ClaudeSessionPrepareResume: 'claudeSession:prepareResume',
-  // The most-recent Claude session id for a cwd (no copy) — used to re-run
-  // `claude --resume <id>` when restoring a persisted pane that was running it.
-  ClaudeSessionLatestForCwd: 'claudeSession:latestForCwd',
-  // pane id → session id reported by each pane's Claude SessionStart hook —
-  // the save path pins these per-pane (exact even when panes share a cwd).
-  ClaudeSessionIdsByPane: 'claudeSession:idsByPane',
+  // agent session resume, dispatched per-kind through the session-store
+  // registry (main/agent-sessions/): copy a session into a worktree's store
+  // so the agent's resume command can continue it there
+  AgentSessionPrepareResume: 'agentSession:prepareResume',
+  // The most-recent session id for a cwd and agent kind (no copy) — used to
+  // re-run that agent's resume command when restoring a persisted pane.
+  AgentSessionLatestForCwd: 'agentSession:latestForCwd',
+  // pane id → kind-tagged session id reported by each pane's session-start
+  // hook — the save path pins these per-pane (exact even when panes share a cwd).
+  AgentSessionIdsByPane: 'agentSession:idsByPane',
 
   // system (open external URLs via the safe-url allowlist)
   SystemOpenExternal: 'system:openExternal',
