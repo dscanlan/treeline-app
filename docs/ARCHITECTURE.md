@@ -573,7 +573,8 @@ src/
 │   ├── changed-poll.ts           # Changed-files poll interval helper.
 │   ├── keybindings.ts            # Command table + resolve/conflict/reserved (pure).
 │   ├── terminal-theme.ts         # Theme presets: xterm ITheme + app palette + font.
-│   └── claude-detect.ts          # detectClaudeWorktree(path, branch).
+│   ├── agents.ts                 # THE agent registry: kind, label, glyph, colour, basenames, worktree detect, resume/store capabilities.
+│   └── claude-detect.ts          # Deprecated shim over agents.detectAgentWorktree.
 │
 ├── main/
 │   ├── index.ts                  # app.whenReady wiring.
@@ -592,7 +593,10 @@ src/
 │   ├── terminal-status.ts        # 1 s pgrep-style foreground detection.
 │   ├── worktree-watcher.ts       # fs.watch on .git/worktrees + 5 s poll.
 │   ├── worktree-drift-monitor.ts # Flags a PTY whose cwd drifts into another tracked worktree.
-│   ├── claude-session.ts         # Find/copy a Claude transcript across project folders (resume-in-worktree handoff). PURE fs.
+│   ├── agent-sessions/           # Per-agent session stores (AgentSessionStore adapters). PURE fs.
+│   │   ├── claude.ts             # Find/copy a Claude transcript across project folders (resume-in-worktree handoff).
+│   │   ├── aider.ts              # cwd-keyed .aider.chat.history.md look-up (no copy).
+│   │   └── index.ts              # SESSION_STORES registry keyed by AgentKind.
 │   ├── repo-discovery.ts         # PTY cwd → untracked-repo detection (discovered-repo toasts).
 │   ├── repos-store.ts            # Atomic JSON config; schema-versioned.
 │   ├── repos-create.ts           # `git init` flow with new/existing-folder validation.
@@ -605,7 +609,7 @@ src/
 │   │   ├── repos.ts              # repos:list/add/remove/pickDirectory.
 │   │   ├── worktrees.ts          # list/create/remove + onChange events.
 │   │   ├── pty.ts                # spawn/write/resize/kill/pause/resume + data/exit.
-│   │   ├── claude-session.ts     # claudeSession:prepareResume — copy parent-repo session into a worktree.
+│   │   ├── agent-session.ts      # agentSession:prepareResume/latestForCwd/idsByPane — per-kind store dispatch.
 │   │   ├── processes.ts          # snapshot + update events.
 │   │   ├── pr.ts                 # pr:snapshot + pr:update events (latest-per-repo).
 │   │   ├── system.ts             # system:openExternal (safe-url allowlist).
@@ -703,7 +707,10 @@ scripts/
 ├── take-screenshots.sh           # Walks you through capturing README images.
 └── README.md
 
-tests/                            # 26 Vitest suites (main-process logic; renderer verified manually).
+tests/                            # Vitest suites (main-process logic; renderer verified manually).
+├── agents.test.ts
+├── agent-resume.test.ts
+├── agent-sessions.test.ts
 ├── claude-detect.test.ts
 ├── git-porcelain.test.ts
 ├── git.test.ts

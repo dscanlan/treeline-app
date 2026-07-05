@@ -252,8 +252,9 @@ prompt. Nothing respawns until you say so.
 
 Choose **Restore** and treeline rebuilds the session: one fresh shell per pane in
 its original folder, the **full split layout** intact (not flattened), and any
-pane that was running **Claude** picks its conversation back up via
-`claude --resume`. A **"↻ Restored N tabs"** toast confirms it. Tabs whose
+pane that was running an **agent** picks its conversation back up via that
+agent's own resume command (`claude --resume`, `opencode --session`,
+`aider --restore-chat-history`). A **"↻ Restored N tabs"** toast confirms it. Tabs whose
 worktree was deleted while the app was closed are skipped, and the toast says how
 many. (Scrollback from before the restart isn't replayed — a fresh shell starts
 at a clean prompt, and a resumed agent repaints its current view.)
@@ -269,7 +270,7 @@ notification when the window is backgrounded). **`⌘⇧U`** jumps to the
 most-recently-waiting pane; focusing a pane clears it. treeline picks this up
 from **OSC&nbsp;9 / 99 / 777** terminal escape codes, or — for Claude Code, which
 emits none — from its `Stop`/`Notification` hooks via
-[`treeline hooks setup`](docs/CLI.md#claude-code-hooks). See the
+[`treeline hooks setup`](docs/CLI.md#agent-hooks). See the
 [User Guide](docs/USER_GUIDE.md#knowing-when-an-agent-needs-you).
 
 ### Code viewer
@@ -496,13 +497,15 @@ The CLI is a self-contained Node script (`bin/treeline.mjs`) that
 - **From a source checkout**, symlink `bin/treeline.mjs` onto your `PATH`, or let
   `treeline hooks setup` do it.
 
-`treeline hooks setup` also wires **Claude Code** hooks: it adds `Stop` and
-`Notification` entries to `~/.claude/settings.json` that call an internal
-`notify-hook`, turning *"Claude finished / Claude needs input"* into a desktop ping
-from the running app (`treeline hooks remove` reverses it). The hooks point at the
-stable shim so they survive app updates. The hook never blocks Claude — if the app
-is down it exits cleanly without a notification. See [docs/CLI.md](docs/CLI.md) for
-the full reference.
+`treeline hooks setup [--agent <kind>]` also wires **agent** hooks (default:
+Claude Code): for Claude it adds `Stop` and `Notification` entries to
+`~/.claude/settings.json` that call an internal `notify-hook`, turning *"Claude
+finished / Claude needs input"* into a desktop ping from the running app; for
+codex (`--agent codex`) it wires the `notify` key in `~/.codex/config.toml` the
+same way (`treeline hooks remove` reverses either). The hooks point at the
+stable shim so they survive app updates, and never block the agent — if the app
+is down they exit cleanly without a notification. See [docs/CLI.md](docs/CLI.md)
+for the full per-agent support matrix.
 
 > Notifications are delivered by macOS only from a **signed packaged build**; the
 > unsigned `npm run dev` binary is denied by the OS (`UNError 1`). The socket,
