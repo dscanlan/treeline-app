@@ -194,11 +194,13 @@ rebindable in [Settings](#settings--theming).
 
 1. **Terminal escape codes.** Any program that emits an OSC&nbsp;9 / 99 / 777
    desktop-notification sequence lights the pane it ran in. Nothing to set up.
-2. **Claude Code hooks.** Claude Code doesn't emit those codes itself, so run
-   `treeline hooks setup` once (see the
-   [CLI guide](./CLI.md#claude-code-hooks)). It wires Claude Code's *Stop* and
-   *Notification* events to treeline, which maps them back to the exact pane the
-   agent is running in.
+2. **Agent hooks.** Claude Code and codex don't emit those codes themselves,
+   so run `treeline hooks setup` once (Claude Code; see the
+   [CLI guide](./CLI.md#agent-hooks)) or `treeline hooks setup --agent codex`.
+   It wires the agent's own notification mechanism (Claude Code's *Stop* /
+   *Notification* hooks; codex's `notify` config) to treeline, which maps
+   events back to the exact pane the agent is running in. aider has no hook
+   system — path 1 covers it if your setup emits the escape codes.
 
 ---
 

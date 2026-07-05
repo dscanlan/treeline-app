@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:net';
-import { mkdtempSync, readFileSync, rmSync, lstatSync, readlinkSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, lstatSync, readlinkSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -377,5 +377,163 @@ describe('treeline notify-hook', () => {
     });
     expect(res.code).toBe(0);
     expect(existsSync(BIN)).toBe(true);
+  });
+});
+
+describe('treeline hooks setup --agent codex', () => {
+  it('prepends a notify line into codex config.toml (CODEX_HOME honoured)', async () => {
+    const codexHome = tmp();
+    const bin = tmp();
+    const res = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], {
+      env: { CODEX_HOME: codexHome },
+    });
+    expect(res.code).toBe(0);
+    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
+    expect(toml).toContain('notify = [');
+    expect(toml).toContain('notify-hook');
+    expect(toml).toContain(BIN);
+  });
+
+  it('is idempotent (setup twice → one notify line)', async () => {
+    const codexHome = tmp();
+    const bin = tmp();
+    const env = { CODEX_HOME: codexHome };
+    await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
+    const second = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
+    expect(second.code).toBe(0);
+    expect(second.stdout).toContain('already present');
+    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
+    expect(toml.match(/notify = \[/g)).toHaveLength(1);
+  });
+
+  it('preserves existing top-level keys and tables (additive prepend)', async () => {
+    const codexHome = tmp();
+    const bin = tmp();
+    writeFileSync(
+      join(codexHome, 'config.toml'),
+      'model = "o3"\n\n[shell_environment_policy]\ninherit = "all"\n',
+    );
+    await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], {
+      env: { CODEX_HOME: codexHome },
+    });
+    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
+    // Our line comes first (top-level keys must precede any [table]) and
+    // everything the user had is untouched.
+    expect(toml.startsWith('notify = [')).toBe(true);
+    expect(toml).toContain('model = "o3"');
+    expect(toml).toContain('[shell_environment_policy]');
+  });
+
+  it("refuses to overwrite a foreign notify key (fail, don't clobber)", async () => {
+    const codexHome = tmp();
+    const bin = tmp();
+    writeFileSync(join(codexHome, 'config.toml'), 'notify = ["notify-send", "Codex"]\n');
+    const res = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], {
+      env: { CODEX_HOME: codexHome },
+    });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('already sets');
+    // The user's wiring is untouched.
+    expect(readFileSync(join(codexHome, 'config.toml'), 'utf8')).toBe(
+      'notify = ["notify-send", "Codex"]\n',
+    );
+  });
+
+  it('hooks remove --agent codex strips only our line', async () => {
+    const codexHome = tmp();
+    const bin = tmp();
+    writeFileSync(join(codexHome, 'config.toml'), 'model = "o3"\n');
+    const env = { CODEX_HOME: codexHome };
+    await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
+    const res = await run(['hooks', 'remove', '--agent', 'codex'], { env });
+    expect(res.code).toBe(0);
+    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
+    expect(toml).not.toContain('notify-hook');
+    expect(toml).toContain('model = "o3"');
+  });
+});
+
+describe('treeline hooks --agent parsing', () => {
+  it('rejects an unknown agent kind', async () => {
+    const res = await run(['hooks', 'setup', '--agent', 'clippy']);
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('unknown agent');
+  });
+
+  it('aider reports its OSC fallback instead of pretending to wire hooks', async () => {
+    const bin = tmp();
+    const res = await run(['hooks', 'setup', '--agent', 'aider', '--bin-dir', bin]);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain('no hook system');
+    expect(res.stdout).toContain('OSC');
+  });
+
+  it('opencode reports that no adapter exists yet', async () => {
+    const bin = tmp();
+    const res = await run(['hooks', 'setup', '--agent', 'opencode', '--bin-dir', bin]);
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain('no adapter yet');
+  });
+
+  it('default (no --agent) still wires claude — existing muscle memory keeps working', async () => {
+    const cfg = tmp();
+    const bin = tmp();
+    const res = await run(['hooks', 'setup', '--bin-dir', bin], {
+      env: { CLAUDE_CONFIG_DIR: cfg },
+    });
+    expect(res.code).toBe(0);
+    const settings = JSON.parse(readFileSync(join(cfg, 'settings.json'), 'utf8'));
+    expect(settings.hooks.Stop[0].hooks[0].command).toContain('notify-hook');
+  });
+});
+
+describe('treeline agent-session (client verb)', () => {
+  it('sends an agent-session frame with kind, id and pane', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(
+      ['agent-session', '--agent', 'opencode', 'ses_42', 'pane-9'],
+      { env: { TREELINE_SOCK: sock } },
+    );
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({
+      verb: 'agent-session',
+      args: { paneId: 'pane-9', sessionId: 'ses_42', agent: 'opencode' },
+    });
+  });
+
+  it('defaults the pane to $TREELINE_PANE_ID', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['agent-session', '--agent', 'aider', 'sess-1'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-env' },
+    });
+    expect((await received).args).toEqual({
+      paneId: 'pane-env',
+      sessionId: 'sess-1',
+      agent: 'aider',
+    });
+  });
+
+  it('fails (exit 2) without --agent', async () => {
+    const res = await run(['agent-session', 'sess-1', 'pane-1']);
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('--agent');
+  });
+});
+
+describe('treeline notify-hook (codex argv-payload style)', () => {
+  it('accepts the payload as an argv argument and derives codex text', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(
+      ['notify-hook', JSON.stringify({ type: 'agent-turn-complete' })],
+      { env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-cx' } },
+    );
+    expect(res.code).toBe(0);
+    expect((await received).args).toEqual({
+      text: 'codex finished responding',
+      paneId: 'pane-cx',
+    });
   });
 });

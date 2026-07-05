@@ -29,7 +29,7 @@ function makeDeps(over: Partial<CliDeps> = {}): CliDeps {
       wt('/code/app/.claude/worktrees/feat', 'worktree-feat', { isClaude: true }),
     ],
     notify: vi.fn(),
-    recordClaudeSession: vi.fn(() => true),
+    recordAgentSession: vi.fn(() => true),
     openWorktree: vi.fn(),
     sendKeys: vi.fn(),
     browserNavigate: vi.fn(async () => {}),
@@ -127,19 +127,49 @@ describe('buildCliHandlers', () => {
     expect(() => h.notify({})).toThrow(/missing required argument: text/);
   });
 
-  it('claude-session records the pane → session mapping', async () => {
-    const recordClaudeSession = vi.fn(() => true);
-    const h = buildCliHandlers(makeDeps({ recordClaudeSession }));
+  it('claude-session records the pane → session mapping as kind claude (alias)', async () => {
+    const recordAgentSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordAgentSession }));
     const res = await h['claude-session']({ paneId: 'pane-1', sessionId: 'sess-1' });
-    expect(recordClaudeSession).toHaveBeenCalledWith('pane-1', 'sess-1');
+    expect(recordAgentSession).toHaveBeenCalledWith('pane-1', 'claude', 'sess-1');
     expect(res).toEqual({ recorded: true });
   });
 
   it('claude-session echoes recorded:false for an unknown pane', async () => {
-    const h = buildCliHandlers(makeDeps({ recordClaudeSession: vi.fn(() => false) }));
+    const h = buildCliHandlers(makeDeps({ recordAgentSession: vi.fn(() => false) }));
     expect(await h['claude-session']({ paneId: 'ghost', sessionId: 'sess-1' })).toEqual({
       recorded: false,
     });
+  });
+
+  it('agent-session records under the reported kind', async () => {
+    const recordAgentSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordAgentSession }));
+    const res = await h['agent-session']({
+      paneId: 'pane-2',
+      sessionId: 'ses_42',
+      agent: 'opencode',
+    });
+    expect(recordAgentSession).toHaveBeenCalledWith('pane-2', 'opencode', 'ses_42');
+    expect(res).toEqual({ recorded: true });
+  });
+
+  it('agent-session rejects an unknown agent kind', () => {
+    const recordAgentSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordAgentSession }));
+    expect(() =>
+      h['agent-session']({ paneId: 'p', sessionId: 's1', agent: 'clippy' }),
+    ).toThrow(/unknown agent kind/);
+    expect(recordAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('agent-session rejects a shell-unsafe session id, whatever the agent', () => {
+    const recordAgentSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordAgentSession }));
+    expect(() =>
+      h['agent-session']({ paneId: 'p', sessionId: 'x; rm -rf ~', agent: 'opencode' }),
+    ).toThrow(/malformed sessionId/);
+    expect(recordAgentSession).not.toHaveBeenCalled();
   });
 
   it('claude-session requires both paneId and sessionId', () => {
@@ -153,12 +183,12 @@ describe('buildCliHandlers', () => {
   });
 
   it('claude-session rejects a shell-unsafe session id (typed into `claude --resume` later)', () => {
-    const recordClaudeSession = vi.fn(() => true);
-    const h = buildCliHandlers(makeDeps({ recordClaudeSession }));
+    const recordAgentSession = vi.fn(() => true);
+    const h = buildCliHandlers(makeDeps({ recordAgentSession }));
     expect(() => h['claude-session']({ paneId: 'p', sessionId: 'x; rm -rf ~' })).toThrow(
       /malformed sessionId/,
     );
-    expect(recordClaudeSession).not.toHaveBeenCalled();
+    expect(recordAgentSession).not.toHaveBeenCalled();
   });
 
   it('open resolves the worktree then drives openWorktree', async () => {

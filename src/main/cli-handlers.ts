@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import { AGENTS, type AgentKind } from '@shared/agents';
 import type { Repo, Worktree } from '@shared/types';
 import { normalizeBrowserUrl } from '@shared/browser-url';
 import type { CliHandlerMap } from './cli-server';
@@ -23,12 +24,13 @@ export interface CliDeps {
    */
   notify(text: string, cwd?: string, paneId?: string): void;
   /**
-   * Record the Claude session id running in pane `paneId` (reported by the
-   * SessionStart hook over the socket). Returns false when the pane is unknown
-   * — the report is then dropped. Backs per-pane session pinning on save, so a
-   * restored layout resumes each pane's actual conversation.
+   * Record the session id running in pane `paneId` under agent `agent`
+   * (reported by the agent's session-start hook over the socket). Returns
+   * false when the pane is unknown — the report is then dropped. Backs
+   * per-pane session pinning on save, so a restored layout resumes each
+   * pane's actual conversation.
    */
-  recordClaudeSession(paneId: string, sessionId: string): boolean;
+  recordAgentSession(paneId: string, agent: AgentKind, sessionId: string): boolean;
   /** Focus the window and open/focus the tab for `cwd` (drives the renderer). */
   openWorktree(cwd: string): void;
   /** Type `text` into the focused terminal pane (drives the renderer). */
@@ -52,6 +54,25 @@ export interface CliDeps {
   browserClick(selector: string): Promise<unknown>;
   /** Fill the element matched by `selector` with `text` (main-direct, local origins only). */
   browserFill(selector: string, text: string): Promise<unknown>;
+}
+
+/**
+ * Shared body of the `claude-session` / `agent-session` verbs. The id is
+ * later typed into a shell by the agent's resume command on restore, so
+ * accept only filename-shaped ids (Claude's are UUIDs; opencode's `ses_…`) —
+ * never anything the shell could interpret, whatever the agent.
+ */
+function recordAgentSession(
+  deps: CliDeps,
+  args: Record<string, unknown>,
+  agent: AgentKind,
+): { recorded: boolean } {
+  const paneId = reqString(args, 'paneId');
+  const sessionId = reqString(args, 'sessionId');
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(sessionId)) {
+    throw new Error(`malformed sessionId: ${JSON.stringify(sessionId)}`);
+  }
+  return { recorded: deps.recordAgentSession(paneId, agent, sessionId) };
 }
 
 function reqString(args: Record<string, unknown>, key: string): string {
@@ -123,16 +144,16 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
       deps.notify(text, cwd, paneId);
     },
 
-    'claude-session': (args) => {
-      const paneId = reqString(args, 'paneId');
-      const sessionId = reqString(args, 'sessionId');
-      // The id is later typed into a shell as `claude --resume <id>` on restore,
-      // so accept only filename-shaped ids (Claude's are UUIDs) — never anything
-      // the shell could interpret.
-      if (!/^[A-Za-z0-9._-]{1,128}$/.test(sessionId)) {
-        throw new Error(`malformed sessionId: ${JSON.stringify(sessionId)}`);
+    // Claude-only alias of `agent-session` — hooks wired on users' machines
+    // before that verb existed keep working; a `hooks setup` re-run migrates.
+    'claude-session': (args) => recordAgentSession(deps, args, 'claude'),
+
+    'agent-session': (args) => {
+      const agent = reqString(args, 'agent');
+      if (!(agent in AGENTS)) {
+        throw new Error(`unknown agent kind: ${JSON.stringify(agent)}`);
       }
-      return { recorded: deps.recordClaudeSession(paneId, sessionId) };
+      return recordAgentSession(deps, args, agent as AgentKind);
     },
 
     open: async (args) => {

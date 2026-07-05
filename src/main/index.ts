@@ -375,12 +375,11 @@ app.whenReady().then(() => {
       version: app.getVersion(),
       listRepos: () => reposStore?.get().repos ?? [],
       listWorktrees: (repoPath) => listWorktreesIn(repoPath),
-      // SessionStart hook → remember which Claude conversation each pane runs,
-      // so the debounced session save pins the exact id per pane (see
-      // PtyManager.setAgentSession). The `claude-session` CLI verb only ever
-      // reports Claude sessions, hence the fixed kind.
-      recordClaudeSession: (paneId, sessionId) =>
-        ptyManager?.setAgentSession(paneId, 'claude', sessionId) ?? false,
+      // Session-start hooks → remember which conversation each pane runs
+      // (kind-tagged), so the debounced session save pins the exact id per
+      // pane (see PtyManager.setAgentSession).
+      recordAgentSession: (paneId, agent, sessionId) =>
+        ptyManager?.setAgentSession(paneId, agent, sessionId) ?? false,
       notify: (text, cwd, paneId) => {
         // Tie the notification to the pane the agent ran in. The Claude Code hook
         // has no controlling tty to emit an OSC into, so it reports over the

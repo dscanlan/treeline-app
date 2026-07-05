@@ -21,8 +21,10 @@
 //   treeline browser click <selector>  synthetic-click the element (local origins only)
 //   treeline browser fill <selector> <text...>  type into the element (local origins only)
 //   treeline claude-session <session-id> [pane-id]  report the Claude session in a pane
-//   treeline hooks setup [--bin-dir D] wire Claude Code hooks → in-app rings + session pinning
-//   treeline hooks remove
+//   treeline agent-session --agent <kind> <session-id> [pane-id]  same, for any agent kind
+//   treeline hooks setup [--agent <kind>|--all] [--bin-dir D]
+//                                      wire an agent's hooks → in-app rings + session pinning
+//   treeline hooks remove [--agent <kind>|--all]
 //
 // Socket: $TREELINE_SOCK, else the app's userData dir + /cli.sock.
 
@@ -76,8 +78,11 @@ const USAGE = `treeline — drive the running treeline-app
   treeline browser fill <selector> <text...>  type into the element (local origins only)
   treeline claude-session <session-id> [pane-id]  report the Claude session in a pane
                                      (pane defaults to $TREELINE_PANE_ID)
-  treeline hooks setup [--bin-dir D] wire Claude Code hooks → in-app rings + session pinning
-  treeline hooks remove`;
+  treeline agent-session --agent <kind> <session-id> [pane-id]  same, for any agent kind
+  treeline hooks setup [--agent <kind>|--all] [--bin-dir D]
+                                     wire an agent's hooks → in-app rings + session pinning
+                                     (kinds: claude (default), codex; opencode/aider: see docs)
+  treeline hooks remove [--agent <kind>|--all]`;
 
 /** Decode the common backslash escapes so \`send "npm test\\n"\` runs the line. */
 function unescape(s) {
@@ -112,6 +117,20 @@ function buildRequest(argv) {
       if (!sessionId) fail('claude-session requires a <session-id>');
       if (!paneId) fail('claude-session requires a [pane-id] (or $TREELINE_PANE_ID)');
       return { verb, args: { paneId, sessionId } };
+    }
+    case 'agent-session': {
+      // Generalised session report: `agent-session --agent <kind> <id> [pane]`.
+      // The `claude-session` verb above stays as the claude-only alias so hooks
+      // wired on users' machines before this verb existed keep working.
+      const i = rest.indexOf('--agent');
+      const agent = i !== -1 ? rest[i + 1] : undefined;
+      const positional = rest.filter((a, j) => a !== '--agent' && j !== i + 1);
+      const sessionId = positional[0];
+      const paneId = positional[1] || process.env.TREELINE_PANE_ID;
+      if (!agent) fail('agent-session requires --agent <kind>');
+      if (!sessionId) fail('agent-session requires a <session-id>');
+      if (!paneId) fail('agent-session requires a [pane-id] (or $TREELINE_PANE_ID)');
+      return { verb, args: { paneId, sessionId, agent } };
     }
     case 'browser': {
       const action = rest[0];
@@ -209,23 +228,33 @@ function send(req) {
 }
 
 // ----------------------------------------------------------------------------
-// Claude Code hook integration
+// Per-agent hook integration
 // ----------------------------------------------------------------------------
+// Each agent's wiring mechanism is owned by an adapter in HOOK_ADAPTERS below
+// (this file is deliberately dependency-free and Node-only, so the adapters
+// live inline — it cannot import from src/). An agent with a null adapter has
+// no hook system we can wire; the OSC 9/99/777 escape path in the app still
+// works for anything that emits it into its pane.
 
 /** Where Claude Code keeps settings.json (honours CLAUDE_CONFIG_DIR like the app does). */
 function claudeConfigDir() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 }
 
+/** Where codex keeps config.toml (honours CODEX_HOME, codex's own env var). */
+function codexConfigPath() {
+  return join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'config.toml');
+}
+
 // Tags double as the hook subcommand AND the substring used to detect/remove
-// our own entries in settings.json.
+// our own entries in agent config files.
 const HOOK_TAG = 'notify-hook';
 const SESSION_HOOK_TAG = 'claude-session-hook';
 
 /**
- * Every hook we wire: Claude finishing + Claude asking for input (desktop
- * pings), and each session's startup (reports the pane's session id so
- * treeline's session-restore resumes the exact conversation per pane).
+ * Every Claude Code hook we wire: Claude finishing + Claude asking for input
+ * (desktop pings), and each session's startup (reports the pane's session id
+ * so treeline's session-restore resumes the exact conversation per pane).
  * SessionStart also fires on --resume, /clear, and compaction bridges, so the
  * app's pane → session map stays current as the id changes.
  */
@@ -252,30 +281,160 @@ function writeSettings(settingsPath, settings) {
   renameSync(tmp, settingsPath); // atomic
 }
 
-function hooksSetup(opts) {
-  const settingsPath = join(claudeConfigDir(), 'settings.json');
-  const settings = readSettings(settingsPath);
-  settings.hooks ??= {};
+/** Atomic small-file write (tmp+rename), creating the parent dir. */
+function writeAtomic(path, contents) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = path + '.tmp';
+  writeFileSync(tmp, contents);
+  renameSync(tmp, path);
+}
 
-  // Point the hooks at the CLI by ABSOLUTE path so they work regardless of
-  // whether the symlink dir made it onto PATH. Re-running setup is additive:
-  // an install predating a newly-wired event just gains the missing entry.
-  let added = 0;
-  for (const { event, tag } of HOOK_WIRING) {
-    const groups = (settings.hooks[event] ??= []);
-    const already = groups.some((g) =>
-      (g.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes(tag)),
-    );
-    if (already) continue;
-    groups.push({ hooks: [{ type: 'command', command: `${ENTRY} ${tag}` }] });
-    added++;
+/**
+ * Per-agent hook adapters. `setup()`/`remove()` print their own summary lines
+ * and return true when they changed anything; `detect()` says whether the
+ * agent looks installed (drives `--all`). A null adapter documents itself in
+ * `hooksSetup`'s summary instead of pretending: aider has no hook system at
+ * all (attention still works if something in the pane emits an OSC escape),
+ * and opencode's plugin API hasn't been verified against a real install yet.
+ */
+const HOOK_ADAPTERS = {
+  claude: {
+    detect: () => existsSync(claudeConfigDir()),
+    setup() {
+      const settingsPath = join(claudeConfigDir(), 'settings.json');
+      const settings = readSettings(settingsPath);
+      settings.hooks ??= {};
+
+      // Point the hooks at the CLI by ABSOLUTE path so they work regardless of
+      // whether the symlink dir made it onto PATH. Re-running setup is additive:
+      // an install predating a newly-wired event just gains the missing entry.
+      let added = 0;
+      for (const { event, tag } of HOOK_WIRING) {
+        const groups = (settings.hooks[event] ??= []);
+        const already = groups.some((g) =>
+          (g.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes(tag)),
+        );
+        if (already) continue;
+        groups.push({ hooks: [{ type: 'command', command: `${ENTRY} ${tag}` }] });
+        added++;
+      }
+      writeSettings(settingsPath, settings);
+
+      console.log(
+        `claude: ${added > 0 ? `added ${added}` : 'already present'} (${HOOK_EVENTS.join(', ')}) in ${settingsPath}`,
+      );
+      for (const { event, tag } of HOOK_WIRING) console.log(`  ${event}: ${ENTRY} ${tag}`);
+      console.log('  Run /hooks in Claude Code (or restart it) to load the new hooks.');
+      return added > 0;
+    },
+    remove() {
+      const settingsPath = join(claudeConfigDir(), 'settings.json');
+      const settings = readSettings(settingsPath);
+      const tags = HOOK_WIRING.map((w) => w.tag);
+      let removed = 0;
+      for (const event of HOOK_EVENTS) {
+        const groups = settings.hooks?.[event];
+        if (!Array.isArray(groups)) continue;
+        const kept = groups.filter((g) => {
+          const ours = (g.hooks || []).some(
+            (h) => typeof h.command === 'string' && tags.some((t) => h.command.includes(t)),
+          );
+          if (ours) removed++;
+          return !ours;
+        });
+        if (kept.length > 0) settings.hooks[event] = kept;
+        else delete settings.hooks[event];
+      }
+      writeSettings(settingsPath, settings);
+      console.log(`claude: removed ${removed} from ${settingsPath}`);
+      return removed > 0;
+    },
+  },
+
+  codex: {
+    detect: () => existsSync(dirname(codexConfigPath())),
+    setup() {
+      // codex's documented notification wiring is the top-level `notify` key
+      // in config.toml: an argv array codex invokes with a JSON payload as the
+      // final argument (currently fired on agent-turn-complete). codex has no
+      // session-start hook, so there is no per-pane id pinning for it — resume
+      // relies on the session-store side instead.
+      const configPath = codexConfigPath();
+      const current = existsSync(configPath) ? readFileSync(configPath, 'utf8') : '';
+      if (current.includes(HOOK_TAG)) {
+        console.log(`codex: already present in ${configPath}`);
+        return false;
+      }
+      if (/^\s*notify\s*=/m.test(current)) {
+        fail(
+          `codex: ${configPath} already sets \`notify\` — merge \`${ENTRY} ${HOOK_TAG}\` into it manually, then retry`,
+        );
+      }
+      // Top-level keys must precede any [table] section, so prepend.
+      const line = `notify = [${JSON.stringify(ENTRY)}, ${JSON.stringify(HOOK_TAG)}]\n`;
+      writeAtomic(configPath, line + current);
+      console.log(`codex: added notify → ${ENTRY} ${HOOK_TAG} in ${configPath}`);
+      return true;
+    },
+    remove() {
+      const configPath = codexConfigPath();
+      if (!existsSync(configPath)) {
+        console.log('codex: nothing to remove');
+        return false;
+      }
+      const current = readFileSync(configPath, 'utf8');
+      const kept = current
+        .split('\n')
+        .filter((l) => !(/^\s*notify\s*=/.test(l) && l.includes(HOOK_TAG)))
+        .join('\n');
+      if (kept === current) {
+        console.log('codex: nothing to remove');
+        return false;
+      }
+      writeAtomic(configPath, kept);
+      console.log(`codex: removed notify wiring from ${configPath}`);
+      return true;
+    },
+  },
+
+  // opencode's plugin API hasn't been verified against a real install — no
+  // adapter until it is (wire `treeline notify` / `treeline agent-session
+  // --agent opencode` from a plugin manually if you need it today).
+  opencode: null,
+
+  // aider has no hook system at all. Attention still works via OSC 9/99/777
+  // escapes if something in the pane emits them.
+  aider: null,
+};
+
+const ADAPTER_KINDS = Object.keys(HOOK_ADAPTERS);
+
+/** Resolve `--agent <kind>` / `--all` to the list of kinds to act on. */
+function hookAgentsFromArgs(argv) {
+  if (argv.includes('--all')) {
+    return ADAPTER_KINDS.filter((k) => HOOK_ADAPTERS[k]?.detect());
   }
-  writeSettings(settingsPath, settings);
+  const i = argv.indexOf('--agent');
+  const kind = i !== -1 ? argv[i + 1] : 'claude'; // default: today's behaviour
+  if (!ADAPTER_KINDS.includes(kind)) {
+    fail(`hooks: unknown agent "${kind ?? ''}" (expected ${ADAPTER_KINDS.join('|')})`);
+  }
+  return [kind];
+}
 
-  console.log(
-    `hooks: ${added > 0 ? `added ${added}` : 'already present'} (${HOOK_EVENTS.join(', ')}) in ${settingsPath}`,
-  );
-  for (const { event, tag } of HOOK_WIRING) console.log(`  ${event}: ${ENTRY} ${tag}`);
+function hooksSetup(opts) {
+  for (const kind of opts.agents) {
+    const adapter = HOOK_ADAPTERS[kind];
+    if (!adapter) {
+      console.log(
+        kind === 'aider'
+          ? 'aider: no hook system — attention works via OSC escapes if your setup emits them'
+          : `${kind}: no adapter yet (plugin API unverified) — see docs/CLI.md for manual wiring`,
+      );
+      continue;
+    }
+    adapter.setup();
+  }
 
   // Best-effort: put `treeline` on PATH for interactive use.
   const binDir = opts.binDir || join(homedir(), '.local', 'bin');
@@ -296,41 +455,30 @@ function hooksSetup(opts) {
     console.log(`  note: could not symlink into ${binDir}: ${e.message}`);
   }
 
-  console.log('Run /hooks in Claude Code (or restart it) to load the new hooks.');
   process.exit(0);
 }
 
-function hooksRemove() {
-  const settingsPath = join(claudeConfigDir(), 'settings.json');
-  const settings = readSettings(settingsPath);
-  const tags = HOOK_WIRING.map((w) => w.tag);
-  let removed = 0;
-  for (const event of HOOK_EVENTS) {
-    const groups = settings.hooks?.[event];
-    if (!Array.isArray(groups)) continue;
-    const kept = groups.filter((g) => {
-      const ours = (g.hooks || []).some(
-        (h) => typeof h.command === 'string' && tags.some((t) => h.command.includes(t)),
-      );
-      if (ours) removed++;
-      return !ours;
-    });
-    if (kept.length > 0) settings.hooks[event] = kept;
-    else delete settings.hooks[event];
+function hooksRemove(opts) {
+  for (const kind of opts.agents) {
+    const adapter = HOOK_ADAPTERS[kind];
+    if (!adapter) {
+      console.log(`${kind}: nothing wired`);
+      continue;
+    }
+    adapter.remove();
   }
-  writeSettings(settingsPath, settings);
-  console.log(`hooks: removed ${removed} from ${settingsPath}`);
   process.exit(0);
 }
 
 function hooksCmd(argv) {
   const sub = argv[0];
+  const rest = argv.slice(1);
   if (sub === 'setup') {
-    const i = argv.indexOf('--bin-dir');
-    const binDir = i !== -1 ? argv[i + 1] : undefined;
-    return hooksSetup({ binDir });
+    const i = rest.indexOf('--bin-dir');
+    const binDir = i !== -1 ? rest[i + 1] : undefined;
+    return hooksSetup({ binDir, agents: hookAgentsFromArgs(rest) });
   }
-  if (sub === 'remove') return hooksRemove();
+  if (sub === 'remove') return hooksRemove({ agents: hookAgentsFromArgs(rest) });
   fail(`hooks: unknown subcommand "${sub ?? ''}" (expected setup|remove)`);
 }
 
@@ -350,7 +498,7 @@ function hooksCmd(argv) {
  * CRITICAL: this must NEVER fail the hook — it always exits 0, even if the app
  * is down, so it can't disrupt Claude Code.
  */
-function notifyHook() {
+function notifyHook(argvPayload) {
   let done = false;
   const exit0 = () => {
     if (!done) {
@@ -358,14 +506,11 @@ function notifyHook() {
       process.exit(0);
     }
   };
-  // Hard ceiling so a stuck stdin never hangs a Claude Code turn.
+  // Hard ceiling so a stuck stdin never hangs an agent's turn.
   setTimeout(exit0, 2000);
 
-  let input = '';
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', (d) => (input += d));
-  process.stdin.on('end', () => {
-    let text = 'Claude Code';
+  const report = (input) => {
+    let text = 'Agent needs your attention';
     let cwd;
     try {
       const e = JSON.parse(input || '{}');
@@ -373,6 +518,7 @@ function notifyHook() {
       if (typeof e.message === 'string' && e.message) text = e.message;
       else if (e.hook_event_name === 'Stop') text = 'Claude finished responding';
       else if (e.hook_event_name === 'Notification') text = 'Claude needs your attention';
+      else if (e.type === 'agent-turn-complete') text = 'codex finished responding';
       if (cwd) text += ` — ${basename(cwd)}`;
     } catch {
       /* fall back to the default text */
@@ -401,7 +547,20 @@ function notifyHook() {
     } catch {
       exit0();
     }
-  });
+  };
+
+  if (argvPayload !== undefined) {
+    // codex style: the JSON payload arrives as the final argv argument (its
+    // config.toml `notify` array is exec'd with the payload appended), not on
+    // stdin — report it directly.
+    report(argvPayload);
+    return;
+  }
+  // Claude Code style: the payload arrives on stdin.
+  let input = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => (input += d));
+  process.stdin.on('end', () => report(input));
 }
 
 /**
@@ -467,6 +626,6 @@ if (!cmd || cmd === '-h' || cmd === '--help') {
   process.exit(0);
 }
 if (cmd === 'hooks') hooksCmd(args.slice(1));
-else if (cmd === HOOK_TAG) notifyHook();
+else if (cmd === HOOK_TAG) notifyHook(args[1]);
 else if (cmd === SESSION_HOOK_TAG) claudeSessionHook();
 else send(buildRequest(args));

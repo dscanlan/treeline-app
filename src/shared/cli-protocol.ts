@@ -24,8 +24,12 @@ export const CLI_VERBS = [
   // Report the Claude session running in a pane (`args.paneId`, `args.sessionId`;
   // sent by the SessionStart hook, which reads the pane from TREELINE_PANE_ID).
   // Lets session-restore pin each pane's ACTUAL conversation instead of guessing
-  // "newest transcript for the cwd".
+  // "newest transcript for the cwd". Kept as a claude-only alias of
+  // `agent-session` so hooks wired before that verb existed keep working.
   'claude-session',
+  // Generalised session report: `args.paneId`, `args.sessionId`, `args.agent`
+  // (a registry kind). Sent by non-Claude agents' hook wiring.
+  'agent-session',
   // Drive the embedded browser pane:
   // `browser navigate|eval|screenshot|snapshot|query|click|fill`. The
   // sub-action rides in args.action (the wire verb stays a flat identifier).

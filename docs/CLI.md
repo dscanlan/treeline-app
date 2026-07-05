@@ -55,7 +55,7 @@ ln -sf "$(pwd)/bin/treeline.mjs" ~/.local/bin/treeline   # from the repo root
 ```
 
 Or let `hooks setup` create the symlink for you (see
-[Claude Code hooks](#claude-code-hooks)):
+[Agent hooks](#agent-hooks)):
 
 ```bash
 node bin/treeline.mjs hooks setup            # symlinks into ~/.local/bin by default
@@ -102,8 +102,9 @@ treeline <verb> [args]  ──{verb,args}\n──▶  app main process (CliServe
 | `treeline notify <text…>` | Native desktop notification from the app. |
 | `treeline claude-session <session-id> [pane-id]` | Report the Claude session running in a pane (pane defaults to `$TREELINE_PANE_ID`); normally sent by the `SessionStart` hook. |
 | `treeline browser <action> …` | Drive the embedded browser pane (see below). |
-| `treeline hooks setup [--bin-dir D]` | Wire Claude Code hooks + symlink the CLI. |
-| `treeline hooks remove` | Remove the Claude Code hooks this tool added. |
+| `treeline hooks setup [--agent K\|--all] [--bin-dir D]` | Wire an agent's hooks + symlink the CLI (default agent: claude). |
+| `treeline hooks remove [--agent K\|--all]` | Remove the hook wiring this tool added for an agent. |
+| `treeline agent-session --agent K <session-id> [pane-id]` | Report the session running in a pane, for any agent kind. |
 
 ### How `<repo>` is matched
 
@@ -177,10 +178,28 @@ treeline browser screenshot ./after.png         # verify
 
 ---
 
-## Claude Code hooks
+## Agent hooks
 
-`treeline hooks setup` wires agent-attention notifications and per-pane session
-pinning for Claude Code, and installs the CLI symlink, in one step:
+`treeline hooks setup [--agent <kind>]` wires an agent's attention
+notifications (and, where the agent supports it, per-pane session pinning) and
+installs the CLI symlink, in one step. Each agent's wiring mechanism is owned
+by an adapter; the support matrix:
+
+| Agent | Notifications | Session pinning | Mechanism |
+|---|---|---|---|
+| `claude` (default) | ✅ | ✅ | `settings.json` hook entries (below) |
+| `codex` | ✅ | — (no session-start hook; resume relies on the session store) | top-level `notify` key in `config.toml` (honours `CODEX_HOME`) |
+| `opencode` | manual | manual | no adapter yet — its plugin API is unverified; a plugin can call `treeline notify` / `treeline agent-session --agent opencode` |
+| `aider` | OSC fallback | — | no hook system; anything that emits OSC 9/99/777 in the pane still lights it |
+
+`--all` wires every agent whose config directory is detected. `hooks remove
+[--agent <kind>|--all]` strips exactly what the adapter added — a foreign
+`notify` key in codex's `config.toml` is never overwritten (setup fails with
+instructions instead).
+
+### Claude Code (the `claude` adapter)
+
+For Claude Code, `hooks setup` does the following:
 
 - Adds `Stop` and `Notification` hook entries to Claude Code's `settings.json`
   that call this script's internal `notify-hook`. When Claude finishes or asks
@@ -230,8 +249,8 @@ pinning for Claude Code, and installs the CLI symlink, in one step:
 These are **separate**:
 
 - `treeline hooks remove` strips only the hook entries this tool added (it
-  matches the `notify-hook` / `claude-session-hook` tags). It does **not**
-  touch any symlink.
+  matches the `notify-hook` / `claude-session-hook` tags; for codex, the
+  `notify` line containing `notify-hook`). It does **not** touch any symlink.
 - To uninstall the global CLI, delete the symlink: `rm /usr/local/bin/treeline`
   (menu install) or `rm ~/.local/bin/treeline` (`hooks setup` / manual). The
   auto-injected launcher under `<userData>/bin` only exists inside the app's own
