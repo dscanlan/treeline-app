@@ -259,21 +259,21 @@ async function main() {
 
   let saved = existsSync(sessionPath) ? JSON.parse(readFileSync(sessionPath, 'utf8')) : null;
   const savedLeaves = (saved?.tabs ?? []).flatMap((t) => leavesOf(t.root));
-  const claudeLeaves = savedLeaves.filter((l) => l.claudePane);
+  const claudeLeaves = savedLeaves.filter((l) => l.agentKind === 'claude');
   log('  session.json tabs        :', saved?.tabs?.length ?? 0);
-  log('  leaves flagged claudePane:', claudeLeaves.length);
+  log('  leaves tagged agentKind claude:', claudeLeaves.length);
   for (const l of savedLeaves) {
-    log(`    • ${l.cwd}  claudePane=${l.claudePane}  id=${l.claudeSessionId ?? '<none>'}`);
+    log(`    • ${l.cwd}  agentKind=${l.agentKind}  id=${l.agentSessionId ?? '<none>'}`);
   }
 
   findings.push(['two worktree tabs persisted', (saved?.tabs?.length ?? 0) === 2]);
   findings.push(['both panes flagged as Claude panes', claudeLeaves.length === 2]);
   const idsPinnedRight = worktrees.every((wt) =>
-    savedLeaves.some((l) => l.cwd === wt && l.claudeSessionId === sessionIds[wt]),
+    savedLeaves.some((l) => l.cwd === wt && l.agentSessionId === sessionIds[wt]),
   );
   findings.push(['each pane pinned the newest session id (by cwd)', idsPinnedRight]);
   const staleSkipped = worktrees.every((wt) =>
-    savedLeaves.every((l) => l.claudeSessionId !== staleIds[wt]),
+    savedLeaves.every((l) => l.agentSessionId !== staleIds[wt]),
   );
   findings.push(['the older stale conversation was not pinned', staleSkipped]);
 

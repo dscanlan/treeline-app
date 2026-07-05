@@ -19,8 +19,8 @@ const SESSION: PersistedSession = {
         direction: 'h',
         sizes: [0.5, 0.5],
         children: [
-          { kind: 'leaf', id: 'a', cwd: '/wt', title: 'a', claudePane: true },
-          { kind: 'leaf', id: 'b', cwd: '/wt', title: 'b', claudePane: false },
+          { kind: 'leaf', id: 'a', cwd: '/wt', title: 'a', agentKind: 'claude' },
+          { kind: 'leaf', id: 'b', cwd: '/wt', title: 'b' },
         ],
       },
     },
@@ -73,9 +73,9 @@ describe('coerceSession', () => {
     const s = coerceSession({
       version: 1,
       tabs: [
-        { id: 'ok', cwd: '/x', title: 'x', focusedPaneId: 'l', root: { kind: 'leaf', id: 'l', cwd: '/x', title: 'x', claudePane: false } },
+        { id: 'ok', cwd: '/x', title: 'x', focusedPaneId: 'l', root: { kind: 'leaf', id: 'l', cwd: '/x', title: 'x' } },
         { id: 'no-root', cwd: '/y' },
-        { cwd: '/z', root: { kind: 'leaf', id: 'm', cwd: '/z', title: 'm', claudePane: false } },
+        { cwd: '/z', root: { kind: 'leaf', id: 'm', cwd: '/z', title: 'm' } },
       ],
       activeTabId: 'ok',
     });
@@ -97,13 +97,13 @@ describe('coerceSession', () => {
             id: 's',
             direction: 'h',
             sizes: [1],
-            children: [{ kind: 'leaf', id: 'a', cwd: '/x', title: 'a', claudePane: false }],
+            children: [{ kind: 'leaf', id: 'a', cwd: '/x', title: 'a' }],
           },
         },
       ],
       activeTabId: 't',
     });
-    expect(s.tabs[0].root).toEqual({ kind: 'leaf', id: 'a', cwd: '/x', title: 'a', claudePane: false });
+    expect(s.tabs[0].root).toEqual({ kind: 'leaf', id: 'a', cwd: '/x', title: 'a' });
   });
 
   it('nulls an activeTabId that no surviving tab matches', () => {
@@ -111,7 +111,7 @@ describe('coerceSession', () => {
     expect(s.activeTabId).toBeNull();
   });
 
-  it('preserves a valid pinned claudeSessionId and drops a non-string one', () => {
+  it('preserves a valid pinned agentSessionId and drops a non-string one', () => {
     const make = (sessionId: unknown) => ({
       version: 1,
       tabs: [
@@ -120,16 +120,16 @@ describe('coerceSession', () => {
           cwd: '/x',
           title: 'x',
           focusedPaneId: 'a',
-          root: { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', claudePane: true, claudeSessionId: sessionId },
+          root: { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', agentKind: 'claude', agentSessionId: sessionId },
         },
       ],
       activeTabId: 't',
     });
     const kept = coerceSession(make('sess-1')).tabs[0].root;
-    expect(kept).toMatchObject({ claudePane: true, claudeSessionId: 'sess-1' });
+    expect(kept).toMatchObject({ agentKind: 'claude', agentSessionId: 'sess-1' });
 
     const dropped = coerceSession(make(42)).tabs[0].root;
-    expect('claudeSessionId' in dropped).toBe(false);
+    expect('agentSessionId' in dropped).toBe(false);
   });
 
   it('preserves a scratch tab flag, and drops a non-true value', () => {
@@ -142,7 +142,7 @@ describe('coerceSession', () => {
           title: 'Scratch 1',
           focusedPaneId: 'a',
           scratch,
-          root: { kind: 'leaf', id: 'a', cwd: '/home/me', title: 'Scratch 1', claudePane: false },
+          root: { kind: 'leaf', id: 'a', cwd: '/home/me', title: 'Scratch 1' },
         },
       ],
       activeTabId: 't',
@@ -151,6 +151,157 @@ describe('coerceSession', () => {
     // Anything other than the literal `true` (e.g. a truthy string) is dropped.
     expect('scratch' in coerceSession(make('yes')).tabs[0]).toBe(false);
     expect('scratch' in coerceSession(make(false)).tabs[0]).toBe(false);
+  });
+
+  it('migrates a legacy claudePane/claudeSessionId leaf on read', () => {
+    // Shape-based migration: presence of `claudePane` marks a legacy
+    // (pre-agent-registry, ≤v0.22.0) snapshot. Writes only ever emit the new
+    // shape, so the legacy keys must not survive coercion.
+    const s = coerceSession({
+      version: 1,
+      tabs: [
+        {
+          id: 't',
+          cwd: '/x',
+          title: 'x',
+          focusedPaneId: 'a',
+          root: {
+            kind: 'split',
+            id: 's',
+            direction: 'h',
+            sizes: [0.5, 0.5],
+            children: [
+              { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', claudePane: true, claudeSessionId: 'sess-1' },
+              { kind: 'leaf', id: 'b', cwd: '/x', title: 'b', claudePane: false },
+            ],
+          },
+        },
+      ],
+      activeTabId: 't',
+    });
+    const root = s.tabs[0].root;
+    if (root.kind !== 'split') throw new Error('expected split');
+    const [a, b] = root.children;
+    expect(a).toEqual({
+      kind: 'leaf',
+      id: 'a',
+      cwd: '/x',
+      title: 'a',
+      agentKind: 'claude',
+      agentSessionId: 'sess-1',
+    });
+    expect(b).toEqual({ kind: 'leaf', id: 'b', cwd: '/x', title: 'b' });
+    expect('claudePane' in a).toBe(false);
+    expect('claudeSessionId' in a).toBe(false);
+  });
+
+  it('a full legacy v0.22.0 session.json on disk restores through SessionStore migrated', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'treeline-session-migrate-'));
+    const sessionPath = join(dir, 'session.json');
+    try {
+      writeFileSync(
+        sessionPath,
+        JSON.stringify({
+          version: 1,
+          tabs: [
+            {
+              id: 'tab-1',
+              cwd: '/repo',
+              title: 'repo',
+              focusedPaneId: 'p1',
+              root: {
+                kind: 'leaf',
+                id: 'p1',
+                cwd: '/repo',
+                title: 'repo',
+                claudePane: true,
+                claudeSessionId: 'abc-123',
+              },
+            },
+          ],
+          activeTabId: 'tab-1',
+        }),
+        'utf8',
+      );
+      const store = new SessionStore(sessionPath);
+      const loaded = store.load();
+      expect(loaded.tabs[0].root).toEqual({
+        kind: 'leaf',
+        id: 'p1',
+        cwd: '/repo',
+        title: 'repo',
+        agentKind: 'claude',
+        agentSessionId: 'abc-123',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('drops an agentSessionId that arrives without an agentKind', () => {
+    const s = coerceSession({
+      version: 1,
+      tabs: [
+        {
+          id: 't',
+          cwd: '/x',
+          title: 'x',
+          focusedPaneId: 'a',
+          root: { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', agentSessionId: 'orphan' },
+        },
+      ],
+      activeTabId: 't',
+    });
+    expect('agentSessionId' in s.tabs[0].root).toBe(false);
+  });
+
+  it('degrades an unknown agentKind (snapshot from a newer build) to a plain shell', () => {
+    const s = coerceSession({
+      version: 1,
+      tabs: [
+        {
+          id: 't',
+          cwd: '/x',
+          title: 'x',
+          focusedPaneId: 'a',
+          root: { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', agentKind: 'cursor-9000', agentSessionId: 'z' },
+        },
+      ],
+      activeTabId: 't',
+    });
+    expect(s.tabs[0].root).toEqual({ kind: 'leaf', id: 'a', cwd: '/x', title: 'a' });
+  });
+
+  it('round-trips a non-claude agent pane through save → disk → load', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'treeline-session-opencode-'));
+    const sessionPath = join(dir, 'session.json');
+    try {
+      const store = new SessionStore(sessionPath);
+      store.load();
+      await store.set({
+        version: 1,
+        tabs: [
+          {
+            id: 't',
+            cwd: '/x',
+            title: 'x',
+            focusedPaneId: 'a',
+            root: { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', agentKind: 'opencode' },
+          },
+        ],
+        activeTabId: 't',
+      });
+      const fresh = new SessionStore(sessionPath);
+      expect(fresh.load().tabs[0].root).toEqual({
+        kind: 'leaf',
+        id: 'a',
+        cwd: '/x',
+        title: 'a',
+        agentKind: 'opencode',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('defaults mismatched split sizes to an even split', () => {
@@ -168,8 +319,8 @@ describe('coerceSession', () => {
             direction: 'v',
             sizes: [0.9], // wrong length for 2 children
             children: [
-              { kind: 'leaf', id: 'a', cwd: '/x', title: 'a', claudePane: false },
-              { kind: 'leaf', id: 'b', cwd: '/x', title: 'b', claudePane: false },
+              { kind: 'leaf', id: 'a', cwd: '/x', title: 'a' },
+              { kind: 'leaf', id: 'b', cwd: '/x', title: 'b' },
             ],
           },
         },

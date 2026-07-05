@@ -4,6 +4,7 @@
 // (persistedToLiveTree, renderer). Lives in `shared/` (like `pane-tree.ts`) so
 // the node tsconfig can typecheck `tests/session-serialize.test.ts`.
 
+import { KIND_BY_BASENAME, type AgentKind } from './agents';
 import type {
   PersistedLeaf,
   PersistedNode,
@@ -14,32 +15,49 @@ import type {
 import { leaves, makeLeaf, type PaneNode } from './pane-tree';
 
 /**
- * A pane was a "Claude pane" iff its foreground command was `claude` at save.
- * For those, pin the session id so restore resumes that exact conversation
- * instead of re-deriving the newest one later. `sessionIdByPane` (keyed by the
- * live pty id, reported by the Claude Code SessionStart hook) identifies the
- * pane's ACTUAL session and wins; `sessionIdByCwd` (newest transcript for the
- * directory) is the fallback for panes with no reported id — it can't tell two
- * panes in the same cwd apart. Both empty → no pin; restore then falls back to
- * a fresh look-up.
+ * A pane's session id as pinned in PtyManager: the id an agent's session-start
+ * hook reported, tagged with the kind it was reported under so a pin recorded
+ * for one agent is never applied to a pane now running another.
+ */
+export interface PinnedAgentSession {
+  kind: AgentKind;
+  sessionId: string;
+}
+
+/**
+ * A pane is an "agent pane" iff its foreground command mapped to a registry
+ * kind at save (via KIND_BY_BASENAME). For those, pin the session id so
+ * restore resumes that exact conversation instead of re-deriving the newest
+ * one later. `sessionIdByPane` (keyed by the live pty id, reported by the
+ * agent's session-start hook) identifies the pane's ACTUAL session and wins —
+ * but only when its recorded kind matches the pane's current agent.
+ * `sessionIdByCwd` (newest transcript for the directory — Claude-only until
+ * other agents grow session stores) is the fallback for claude panes with no
+ * reported id; it can't tell two panes in the same cwd apart. Both empty → no
+ * pin; restore then falls back to a fresh look-up.
  */
 function toPersistedNode(
   node: PaneNode,
   sessionIdByCwd: Map<string, string>,
-  sessionIdByPane: Map<string, string>,
+  sessionIdByPane: Map<string, PinnedAgentSession>,
 ): PersistedNode {
   if (node.kind === 'leaf') {
-    const claudePane = node.foregroundCmd === 'claude';
-    const claudeSessionId = claudePane
-      ? (sessionIdByPane.get(node.ptyId) ?? sessionIdByCwd.get(node.cwd))
+    const agentKind = node.foregroundCmd ? KIND_BY_BASENAME[node.foregroundCmd] : undefined;
+    const pinned = sessionIdByPane.get(node.ptyId);
+    const agentSessionId = agentKind
+      ? pinned && pinned.kind === agentKind
+        ? pinned.sessionId
+        : agentKind === 'claude'
+          ? sessionIdByCwd.get(node.cwd)
+          : undefined
       : undefined;
     return {
       kind: 'leaf',
       id: node.id,
       cwd: node.cwd,
       title: node.title,
-      claudePane,
-      ...(claudeSessionId ? { claudeSessionId } : {}),
+      ...(agentKind ? { agentKind } : {}),
+      ...(agentSessionId ? { agentSessionId } : {}),
     };
   }
   return {
@@ -55,7 +73,7 @@ function toPersistedTab(
   tab: Tab,
   sessionIdByCwd: Map<string, string>,
   scratchPtyIds: Set<string>,
-  sessionIdByPane: Map<string, string>,
+  sessionIdByPane: Map<string, PinnedAgentSession>,
 ): PersistedTab {
   // A scratch terminal is an unsplit tab whose sole pane is a known scratch PTY.
   // A scratch the user split is no longer represented in the scratch slice, so
@@ -73,19 +91,20 @@ function toPersistedTab(
 
 /**
  * Snapshot the current tabs into the on-disk shape (drops runtime-only fields).
- * `sessionIdByPane` pins each Claude pane's session id by its live pty id (the
- * id its SessionStart hook reported — exact even when panes share a cwd);
- * `sessionIdByCwd` is the per-directory fallback for panes with no reported id.
- * Pass empty maps to skip pinning (restore falls back to resolving the id on
- * the fly). `scratchPtyIds` flags which tabs were scratch terminals so restore
- * can re-seed the (memory-only) scratch slice; pass an empty set to skip flagging.
+ * `sessionIdByPane` pins each agent pane's session id by its live pty id (the
+ * id its session-start hook reported, kind-tagged — exact even when panes
+ * share a cwd); `sessionIdByCwd` is the per-directory fallback for claude
+ * panes with no reported id. Pass empty maps to skip pinning (restore falls
+ * back to resolving the id on the fly). `scratchPtyIds` flags which tabs were
+ * scratch terminals so restore can re-seed the (memory-only) scratch slice;
+ * pass an empty set to skip flagging.
  */
 export function toPersistedSession(
   tabs: Tab[],
   activeTabId: string | null,
   sessionIdByCwd: Map<string, string> = new Map(),
   scratchPtyIds: Set<string> = new Set(),
-  sessionIdByPane: Map<string, string> = new Map(),
+  sessionIdByPane: Map<string, PinnedAgentSession> = new Map(),
 ): PersistedSession {
   return {
     version: 1,
@@ -95,15 +114,21 @@ export function toPersistedSession(
 }
 
 /**
- * The distinct cwds of every Claude pane across `tabs` (for save-time id
- * pinning). Panes whose pty is in `pinnedPtyIds` already carry an exact
- * per-pane id, so their cwds don't need the newest-transcript fallback look-up.
+ * The distinct cwds of every pane whose foreground command maps to `kind` (for
+ * save-time id pinning). Panes whose pty is in `pinnedPtyIds` already carry an
+ * exact per-pane id, so their cwds don't need the newest-session fallback
+ * look-up.
  */
-export function claudePaneCwds(tabs: Tab[], pinnedPtyIds: Set<string> = new Set()): string[] {
+export function agentPaneCwds(
+  tabs: Tab[],
+  kind: AgentKind,
+  pinnedPtyIds: Set<string> = new Set(),
+): string[] {
   const cwds = new Set<string>();
   for (const t of tabs) {
     for (const leaf of leaves(t.root)) {
-      if (leaf.foregroundCmd === 'claude' && !pinnedPtyIds.has(leaf.ptyId)) cwds.add(leaf.cwd);
+      const leafKind = leaf.foregroundCmd ? KIND_BY_BASENAME[leaf.foregroundCmd] : undefined;
+      if (leafKind === kind && !pinnedPtyIds.has(leaf.ptyId)) cwds.add(leaf.cwd);
     }
   }
   return [...cwds];

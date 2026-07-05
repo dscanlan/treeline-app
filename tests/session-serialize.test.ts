@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeLeaf, type PaneNode, type PaneSplit } from '@shared/pane-tree';
 import type { PersistedSplit, Tab } from '@shared/types';
 import {
-  claudePaneCwds,
+  agentPaneCwds,
   persistedLeaves,
   persistedToLiveTree,
   rebuildTabsByCwd,
@@ -48,7 +48,7 @@ function splitTab(): Tab {
 }
 
 describe('toPersistedSession', () => {
-  it('strips runtime-only fields and flags claude panes', () => {
+  it('strips runtime-only fields and tags agent panes with their kind', () => {
     const session = toPersistedSession([splitTab()], 'tab-1');
     expect(session.version).toBe(1);
     expect(session.activeTabId).toBe('tab-1');
@@ -60,8 +60,8 @@ describe('toPersistedSession', () => {
 
     const [a, b] = root.children;
     // Runtime fields gone: no ptyId / status / foregroundCmd on the persisted leaf.
-    expect(a).toEqual({ kind: 'leaf', id: 'a', cwd: '/wt', title: 'a', claudePane: true });
-    expect(b).toEqual({ kind: 'leaf', id: 'b', cwd: '/wt', title: 'b', claudePane: false });
+    expect(a).toEqual({ kind: 'leaf', id: 'a', cwd: '/wt', title: 'a', agentKind: 'claude' });
+    expect(b).toEqual({ kind: 'leaf', id: 'b', cwd: '/wt', title: 'b' });
     expect('ptyId' in a).toBe(false);
     expect('foregroundCmd' in a).toBe(false);
   });
@@ -82,17 +82,17 @@ describe('toPersistedSession', () => {
       id: 'a',
       cwd: '/wt',
       title: 'a',
-      claudePane: true,
-      claudeSessionId: 'sess-9',
+      agentKind: 'claude',
+      agentSessionId: 'sess-9',
     });
-    // The non-claude pane never gets an id, even if its cwd is in the map.
-    expect('claudeSessionId' in b).toBe(false);
+    // The non-agent pane never gets an id, even if its cwd is in the map.
+    expect('agentSessionId' in b).toBe(false);
   });
 
   it('omits the pin when the cwd is absent from the map', () => {
     const session = toPersistedSession([splitTab()], 'tab-1', new Map());
     const root = session.tabs[0].root as PersistedSplit;
-    expect('claudeSessionId' in root.children[0]).toBe(false);
+    expect('agentSessionId' in root.children[0]).toBe(false);
   });
 });
 
@@ -127,14 +127,14 @@ describe('toPersistedSession — per-pane pinning', () => {
       new Map(),
       new Set(),
       new Map([
-        ['a-pty', 'sess-a'],
-        ['b-pty', 'sess-b'],
+        ['a-pty', { kind: 'claude' as const, sessionId: 'sess-a' }],
+        ['b-pty', { kind: 'claude' as const, sessionId: 'sess-b' }],
       ]),
     );
     const root = session.tabs[0].root as PersistedSplit;
     const [a, b] = root.children;
-    expect(a).toMatchObject({ claudePane: true, claudeSessionId: 'sess-a' });
-    expect(b).toMatchObject({ claudePane: true, claudeSessionId: 'sess-b' });
+    expect(a).toMatchObject({ agentKind: 'claude', agentSessionId: 'sess-a' });
+    expect(b).toMatchObject({ agentKind: 'claude', agentSessionId: 'sess-b' });
   });
 
   it('prefers the pane pin over the cwd pin', () => {
@@ -143,10 +143,10 @@ describe('toPersistedSession — per-pane pinning', () => {
       'tab-1',
       new Map([['/wt', 'sess-cwd']]),
       new Set(),
-      new Map([['a-pty', 'sess-pane']]),
+      new Map([['a-pty', { kind: 'claude' as const, sessionId: 'sess-pane' }]]),
     );
     const root = session.tabs[0].root as PersistedSplit;
-    expect(root.children[0]).toMatchObject({ claudeSessionId: 'sess-pane' });
+    expect(root.children[0]).toMatchObject({ agentSessionId: 'sess-pane' });
   });
 
   it('falls back to the cwd pin for a pane with no reported session', () => {
@@ -155,23 +155,82 @@ describe('toPersistedSession — per-pane pinning', () => {
       'tab-2',
       new Map([['/wt', 'sess-cwd']]),
       new Set(),
-      new Map([['a-pty', 'sess-a']]),
+      new Map([['a-pty', { kind: 'claude' as const, sessionId: 'sess-a' }]]),
     );
     const root = session.tabs[0].root as PersistedSplit;
-    expect(root.children[0]).toMatchObject({ claudeSessionId: 'sess-a' });
-    expect(root.children[1]).toMatchObject({ claudeSessionId: 'sess-cwd' });
+    expect(root.children[0]).toMatchObject({ agentSessionId: 'sess-a' });
+    expect(root.children[1]).toMatchObject({ agentSessionId: 'sess-cwd' });
   });
 
-  it('never pins a pane id onto a non-claude pane', () => {
+  it('never pins a pane id onto a non-agent pane', () => {
     const session = toPersistedSession(
       [splitTab()], // leaf b runs vim
       'tab-1',
       new Map(),
       new Set(),
-      new Map([['b-pty', 'sess-b']]),
+      new Map([['b-pty', { kind: 'claude' as const, sessionId: 'sess-b' }]]),
     );
     const root = session.tabs[0].root as PersistedSplit;
-    expect('claudeSessionId' in root.children[1]).toBe(false);
+    expect('agentSessionId' in root.children[1]).toBe(false);
+  });
+
+  it('drops a pin recorded under a different kind than the pane now runs', () => {
+    // Pane a's pty carries a claude-reported id, but the pane has since been
+    // taken over by opencode — applying the stale claude id would resume the
+    // wrong agent's session, so the pin must be dropped (and the claude-only
+    // cwd fallback must not apply to an opencode pane either).
+    const root: PaneSplit = {
+      kind: 'split',
+      id: 'split-3',
+      direction: 'h',
+      children: [
+        liveLeaf('a', { foregroundCmd: 'opencode' }),
+        liveLeaf('b', { foregroundCmd: 'vim' }),
+      ],
+      sizes: [0.5, 0.5],
+    };
+    const tab: Tab = {
+      id: 'tab-3',
+      cwd: '/wt',
+      title: 'wt',
+      root,
+      focusedPaneId: 'a',
+      createdAt: 0,
+      lastActiveAt: 0,
+    };
+    const session = toPersistedSession(
+      [tab],
+      'tab-3',
+      new Map([['/wt', 'sess-cwd']]),
+      new Set(),
+      new Map([['a-pty', { kind: 'claude' as const, sessionId: 'stale-claude-id' }]]),
+    );
+    const persisted = (session.tabs[0].root as PersistedSplit).children[0];
+    expect(persisted).toMatchObject({ agentKind: 'opencode' });
+    expect('agentSessionId' in persisted).toBe(false);
+  });
+
+  it('applies a matching-kind pin onto a non-claude agent pane', () => {
+    const tab: Tab = {
+      id: 'tab-4',
+      cwd: '/wt',
+      title: 'wt',
+      root: liveLeaf('a', { foregroundCmd: 'opencode' }),
+      focusedPaneId: 'a',
+      createdAt: 0,
+      lastActiveAt: 0,
+    };
+    const session = toPersistedSession(
+      [tab],
+      'tab-4',
+      new Map(),
+      new Set(),
+      new Map([['a-pty', { kind: 'opencode' as const, sessionId: 'oc-1' }]]),
+    );
+    expect(session.tabs[0].root).toMatchObject({
+      agentKind: 'opencode',
+      agentSessionId: 'oc-1',
+    });
   });
 });
 
@@ -210,20 +269,21 @@ describe('toPersistedSession — scratch flag', () => {
   });
 });
 
-describe('claudePaneCwds', () => {
-  it('returns the distinct cwds of claude panes only', () => {
+describe('agentPaneCwds', () => {
+  it('returns the distinct cwds of panes running the given kind only', () => {
     const t1 = splitTab(); // leaf a (claude) + b (vim), both /wt
     const t2 = { ...splitTab(), id: 't2', cwd: '/other' };
-    expect(claudePaneCwds([t1, t2])).toEqual(['/wt']);
+    expect(agentPaneCwds([t1, t2], 'claude')).toEqual(['/wt']);
+    expect(agentPaneCwds([t1, t2], 'opencode')).toEqual([]);
   });
 
-  it('skips claude panes whose pty already has a per-pane pin', () => {
+  it('skips panes whose pty already has a per-pane pin', () => {
     // splitTab()'s only claude pane is `a` (ptyId a-pty); once it's pinned
     // per-pane there's no cwd left needing the fallback look-up.
-    expect(claudePaneCwds([splitTab()], new Set(['a-pty']))).toEqual([]);
+    expect(agentPaneCwds([splitTab()], 'claude', new Set(['a-pty']))).toEqual([]);
   });
 
-  it('is empty when no pane runs claude', () => {
+  it('is empty when no pane runs the kind', () => {
     const tab: Tab = {
       id: 't',
       cwd: '/x',
@@ -233,7 +293,7 @@ describe('claudePaneCwds', () => {
       createdAt: 0,
       lastActiveAt: 0,
     };
-    expect(claudePaneCwds([tab])).toEqual([]);
+    expect(agentPaneCwds([tab], 'claude')).toEqual([]);
   });
 });
 

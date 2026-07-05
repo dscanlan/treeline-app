@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, basename } from 'node:path';
+import { AGENTS, type AgentKind } from '@shared/agents';
 import type {
   PersistedNode,
   PersistedSession,
@@ -93,15 +94,16 @@ function coerceNode(raw: unknown): PersistedNode | null {
   const n = raw as Record<string, unknown>;
   if (n.kind === 'leaf') {
     if (typeof n.id !== 'string' || typeof n.cwd !== 'string') return null;
+    const agentKind = migrateLeafAgentKind(n);
+    // A session id is meaningless without a kind to resume it under.
+    const agentSessionId = agentKind ? migrateLeafSessionId(n) : undefined;
     return {
       kind: 'leaf',
       id: n.id,
       cwd: n.cwd,
       title: typeof n.title === 'string' ? n.title : '',
-      claudePane: n.claudePane === true,
-      ...(typeof n.claudeSessionId === 'string'
-        ? { claudeSessionId: n.claudeSessionId }
-        : {}),
+      ...(agentKind ? { agentKind } : {}),
+      ...(agentSessionId ? { agentSessionId } : {}),
     };
   }
   if (n.kind === 'split') {
@@ -122,6 +124,28 @@ function coerceNode(raw: unknown): PersistedNode | null {
     return { kind: 'split', id: n.id, direction: n.direction, children, sizes };
   }
   return null;
+}
+
+/**
+ * Read-path migration: pre-agent-registry snapshots recorded "was this pane
+ * running Claude" as `claudePane: boolean` (+ `claudeSessionId`). Presence of
+ * the legacy key unambiguously marks a legacy leaf (both new keys are
+ * optional), so no schema-version bump is needed — writes always emit the new
+ * shape, dropping the legacy keys. An unknown `agentKind` string (a snapshot
+ * from a newer build) degrades to "plain shell" rather than failing the load.
+ */
+function migrateLeafAgentKind(n: Record<string, unknown>): AgentKind | undefined {
+  if (typeof n.agentKind === 'string' && n.agentKind in AGENTS) {
+    return n.agentKind as AgentKind;
+  }
+  if (n.claudePane === true) return 'claude';
+  return undefined;
+}
+
+function migrateLeafSessionId(n: Record<string, unknown>): string | undefined {
+  if (typeof n.agentSessionId === 'string') return n.agentSessionId;
+  if (typeof n.claudeSessionId === 'string') return n.claudeSessionId;
+  return undefined;
 }
 
 async function writeAtomic(path: string, contents: string): Promise<void> {

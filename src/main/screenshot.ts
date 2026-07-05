@@ -651,7 +651,7 @@ const SCENARIOS: Record<string, Scenario> = {
               id: 'restore-main-pane',
               cwd: main.path,
               title: 'treeline-app',
-              claudePane: true,
+              agentKind: 'claude',
             },
           },
           {
@@ -664,7 +664,6 @@ const SCENARIOS: Record<string, Scenario> = {
               id: 'restore-feat-pane',
               cwd: featWt.path,
               title: 'feat-auth',
-              claudePane: false,
             },
           },
         ],

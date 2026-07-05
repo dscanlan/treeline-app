@@ -6,7 +6,7 @@ import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
 import { registerScratchCleanup } from '../actions/scratch';
 import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
-import { claudePaneCwds, toPersistedSession } from '@shared/session-serialize';
+import { agentPaneCwds, toPersistedSession } from '@shared/session-serialize';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
@@ -356,17 +356,21 @@ export function attachIpc(): () => void {
     saveTimer = null;
     const s = useStore.getState();
     if (s.pendingRestore) return;
-    // Pin each Claude pane's session id *now*, while that pane is the live
+    // Pin each agent pane's session id *now*, while that pane is the live
     // session, so restore resumes the exact conversation instead of re-deriving
     // "newest for the cwd" later (a reload could race it). Primary source: the
-    // id each pane's SessionStart hook reported (keyed by pty id — exact even
-    // when two panes share a cwd). Fallback for panes with no reported id (hook
-    // not installed / session predates it): newest transcript for the cwd.
+    // kind-tagged id each pane's session-start hook reported (keyed by pty id —
+    // exact even when two panes share a cwd). Fallback for claude panes with no
+    // reported id (hook not installed / session predates it): newest transcript
+    // for the cwd — Claude-only until other agents grow session stores.
     // Best-effort: a failed look-up just omits the pin and restore falls back
     // to a fresh resolve.
     const rawByPane = await window.treeline.claudeSession.idsByPane().catch(() => ({}));
     const sessionIdByPane = new Map(Object.entries(rawByPane));
-    const cwds = claudePaneCwds(s.tabs, new Set(sessionIdByPane.keys()));
+    const pinnedClaudePtys = new Set(
+      [...sessionIdByPane].filter(([, v]) => v.kind === 'claude').map(([k]) => k),
+    );
+    const cwds = agentPaneCwds(s.tabs, 'claude', pinnedClaudePtys);
     const sessionIdByCwd = new Map<string, string>();
     await Promise.all(
       cwds.map(async (cwd) => {

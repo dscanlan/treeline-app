@@ -91,8 +91,11 @@ export async function restoreSession(saved: PersistedSession): Promise<void> {
       const { id: ptyId } = await api.pty.spawn({ cwd: leaf.cwd, cols: 80, rows: 24 });
       ptyByLeafId.set(leaf.id, ptyId);
       // Prefer the id pinned at save time; fall back to resolving it now.
-      if (leaf.claudePane) {
-        claudeResumes.push({ ptyId, cwd: leaf.cwd, sessionId: leaf.claudeSessionId });
+      // Restore only acts on claude panes today — other kinds round-trip
+      // through the snapshot but respawn as plain shells until their resume
+      // commands exist.
+      if (leaf.agentKind === 'claude') {
+        claudeResumes.push({ ptyId, cwd: leaf.cwd, sessionId: leaf.agentSessionId });
       }
     }
 

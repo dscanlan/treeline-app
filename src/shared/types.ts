@@ -155,8 +155,9 @@ export interface Tab {
  *
  * Dropped vs the live tree: `ptyId` (stale on restart), `status` / `foregroundCmd`
  * (runtime-derived), `createdAt` (re-stamped on respawn). A leaf instead records
- * {@link PersistedLeaf.claudePane} — whether it was running `claude` at save time
- * — so restore can re-run `claude --resume <id>` (the id re-derived from disk).
+ * {@link PersistedLeaf.agentKind} — which agent was in the foreground at save
+ * time — so restore can re-run that agent's resume command (the id re-derived
+ * from disk when not pinned).
  */
 export interface PersistedLeaf {
   kind: 'leaf';
@@ -164,17 +165,23 @@ export interface PersistedLeaf {
   id: string;
   cwd: string;
   title: string;
-  /** True if this pane's foreground command was `claude` when last persisted. */
-  claudePane: boolean;
   /**
-   * The Claude session id pinned at save time (the latest transcript for `cwd`
-   * when the layout was written). Restore resumes *this* id rather than
-   * re-deriving "newest for the cwd" at restore time, which a reload could race.
-   * Absent when the pane wasn't running Claude, or no transcript existed yet —
-   * restore then falls back to a fresh look-up. A best-effort heuristic still:
-   * with two app instances writing the same cwd it can't disambiguate them.
+   * Which agent was in the foreground when last persisted; absent = plain
+   * shell. Optional-enum shape so adding an agent never changes the schema.
+   * (Legacy snapshots carried `claudePane: boolean` / `claudeSessionId` —
+   * migrated on read by `session-store.ts`.)
    */
-  claudeSessionId?: string;
+  agentKind?: AgentKind;
+  /**
+   * The agent's session id pinned at save time (semantics per agent; for
+   * Claude, the latest transcript for `cwd` when the layout was written).
+   * Restore resumes *this* id rather than re-deriving "newest for the cwd" at
+   * restore time, which a reload could race. Absent when the pane wasn't
+   * running an agent, or no session existed yet — restore then falls back to a
+   * fresh look-up. A best-effort heuristic still: with two app instances
+   * writing the same cwd it can't disambiguate them.
+   */
+  agentSessionId?: string;
 }
 
 export interface PersistedSplit {

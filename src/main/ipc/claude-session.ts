@@ -45,11 +45,11 @@ export function registerClaudeSessionIpc(ptyManager: PtyManager): () => void {
     return session?.id ?? null;
   });
 
-  // pane id → session id, as reported by each pane's Claude SessionStart hook
-  // (over the CLI socket). The renderer's debounced session save pins these
-  // per-pane — exact even when two panes share a cwd, where latestForCwd can't
-  // tell the conversations apart.
-  ipcMain.handle(Channels.ClaudeSessionIdsByPane, () => ptyManager.claudeSessionIds());
+  // pane id → kind-tagged session id, as reported by each pane's session-start
+  // hook (over the CLI socket). The renderer's debounced session save pins
+  // these per-pane — exact even when two panes share a cwd, where latestForCwd
+  // can't tell the conversations apart.
+  ipcMain.handle(Channels.ClaudeSessionIdsByPane, () => ptyManager.agentSessionIds());
 
   return () => {
     ipcMain.removeHandler(Channels.ClaudeSessionPrepareResume);

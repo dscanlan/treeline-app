@@ -306,8 +306,8 @@ async function main() {
   const savedTabs = saved?.tabs ?? [];
   log('  session.json tabs:', savedTabs.length);
   const pinned = savedTabs.map((t) => {
-    const claude = leavesOf(t.root).filter((l) => l.claudePane);
-    return claude[0]?.claudeSessionId ?? null;
+    const claude = leavesOf(t.root).filter((l) => l.agentKind === 'claude');
+    return claude[0]?.agentSessionId ?? null;
   });
   savedTabs.forEach((t, i) =>
     log(`    • tab[${i}] ${t.cwd}  pinned=${pinned[i] ?? '<none>'}`),

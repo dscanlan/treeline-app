@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import type { AgentKind } from '@shared/agents';
 import { Channels } from '@shared/ipc-channels';
 import type { ScreenshotHydratePayload, TreelineApi } from '@shared/ipc-contract';
 import type { CliRendererCommand } from '@shared/cli-protocol';
@@ -165,7 +166,9 @@ const api: TreelineApi = {
     latestForCwd: (cwd) =>
       ipcRenderer.invoke(Channels.ClaudeSessionLatestForCwd, cwd) as Promise<string | null>,
     idsByPane: () =>
-      ipcRenderer.invoke(Channels.ClaudeSessionIdsByPane) as Promise<Record<string, string>>,
+      ipcRenderer.invoke(Channels.ClaudeSessionIdsByPane) as Promise<
+        Record<string, { kind: AgentKind; sessionId: string }>
+      >,
   },
 
   session: {

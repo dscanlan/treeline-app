@@ -221,30 +221,31 @@ describe('PtyManager', () => {
     expect('scratchLabel' in byId.get(p.id)!).toBe(false);
   });
 
-  it('setClaudeSession records an id echoed by claudeSessionIds; unknown panes are dropped', () => {
+  it('setAgentSession records a kind-tagged id echoed by agentSessionIds; unknown panes are dropped', () => {
     const mgr = new PtyManager(() => new FakePty(), undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
 
-    expect(mgr.claudeSessionIds()).toEqual({});
-    expect(mgr.setClaudeSession('no-such-pane', 'sess-x')).toBe(false);
-    expect(mgr.claudeSessionIds()).toEqual({});
+    expect(mgr.agentSessionIds()).toEqual({});
+    expect(mgr.setAgentSession('no-such-pane', 'claude', 'sess-x')).toBe(false);
+    expect(mgr.agentSessionIds()).toEqual({});
 
-    expect(mgr.setClaudeSession(id, 'sess-1')).toBe(true);
-    expect(mgr.claudeSessionIds()).toEqual({ [id]: 'sess-1' });
+    expect(mgr.setAgentSession(id, 'claude', 'sess-1')).toBe(true);
+    expect(mgr.agentSessionIds()).toEqual({ [id]: { kind: 'claude', sessionId: 'sess-1' } });
 
-    // A re-report (new session / --resume / /clear in the same pane) overwrites.
-    expect(mgr.setClaudeSession(id, 'sess-2')).toBe(true);
-    expect(mgr.claudeSessionIds()).toEqual({ [id]: 'sess-2' });
+    // A re-report (new session / --resume / /clear in the same pane) overwrites —
+    // including one from a different agent taking over the pane.
+    expect(mgr.setAgentSession(id, 'opencode', 'sess-2')).toBe(true);
+    expect(mgr.agentSessionIds()).toEqual({ [id]: { kind: 'opencode', sessionId: 'sess-2' } });
   });
 
-  it('claudeSessionIds drops an entry once its PTY exits', () => {
+  it('agentSessionIds drops an entry once its PTY exits', () => {
     const fake = new FakePty();
     const mgr = new PtyManager(() => fake, undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
-    mgr.setClaudeSession(id, 'sess-1');
+    mgr.setAgentSession(id, 'claude', 'sess-1');
 
     fake.emitExit(0);
-    expect(mgr.claudeSessionIds()).toEqual({});
+    expect(mgr.agentSessionIds()).toEqual({});
   });
 
   it("list() reflects a PTY's latest cwd after an OSC 7 change", async () => {

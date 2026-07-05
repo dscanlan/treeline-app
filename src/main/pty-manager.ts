@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import type { AgentKind } from '@shared/agents';
 import { run } from './util/exec';
 
 // Avoid binding node-pty's IPty type at module-evaluation time (the binding may
@@ -80,15 +81,16 @@ interface PtyEntry {
   /** Scratch-terminal sidebar label, if this PTY backs one (see SpawnOpts). */
   scratchLabel?: string;
   /**
-   * The Claude Code session id last reported for this pane (by the SessionStart
-   * hook, via the CLI socket). Identifies the pane's ACTUAL conversation for
-   * save-time pinning — unlike the per-cwd newest-transcript heuristic, it can
-   * tell two panes in the same directory apart. Overwritten on every report
-   * (new session / --resume / /clear / compaction bridge all re-fire the hook);
+   * The agent session last reported for this pane (by the agent's
+   * session-start hook, via the CLI socket), tagged with the agent kind it was
+   * reported under. Identifies the pane's ACTUAL conversation for save-time
+   * pinning — unlike the per-cwd newest-transcript heuristic, it can tell two
+   * panes in the same directory apart. Overwritten on every report (new
+   * session / --resume / /clear / compaction bridge all re-fire the hook);
    * dies with the entry. A stale value is harmless: the renderer only pins it
-   * onto panes whose foreground command is still `claude`.
+   * onto panes whose current foreground agent matches the recorded kind.
    */
-  claudeSessionId?: string;
+  agentSession?: { kind: AgentKind; sessionId: string };
 }
 
 export interface PtyDataEvent {
@@ -316,22 +318,23 @@ export class PtyManager extends EventEmitter {
   }
 
   /**
-   * Record the Claude session id reported for pane `id` (SessionStart hook →
-   * CLI socket). Returns false when no such PTY exists — unknown pane ids are
-   * dropped rather than accumulated.
+   * Record the session id reported for pane `id` (an agent's session-start
+   * hook → CLI socket), tagged with the agent kind that reported it. Returns
+   * false when no such PTY exists — unknown pane ids are dropped rather than
+   * accumulated.
    */
-  setClaudeSession(id: string, sessionId: string): boolean {
+  setAgentSession(id: string, kind: AgentKind, sessionId: string): boolean {
     const entry = this.ptys.get(id);
     if (!entry) return false;
-    entry.claudeSessionId = sessionId;
+    entry.agentSession = { kind, sessionId };
     return true;
   }
 
-  /** Every pane's last-reported Claude session id, for save-time pinning. */
-  claudeSessionIds(): Record<string, string> {
-    const out: Record<string, string> = {};
+  /** Every pane's last-reported agent session (kind-tagged), for save-time pinning. */
+  agentSessionIds(): Record<string, { kind: AgentKind; sessionId: string }> {
+    const out: Record<string, { kind: AgentKind; sessionId: string }> = {};
     for (const [id, e] of this.ptys) {
-      if (e.claudeSessionId !== undefined) out[id] = e.claudeSessionId;
+      if (e.agentSession !== undefined) out[id] = { ...e.agentSession };
     }
     return out;
   }
