@@ -15,6 +15,7 @@ import { createSettingsSlice, type SettingsSlice } from './settings-slice';
 import { createReattachSlice, type ReattachSlice } from './reattach-slice';
 import { createRestoreSlice, type RestoreSlice } from './restore-slice';
 import { createSearchSlice, type SearchSlice } from './search-slice';
+import { createVaultSlice, type VaultSlice } from './vault-slice';
 
 export type AppStore = ReposSlice &
   TabsSlice &
@@ -31,7 +32,8 @@ export type AppStore = ReposSlice &
   SettingsSlice &
   ReattachSlice &
   RestoreSlice &
-  SearchSlice;
+  SearchSlice &
+  VaultSlice;
 
 export const useStore = create<AppStore>()((...a) => ({
   ...createReposSlice(...a),
@@ -50,4 +52,5 @@ export const useStore = create<AppStore>()((...a) => ({
   ...createReattachSlice(...a),
   ...createRestoreSlice(...a),
   ...createSearchSlice(...a),
+  ...createVaultSlice(...a),
 }));

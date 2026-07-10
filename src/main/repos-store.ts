@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS: SettingsConfig = {
   fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   fontSize: DEFAULT_TERMINAL_FONT_SIZE,
   keybindings: {},
+  vaultPath: null,
 };
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -197,6 +198,10 @@ export class ReposStore {
           if (typeof v === 'string') kb[k] = v;
         }
         base.settings.keybindings = kb;
+      }
+      // vaultPath — added after schemaVersion 4; absent/invalid lands on null.
+      if (typeof s.vaultPath === 'string' && s.vaultPath.trim().length > 0) {
+        base.settings.vaultPath = s.vaultPath;
       }
     }
     // schemaVersion is rewritten to current on every save — no need to read it.

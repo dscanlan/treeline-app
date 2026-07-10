@@ -124,8 +124,29 @@ File view loads (no separate fetch), so toggling between them is free.
 lists, …) + `rehype-highlight` (fenced-code highlighting, themed via
 `.hljs-*` rules in `globals.css`). It emits React elements only — no
 `dangerouslySetInnerHTML` and no raw embedded HTML — so it stays within the
-renderer's strict CSP; links use `target="_blank"`, which routes through the
-main window's `setWindowOpenHandler` (safe schemes → `shell.openExternal`).
+renderer's strict CSP; external links use `target="_blank"`, which routes
+through the main window's `setWindowOpenHandler` (safe schemes →
+`shell.openExternal`).
+
+**Notes reader (wikilinks + frontmatter).** The preview also reads
+wiki-style markdown notes. A dependency-free remark plugin
+(`shared/remark-wikilink.ts`, string logic in `shared/note-link.ts`) rewrites
+`[[wikilinks]]` in mdast *text* nodes into links with a `wikilink:` href —
+operating on the parsed tree means code fences and inline code are untouched
+by construction. react-markdown's default `urlTransform` strips unknown
+schemes, so `MarkdownView` whitelists `wikilink:` explicitly. Clicks resolve
+basename → path against a per-root note index built from the existing
+`search.files` (ripgrep) listing — cached in `vault-slice`, rebuilt on each
+note open (plain folders have no fs watcher); gitignored notes are invisible
+by construction. The resolution root is `settings.vaultPath` when the note is
+inside it (Settings → Notes), else the longest containing pinned
+folder/worktree/repo (`actions/vault.ts:containingRootFor`). Unresolvable
+targets render as dim spans. Relative `.md` hrefs resolve against the note's
+directory and open in-panel; absolute-scheme links keep the external path
+above. Leading YAML frontmatter is split off (`shared/frontmatter.ts`, a
+tolerant display-only parser — no YAML dep) and rendered as a properties
+table. No new IPC surface: reads ride `files.read`, indexing rides
+`search.files`.
 
 **Editing.** The File view flips editable via the panel's `Edit` button
 (`editing` + a `draft` in the editor slice). `⌘S` / Save calls

@@ -274,6 +274,19 @@ Click the **folder icon** on a worktree row to expand its file tree.
   the terminal. Clicking a file in **Changed** opens its **diff** (working tree
   vs `HEAD`); a **`Diff | File`** toggle flips between them.
 - **Markdown** files open on a rendered **Preview** (`Preview | Diff | File`).
+- **Notes & wikilinks.** The Preview understands wiki-style markdown notes
+  (the format used by Obsidian, Logseq, and similar apps — but any folder of
+  markdown works):
+  `[[wikilinks]]` (including `[[note|alias]]` and `[[note#heading]]`) render as
+  links and open the target note **in the same panel** — resolved by filename
+  within the containing vault. Relative markdown links (`[text](other.md)`)
+  also open in-panel; regular `https://` links still open in your OS browser.
+  A link whose target doesn't exist renders dimmed with a "Note not found"
+  tooltip. YAML frontmatter is shown as a compact properties table instead of
+  raw `---` fences. By default the "vault" is the pinned repo/folder containing
+  the note; set an explicit vault root under **Settings → Notes** if your vault
+  lives inside a larger repo. (Notes hidden by `.gitignore` aren't indexed, so
+  links to them show as not found.)
 - **Editing.** Click **Edit**, change the file, and save with **⌘S** (an amber
   dot marks unsaved changes; writes are atomic). Navigating away with unsaved
   edits prompts first.
@@ -288,7 +301,9 @@ Files over 1 MB are shown truncated; binary files show a placeholder.
 `~/.claude/commands`). A non-git folder is pinned as a top-level node with the
 same editable file tree — but no worktrees and no **Changed**/diff view (those
 are git-only). Editing existing files only; creating new files from the tree
-isn't supported yet.
+isn't supported yet. Clicking the folder row **selects** it (highlighted), which
+makes it the scope for ⌘⇧P quick-open and ⌘⇧F find-in-files — handy for a
+notes vault.
 
 ![A non-git folder open in the sidebar](img/33-open-folder.png)
 

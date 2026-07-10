@@ -39,6 +39,7 @@ describe('settings migration (schemaVersion 3)', () => {
         'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
       fontSize: 13,
       keybindings: {},
+      vaultPath: null,
     });
   });
 

@@ -235,6 +235,13 @@ export interface SettingsConfig {
   fontSize: number;
   /** Sparse command id → accelerator overrides over the factory defaults. */
   keybindings: Record<string, string>;
+  /**
+   * Absolute path of the user's notes vault — any folder of markdown notes.
+   * When set, it takes precedence as the wikilink-resolution root
+   * for notes inside it; when null, resolution falls back to the containing
+   * pinned folder/worktree/repo. Added post-v4; default-filled to null.
+   */
+  vaultPath: string | null;
 }
 
 export interface AppConfig {

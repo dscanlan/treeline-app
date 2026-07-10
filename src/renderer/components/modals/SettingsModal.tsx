@@ -135,6 +135,29 @@ export function SettingsModal() {
           </div>
         </section>
 
+        {/* ── Notes ──────────────────────────────────────────────────── */}
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs uppercase tracking-wide text-treeline-dim">Notes</h3>
+
+          <label className="flex flex-col gap-1 text-xs text-treeline-dim">
+            Vault folder
+            <input
+              type="text"
+              value={draft.vaultPath ?? ''}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, vaultPath: e.target.value.trim() || null }))
+              }
+              placeholder="/absolute/path/to/your/notes"
+              spellCheck={false}
+              className="rounded bg-treeline-highlight px-2 py-1 font-mono text-treeline-text focus:outline-none focus:ring-1 focus:ring-treeline-cyan"
+            />
+          </label>
+          <p className="text-[11px] text-treeline-dim">
+            Root for resolving [[wikilinks]] in markdown previews — any folder of markdown
+            notes. Leave empty to resolve within the containing pinned repo or folder.
+          </p>
+        </section>
+
         {/* ── Keybindings ────────────────────────────────────────────── */}
         <section className="flex flex-col gap-2">
           <h3 className="text-xs uppercase tracking-wide text-treeline-dim">Keybindings</h3>

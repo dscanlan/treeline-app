@@ -172,6 +172,7 @@ function settingsCfg(overrides: Partial<SettingsConfig> = {}): SettingsConfig {
     fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
     fontSize: DEFAULT_TERMINAL_FONT_SIZE,
     keybindings: {},
+    vaultPath: null,
     ...overrides,
   };
 }

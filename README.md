@@ -50,6 +50,8 @@ Open tabs are saved and offered back after a full restart, a
 persistent scratchpad side panel rides alongside them, and a scoped
 fuzzy quick-open (⌘⇧P) plus find-in-files (⌘⇧F) search the active repo.
 Merged worktrees are greyed out in the sidebar with a "merged" badge.
+Markdown previews understand wiki-style `[[wikilinks]]` and YAML frontmatter,
+so any pinned folder of markdown notes is browsable in-app.
 
 ## Install
 

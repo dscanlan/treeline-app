@@ -117,6 +117,7 @@ describe('ReposStore', () => {
       fontFamily: 'Fira Code, monospace',
       fontSize: 16,
       keybindings: { toggleSidebar: 'CmdOrCtrl+Shift+B' },
+      vaultPath: '/Users/example/notes',
     });
     const b = new ReposStore(configPath);
     const cfg = b.load();
@@ -124,6 +125,21 @@ describe('ReposStore', () => {
     expect(cfg.settings.fontFamily).toBe('Fira Code, monospace');
     expect(cfg.settings.fontSize).toBe(16);
     expect(cfg.settings.keybindings).toEqual({ toggleSidebar: 'CmdOrCtrl+Shift+B' });
+    expect(cfg.settings.vaultPath).toBe('/Users/example/notes');
+  });
+
+  it('default-fills vaultPath to null on a config that predates it', () => {
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        repos: [],
+        settings: { terminalTheme: 'midnight', fontFamily: 'x', fontSize: 14, keybindings: {} },
+        schemaVersion: 4,
+      }),
+    );
+    const cfg = new ReposStore(configPath).load();
+    expect(cfg.settings.vaultPath).toBeNull();
+    expect(cfg.settings.terminalTheme).toBe('midnight');
   });
 
   it('survives a corrupt config file by falling back to defaults', () => {

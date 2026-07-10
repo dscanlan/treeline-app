@@ -17,6 +17,7 @@ interface Props {
 export function FolderNode({ folder }: Props) {
   const open = useStore((s) => !!s.expandedDirs[folder.path]);
   const setFolders = useStore((s) => s.setFolders);
+  const selected = useStore((s) => s.selectedSidebarPath === folder.path);
 
   const onRemove = async () => {
     await window.treeline.folders.remove(folder.path);
@@ -29,10 +30,19 @@ export function FolderNode({ folder }: Props) {
 
   return (
     <div className="group/folder mt-2" data-ss="folder-node" data-ss-folder={folder.path}>
-      <div className="flex items-center gap-1 rounded px-2 py-1 hover:bg-treeline-highlight">
+      <div
+        className={`flex items-center gap-1 rounded px-2 py-1 ${
+          selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight'
+        }`}
+      >
         <button
           type="button"
-          onClick={() => void toggleDir(folder.path)}
+          onClick={() => {
+            // Selecting the folder makes it the ⌘P / ⌘⇧F search scope, like a
+            // worktree row.
+            useStore.getState().setSelected(folder.path);
+            void toggleDir(folder.path);
+          }}
           aria-expanded={open}
           title={folder.path}
           className="flex flex-1 items-center gap-2 text-left text-treeline-text"

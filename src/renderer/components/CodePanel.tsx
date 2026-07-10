@@ -134,6 +134,7 @@ export function CodePanel() {
             error={s.openFileError}
             binary={s.openFileBinary}
             source={s.openFileText}
+            filePath={s.openFilePath}
           />
         ) : (
           <FileBody
@@ -198,16 +199,18 @@ function MarkdownBody({
   error,
   binary,
   source,
+  filePath,
 }: {
   loading: boolean;
   error: string | null;
   binary: boolean;
   source: string | null;
+  filePath: string | null;
 }) {
   if (loading) return <Centered>Loading…</Centered>;
   if (error) return <Centered tone="error">{error}</Centered>;
   if (binary) return <Centered>Binary file — can&apos;t display.</Centered>;
-  if (source !== null) return <MarkdownView source={source} />;
+  if (source !== null) return <MarkdownView source={source} filePath={filePath ?? undefined} />;
   return null;
 }
 

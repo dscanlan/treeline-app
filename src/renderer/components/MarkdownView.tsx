@@ -1,6 +1,22 @@
-import ReactMarkdown, { type Components } from 'react-markdown';
+import { useEffect, useMemo, type ReactNode } from 'react';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import {
+  parseWikilinkHref,
+  resolveNoteTarget,
+  WIKILINK_SCHEME,
+  type NoteIndex,
+} from '@shared/note-link';
+import { remarkWikilinks } from '@shared/remark-wikilink';
+import { splitFrontmatter, parseFrontmatterEntries } from '@shared/frontmatter';
+import { useStore } from '../store';
+import {
+  containingRootFor,
+  ensureNoteIndex,
+  openRelativeNoteLink,
+  openWikilink,
+} from '../actions/vault';
 
 /**
  * Rendered markdown view for the code panel's Preview mode. Renders to React
@@ -11,8 +27,13 @@ import rehypeHighlight from 'rehype-highlight';
  * plugin). Fenced code blocks are highlighted by rehype-highlight; their colors
  * come from the `.hljs-*` rules in globals.css.
  *
- * Links open in the OS browser: `target="_blank"` routes the click through the
- * main process's setWindowOpenHandler, which only hands safe schemes to the OS.
+ * External links open in the OS browser: `target="_blank"` routes the click
+ * through the main process's setWindowOpenHandler, which only hands safe
+ * schemes to the OS. Note links stay in-app: `[[wikilinks]]` (rewritten to
+ * `wikilink:` hrefs by remarkWikilinks) resolve against the containing vault's
+ * note index, and relative `.md` hrefs resolve against the previewed file's
+ * directory — both open in this same panel. YAML frontmatter is split off and
+ * rendered as a properties block instead of literal markdown.
  */
 const components: Components = {
   h1: ({ children }) => (
@@ -40,16 +61,7 @@ const components: Components = {
     </h6>
   ),
   p: ({ children }) => <p className="my-3 leading-relaxed text-treeline-text">{children}</p>,
-  a: ({ children, href }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="text-treeline-cyan underline decoration-treeline-cyan/40 hover:decoration-treeline-cyan"
-    >
-      {children}
-    </a>
-  ),
+  // `a` is provided per render by makeAnchor (it needs the vault context).
   ul: ({ children }) => <ul className="my-3 list-disc pl-6 text-treeline-text">{children}</ul>,
   ol: ({ children }) => <ol className="my-3 list-decimal pl-6 text-treeline-text">{children}</ol>,
   li: ({ children }) => <li className="my-1 leading-relaxed">{children}</li>,
@@ -99,15 +111,159 @@ const components: Components = {
   ),
 };
 
-export function MarkdownView({ source }: { source: string }) {
+// The default transform strips unknown protocols, which would empty every
+// wikilink: href — whitelist the scheme explicitly.
+function urlTransform(url: string): string {
+  return url.startsWith(WIKILINK_SCHEME) ? url : defaultUrlTransform(url);
+}
+
+/** True for hrefs like `./note.md` or `sub/note.md` — no scheme, not a fragment. */
+function isRelativeHref(href: string): boolean {
+  return !/^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith('#') && !href.startsWith('//');
+}
+
+const anchorClass =
+  'text-treeline-cyan underline decoration-treeline-cyan/40 hover:decoration-treeline-cyan';
+
+/**
+ * Anchor override that routes note links in-app. Built per render because it
+ * closes over the current file's vault root and note index.
+ */
+function makeAnchor(
+  root: string | null,
+  index: NoteIndex | undefined,
+  filePath: string | undefined,
+): Components['a'] {
+  const Anchor = ({ children, href }: { children?: ReactNode; href?: string }) => {
+    const url = href ?? '';
+
+    if (url.startsWith(WIKILINK_SCHEME)) {
+      const parts = parseWikilinkHref(url);
+      const target = parts ? (parts.heading ? `${parts.target}#${parts.heading}` : parts.target) : null;
+      const unresolved =
+        !target || root === null || (index !== undefined && !resolveNoteTarget(index, target));
+      if (unresolved) {
+        return (
+          <span
+            className="text-treeline-dim"
+            title={`Note not found: ${target ?? url}`}
+            data-ss="wikilink-missing"
+          >
+            {children}
+          </span>
+        );
+      }
+      return (
+        <a
+          href={url}
+          className={anchorClass}
+          data-ss="wikilink"
+          onClick={(e) => {
+            e.preventDefault();
+            void openWikilink(root, target);
+          }}
+        >
+          {children}
+        </a>
+      );
+    }
+
+    if (url.startsWith('#')) {
+      // In-document heading links: no scroll support in v1 — inert.
+      return (
+        <a href={url} className={anchorClass} onClick={(e) => e.preventDefault()}>
+          {children}
+        </a>
+      );
+    }
+
+    if (filePath && url.length > 0 && isRelativeHref(url)) {
+      return (
+        <a
+          href={url}
+          className={anchorClass}
+          data-ss="relative-link"
+          onClick={(e) => {
+            e.preventDefault();
+            void openRelativeNoteLink(filePath, url);
+          }}
+        >
+          {children}
+        </a>
+      );
+    }
+
+    // External (http/https/mailto/…): unchanged — target=_blank routes through
+    // the main process's safe-URL gate.
+    return (
+      <a href={url} target="_blank" rel="noreferrer" className={anchorClass}>
+        {children}
+      </a>
+    );
+  };
+  return Anchor;
+}
+
+/** Compact properties table for a note's YAML frontmatter. */
+function FrontmatterBlock({ yaml }: { yaml: string }) {
+  const entries = parseFrontmatterEntries(yaml);
+  if (entries.length === 0) return null;
+  return (
+    <div className="mb-4 rounded border border-treeline-highlight px-3 py-2" data-ss="frontmatter">
+      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+        {entries.map((e) => (
+          <div key={e.key} className="contents">
+            <span className="font-mono text-xs text-treeline-dim">{e.key}</span>
+            {Array.isArray(e.value) ? (
+              <span className="flex flex-wrap gap-1">
+                {e.value.map((v, i) => (
+                  <span
+                    key={`${v}-${i}`}
+                    className="rounded bg-treeline-highlight px-1.5 text-xs leading-5 text-treeline-text"
+                  >
+                    {v}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="text-xs leading-5 text-treeline-text">{e.value}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const remarkPlugins = [remarkGfm, remarkWikilinks];
+
+export function MarkdownView({ source, filePath }: { source: string; filePath?: string }) {
+  const root = filePath ? containingRootFor(filePath) : null;
+  const index = useStore((s) => (root ? s.noteIndexByRoot[root] : undefined));
+
+  // Rebuild the note index whenever a (different) note is opened — plain
+  // folders have no fs watcher, so this is the staleness bound.
+  useEffect(() => {
+    if (root) void ensureNoteIndex(root);
+  }, [root, filePath]);
+
+  const { yaml, body } = useMemo(() => splitFrontmatter(source), [source]);
+
+  const mergedComponents = useMemo<Components>(
+    () => ({ ...components, a: makeAnchor(root, index, filePath) }),
+    [root, index, filePath],
+  );
+
   return (
     <div className="h-full overflow-auto px-5 py-4 text-sm">
+      {yaml !== null && <FrontmatterBlock yaml={yaml} />}
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={remarkPlugins}
         rehypePlugins={[rehypeHighlight]}
-        components={components}
+        components={mergedComponents}
+        urlTransform={urlTransform}
       >
-        {source}
+        {body}
       </ReactMarkdown>
     </div>
   );

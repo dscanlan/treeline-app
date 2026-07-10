@@ -35,6 +35,9 @@ function coerceSettings(raw: unknown): SettingsConfig {
       Math.min(MAX_TERMINAL_FONT_SIZE, Math.round(s.fontSize)),
     ),
     keybindings,
+    // Untrusted input: keep only a non-empty string, anything else → null.
+    vaultPath:
+      typeof s.vaultPath === 'string' && s.vaultPath.trim().length > 0 ? s.vaultPath : null,
   };
 }
 
