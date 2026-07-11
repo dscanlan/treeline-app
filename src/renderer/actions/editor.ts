@@ -3,6 +3,7 @@
 // dance out of the components, mirroring actions/tabs.ts.
 import type { PanelMode, WorktreeFileView } from '../store/editor-slice';
 import type { DiscardThen } from '../store/modal-slice';
+import type { NoteHistoryBehavior } from '../store/vault-slice';
 import { useStore } from '../store';
 import { basename, isMarkdownPath } from '../util/path';
 
@@ -42,12 +43,13 @@ export function confirmDiscardAndContinue(then: DiscardThen): void {
   s.closeModal();
   switch (then.type) {
     case 'open-file':
-      void doOpenFile(then.path);
+      void doOpenFile(then.path, then.history);
       break;
     case 'open-diff':
       void doOpenDiff(then.path);
       break;
     case 'close-panel':
+      s.clearNoteHistory();
       s.closeCodePanel();
       break;
     case 'stop-editing':
@@ -56,11 +58,30 @@ export function confirmDiscardAndContinue(then: DiscardThen): void {
 }
 
 /**
+ * Apply an open's effect on the note-navigation breadcrumbs. Runs after the
+ * unsaved-edits guard passes, so a cancelled navigation never touches the
+ * trail. `push` records the file being left; everything else ends (or, for a
+ * back-jump, truncates) the trail — see NoteHistoryBehavior.
+ */
+function applyNoteHistory(behavior: NoteHistoryBehavior, openingPath: string): void {
+  const s = useStore.getState();
+  if (behavior === 'push') {
+    const prev = s.openFilePath;
+    if (prev && prev !== openingPath) s.pushNoteHistory(prev);
+  } else if (behavior === 'clear') {
+    s.clearNoteHistory();
+  } else {
+    s.truncateNoteHistory(behavior.truncateTo);
+  }
+}
+
+/**
  * Load a file into the panel (no unsaved-edits guard). Markdown lands on the
  * rendered Preview by default; everything else opens as raw source. Both modes
  * read the same file text.
  */
-async function doOpenFile(path: string): Promise<void> {
+async function doOpenFile(path: string, history: NoteHistoryBehavior = 'clear'): Promise<void> {
+  applyNoteHistory(history, path);
   const mode = isMarkdownPath(path) ? 'preview' : 'file';
   useStore.getState().openInPanel(path, mode);
   await loadFileContent(path);
@@ -68,6 +89,7 @@ async function doOpenFile(path: string): Promise<void> {
 
 /** Load a file into the panel as a diff (no unsaved-edits guard). */
 async function doOpenDiff(path: string): Promise<void> {
+  useStore.getState().clearNoteHistory();
   useStore.getState().openInPanel(path, 'diff');
   await loadFileDiff(path);
 }
@@ -107,10 +129,18 @@ async function loadFileDiff(path: string): Promise<void> {
   }
 }
 
-/** Open a file in the panel showing its full contents (used by the tree). */
-export async function openFileInPanel(path: string): Promise<void> {
-  if (!guardUnsaved({ type: 'open-file', path })) return;
-  await doOpenFile(path);
+/**
+ * Open a file in the panel showing its full contents. Used by the tree,
+ * quick-open, and (with a non-default `history`) the notes reader's link and
+ * back/breadcrumb navigation.
+ */
+export async function openFileInPanel(
+  path: string,
+  opts?: { history?: NoteHistoryBehavior },
+): Promise<void> {
+  const history = opts?.history ?? 'clear';
+  if (!guardUnsaved({ type: 'open-file', path, history })) return;
+  await doOpenFile(path, history);
 }
 
 /**
@@ -121,6 +151,7 @@ export async function openFileInPanel(path: string): Promise<void> {
  */
 export async function openFileAtLine(path: string, line: number): Promise<void> {
   if (!guardUnsaved({ type: 'open-file', path })) return;
+  useStore.getState().clearNoteHistory();
   useStore.getState().openInPanel(path, 'file');
   await loadFileContent(path);
   useStore.getState().setRevealLine(line);
@@ -137,6 +168,7 @@ export function tryCloseCodePanel(): void {
   if (!guardUnsaved({ type: 'close-panel' })) return;
   const s = useStore.getState();
   s.stopEditing();
+  s.clearNoteHistory();
   s.closeCodePanel();
 }
 

@@ -27,6 +27,7 @@
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "src/renderer/store/browser-slice.ts",
+    "src/renderer/store/vault-slice.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts"
   ]

@@ -59,7 +59,10 @@ function buildVault(codeRoot) {
       '',
     ].join('\n'),
   );
-  writeFileSync(join(vault, 'alpha-note.md'), '# Alpha\n\nALPHA-BODY-TOKEN\n');
+  writeFileSync(
+    join(vault, 'alpha-note.md'),
+    '# Alpha\n\nALPHA-BODY-TOKEN\n\nOnward to [[beta-note]].\n',
+  );
   writeFileSync(join(vault, 'Sub', 'beta-note.md'), '# Beta\n\nBETA-BODY-TOKEN\n');
   writeFileSync(join(vault, '.gitignore'), 'Tasks/\n');
   mkdirSync(join(vault, 'Tasks'), { recursive: true });
@@ -175,6 +178,52 @@ async function main() {
     );
     results.wikilinkNavigated = true;
 
+    // ── Breadcrumb trail: index → alpha pushed one crumb ──
+    await page.waitForSelector('[data-ss="note-breadcrumbs"]', { timeout: 10000 });
+    const crumbs1 = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-ss="note-crumb"]')].map((el) => el.innerText),
+    );
+    results.breadcrumbShown = crumbs1.length === 1 && crumbs1[0].includes('index-note');
+
+    // ── Second hop: alpha → beta gives a two-crumb chain ──
+    await page.locator('[data-ss="wikilink"]', { hasText: 'beta-note' }).first().click();
+    await page.waitForFunction(
+      () => document.body.innerText.includes('BETA-BODY-TOKEN'),
+      { timeout: 10000 },
+    );
+    const crumbs2 = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-ss="note-crumb"]')].map((el) => el.innerText),
+    );
+    results.breadcrumbChain =
+      crumbs2.length === 2 && crumbs2[0].includes('index-note') && crumbs2[1].includes('alpha-note');
+
+    // ── Back button: beta → alpha, one crumb left ──
+    await page.locator('[data-ss="note-back"]').click();
+    await page.waitForFunction(
+      () => document.body.innerText.includes('ALPHA-BODY-TOKEN'),
+      { timeout: 10000 },
+    );
+    const crumbs3 = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-ss="note-crumb"]')].map((el) => el.innerText),
+    );
+    results.backNavigated = crumbs3.length === 1 && crumbs3[0].includes('index-note');
+
+    // ── Crumb jump across two entries: re-hop to beta, click the root crumb ──
+    await page.locator('[data-ss="wikilink"]', { hasText: 'beta-note' }).first().click();
+    await page.waitForFunction(
+      () => document.body.innerText.includes('BETA-BODY-TOKEN'),
+      { timeout: 10000 },
+    );
+    await page.locator('[data-ss="note-crumb"]').first().click();
+    await page.waitForFunction(
+      () => document.body.innerText.includes('for details'),
+      { timeout: 10000 },
+    );
+    // Landing on the trail root empties the trail, so the bar unmounts.
+    results.crumbJumpClearsTrail = await page.evaluate(
+      () => document.querySelector('[data-ss="note-breadcrumbs"]') === null,
+    );
+
     // ── Back to the index note; click the relative link → beta note ──
     await openViaQuickOpen(page, app, 'index-note');
     await page.waitForSelector('[data-ss="relative-link"]', { timeout: 10000 });
@@ -184,6 +233,18 @@ async function main() {
       { timeout: 10000 },
     );
     results.relativeNavigated = true;
+
+    // ── Fresh navigation (⌘P) ends the trail — the bar disappears ──
+    // The relative-link hop above pushed index-note, so the bar is showing now.
+    await page.waitForSelector('[data-ss="note-breadcrumbs"]', { timeout: 10000 });
+    await openViaQuickOpen(page, app, 'alpha-note');
+    await page.waitForFunction(
+      () => document.body.innerText.includes('ALPHA-BODY-TOKEN'),
+      { timeout: 10000 },
+    );
+    results.freshOpenClearsTrail = await page.evaluate(
+      () => document.querySelector('[data-ss="note-breadcrumbs"]') === null,
+    );
 
     // ── Folder search scoping: select the plain folder, ⌘P lists only it ──
     await page.locator(`[data-ss-folder="${plain}"] button[title="${plain}"]`).first().click();
@@ -225,7 +286,12 @@ async function main() {
     ['wikilink inside code fence stays literal (negative control)', results.codeFenceLiteral],
     ['external https link untouched (negative control)', results.externalUntouched],
     ['clicking a wikilink opened the target note in-panel', results.wikilinkNavigated],
+    ['breadcrumb bar shows after a wikilink hop', results.breadcrumbShown],
+    ['two hops build a two-crumb chain', results.breadcrumbChain],
+    ['back button returns to the previous note', results.backNavigated],
+    ['crumb jump across two entries lands on the root, trail cleared', results.crumbJumpClearsTrail],
     ['clicking a relative md link opened the target note in-panel', results.relativeNavigated],
+    ['fresh ⌘P open clears the trail (negative control)', results.freshOpenClearsTrail],
     ['⌘P scopes to a selected plain folder', results.folderScoped],
     ['Settings vault path persists to config.json', results.vaultPathPersisted],
   ];

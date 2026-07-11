@@ -74,7 +74,7 @@ export async function ensureNoteIndex(root: string): Promise<NoteIndex> {
 export async function openWikilink(root: string, target: string): Promise<void> {
   const index = useStore.getState().noteIndexByRoot[root] ?? (await ensureNoteIndex(root));
   const rel = resolveNoteTarget(index, target);
-  if (rel) await openFileInPanel(joinPath(root, rel));
+  if (rel) await openFileInPanel(joinPath(root, rel), { history: 'push' });
 }
 
 /**
@@ -84,5 +84,17 @@ export async function openWikilink(root: string, target: string): Promise<void> 
  */
 export async function openRelativeNoteLink(currentFilePath: string, href: string): Promise<void> {
   const abs = resolveRelativeHref(dirnamePosix(currentFilePath), href);
-  if (abs) await openFileInPanel(abs);
+  if (abs) await openFileInPanel(abs, { history: 'push' });
+}
+
+/**
+ * Jump back to `noteHistory[index]` — the back button is index
+ * `noteHistory.length - 1`, a breadcrumb click any earlier entry. The trail
+ * truncates to the landing point (entries above it drop off; the file being
+ * left is NOT pushed), matching browser-style back semantics.
+ */
+export async function openNoteFromHistory(index: number): Promise<void> {
+  const target = useStore.getState().noteHistory[index];
+  if (target === undefined) return;
+  await openFileInPanel(target, { history: { truncateTo: index } });
 }

@@ -8,6 +8,7 @@ import {
   tryCloseCodePanel,
   tryStopEditing,
 } from '../actions/editor';
+import { openNoteFromHistory } from '../actions/vault';
 import { CodeMirrorView } from './CodeMirrorView';
 import { DiffView } from './DiffView';
 import { MarkdownView } from './MarkdownView';
@@ -39,6 +40,7 @@ export function CodePanel() {
       setDraft: st.setDraft,
       revealLine: st.revealLine,
       revealTick: st.revealTick,
+      noteHistory: st.noteHistory,
     })),
   );
 
@@ -117,6 +119,10 @@ export function CodePanel() {
         </button>
       </header>
 
+      {s.noteHistory.length > 0 && s.openFilePath && (
+        <NoteBreadcrumbs history={s.noteHistory} currentPath={s.openFilePath} />
+      )}
+
       {s.saveError && (
         <div className="shrink-0 border-b border-treeline-highlight bg-treeline-red/10 px-3 py-1 text-xs text-treeline-red">
           Save failed: {s.saveError}
@@ -151,6 +157,55 @@ export function CodePanel() {
         )}
       </div>
     </section>
+  );
+}
+
+/** A crumb label: the note's basename without its markdown extension. */
+function crumbLabel(path: string): string {
+  return basename(path).replace(/\.(md|markdown)$/i, '');
+}
+
+/**
+ * The note-navigation trail under the header: a back button plus one crumb per
+ * note the user link-clicked away from, ending at the (non-clickable) current
+ * note. Clicking a crumb jumps back to it; the trail only exists while
+ * following note links and clears on any fresh open or panel close.
+ */
+function NoteBreadcrumbs({ history, currentPath }: { history: string[]; currentPath: string }) {
+  return (
+    <nav
+      data-ss="note-breadcrumbs"
+      aria-label="Note navigation history"
+      className="flex shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-treeline-highlight px-3 py-1 text-[10px] [scrollbar-width:none]"
+    >
+      <button
+        type="button"
+        data-ss="note-back"
+        onClick={() => void openNoteFromHistory(history.length - 1)}
+        title={`Back to ${crumbLabel(history[history.length - 1])}`}
+        aria-label="Back to previous note"
+        className="shrink-0 rounded px-1 font-semibold text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text"
+      >
+        ←
+      </button>
+      {history.map((path, i) => (
+        <span key={`${i}-${path}`} className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            data-ss="note-crumb"
+            onClick={() => void openNoteFromHistory(i)}
+            title={path}
+            className="max-w-40 truncate rounded px-1 text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text"
+          >
+            {crumbLabel(path)}
+          </button>
+          <span className="text-treeline-dim/60">›</span>
+        </span>
+      ))}
+      <span className="max-w-40 truncate px-1 text-treeline-text" title={currentPath}>
+        {crumbLabel(currentPath)}
+      </span>
+    </nav>
   );
 }
 

@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+import type { NoteHistoryBehavior } from './vault-slice';
 
 /**
  * What to do after the user discards unsaved edits. Encoded as plain data (not a
@@ -6,7 +7,7 @@ import type { StateCreator } from 'zustand';
  * actions map it back to the real navigation.
  */
 export type DiscardThen =
-  | { type: 'open-file'; path: string }
+  | { type: 'open-file'; path: string; history?: NoteHistoryBehavior }
   | { type: 'open-diff'; path: string }
   | { type: 'close-panel' }
   | { type: 'stop-editing' };
