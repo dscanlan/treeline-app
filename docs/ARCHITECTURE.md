@@ -146,7 +146,11 @@ directory and open in-panel; absolute-scheme links keep the external path
 above. Leading YAML frontmatter is split off (`shared/frontmatter.ts`, a
 tolerant display-only parser — no YAML dep) and rendered as a properties
 table. No new IPC surface: reads ride `files.read`, indexing rides
-`search.files`.
+`search.files`. Link hops record the departed note in a session-only trail
+(`vault-slice` `noteHistory`, capped at 50) rendered as a back button +
+breadcrumbs under the panel header; back/crumb jumps truncate browser-style,
+and any fresh open or panel close clears the trail. History mutations run
+after the unsaved-edits guard so a cancelled discard leaves the trail intact.
 
 **Editing.** The File view flips editable via the panel's `Edit` button
 (`editing` + a `draft` in the editor slice). `⌘S` / Save calls

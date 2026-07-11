@@ -281,6 +281,11 @@ Click the **folder icon** on a worktree row to expand its file tree.
   links and open the target note **in the same panel** — resolved by filename
   within the containing vault. Relative markdown links (`[text](other.md)`)
   also open in-panel; regular `https://` links still open in your OS browser.
+  Following a note link shows a **breadcrumb trail** under the panel header —
+  a **←** back button plus one clickable crumb per note you hopped from;
+  clicking a crumb jumps back and truncates the trail browser-style. The trail
+  only tracks link navigation: opening any file fresh (tree, quick-open,
+  search) or closing the panel clears it.
   A link whose target doesn't exist renders dimmed with a "Note not found"
   tooltip. YAML frontmatter is shown as a compact properties table instead of
   raw `---` fences. By default the "vault" is the pinned repo/folder containing
