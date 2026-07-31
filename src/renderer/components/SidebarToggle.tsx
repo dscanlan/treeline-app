@@ -1,3 +1,4 @@
+import { toggleSidebar } from '../actions/sidebar';
 import { useStore } from '../store';
 
 /**
@@ -7,16 +8,10 @@ import { useStore } from '../store';
 export function SidebarToggle() {
   const collapsed = useStore((s) => s.sidebarCollapsed);
 
-  const onClick = () => {
-    const next = !collapsed;
-    useStore.getState().setSidebarCollapsed(next);
-    void window.treeline.config.setSidebarCollapsed(next);
-  };
-
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={toggleSidebar}
       title={`${collapsed ? 'Show' : 'Hide'} sidebar (⌘B)`}
       aria-label={`${collapsed ? 'Show' : 'Hide'} sidebar`}
       data-ss="sidebar-toggle"

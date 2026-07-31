@@ -3,6 +3,7 @@
 import { useStore } from '../store';
 import { refreshChangedFiles } from '../actions/editor';
 import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
+import { toggleSidebar } from '../actions/sidebar';
 import { registerScratchCleanup } from '../actions/scratch';
 import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
@@ -62,14 +63,7 @@ export function attachIpc(): () => void {
   );
 
   // Sidebar toggle from the macOS menu (CmdOrCtrl+B).
-  unsubs.push(
-    api.window.onSidebarToggle(() => {
-      const s = useStore.getState();
-      const next = !s.sidebarCollapsed;
-      s.setSidebarCollapsed(next);
-      void api.config.setSidebarCollapsed(next);
-    }),
-  );
+  unsubs.push(api.window.onSidebarToggle(toggleSidebar));
 
   // Embedded browser pane toggle from the macOS menu (CmdOrCtrl+Shift+B). The
   // browser and scratchpad share the right-hand aux slot, so opening the browser
