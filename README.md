@@ -114,13 +114,25 @@ up on exit.
 | Add an existing repo            | `+ Add repo` button (native picker)                    |
 | Create a new repo               | `✱ New repo` button (modal — `git init` in a new or empty folder) |
 | Open a scratch terminal         | `>_ Scratch` button (shell in your home directory, no repo) |
-| Filter worktrees by branch/path | `Filter…` input above the repo list                    |
+| Show active or pinned targets   | `Working` above the repo list                          |
+| Browse every repo and folder    | `Library` above the repo list                          |
+| Find repo/branch/path/folder    | search field (`/` or `⌘⇧O`)                            |
+| Pin a target in Working         | `☆` icon on hover                                      |
+| Filter items needing attention | `!` beside the Working/Library control                 |
 | Open repo root in a new tab     | `>_` icon on hover (next to the repo name)             |
-| Browse a worktree's files       | folder icon at the left of a worktree row (toggles the file tree) |
+| Browse a worktree's files       | folder icon at the left of a worktree row (opens focused Files) |
 | Create a worktree               | `+` icon on hover (next to the repo name)              |
 | Remove a repo from the sidebar  | `×` icon on hover (the repo's data is untouched)       |
 | Delete a worktree               | `×` icon on hover (next to a worktree row)             |
 | Collapse/expand the sidebar     | `‹` / `›` button in the title bar, or `⌘B`             |
+
+Working contains only targets with open tabs, detected running processes, or a
+manual pin. Library retains the complete catalog, groups repos by parent
+directory, and keeps repos collapsed with worktree/activity summaries. Search
+is global even from Working, and file browsing replaces the catalog with one
+focused tree rather than nesting multiple trees beneath worktrees.
+
+![Seven working targets projected from a 30-repository Library](docs/img/42-sidebar-scale.png)
 
 Each worktree row shows: the branch name, short SHA, a yellow `●` if the
 working tree is dirty, a colored status dot for any open tabs on that

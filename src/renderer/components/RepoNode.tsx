@@ -7,28 +7,35 @@ import { openTabAt } from '../actions/tabs';
 
 interface Props {
   repo: Repo;
+  worktrees: ReturnType<typeof useStore.getState>['worktreesByRepo'][string];
+  defaultOpen?: boolean;
+  forceOpen?: boolean;
+  totalWorktrees: number;
+  activeWorktrees: number;
+  dirtyWorktrees: number;
 }
 
-export function RepoNode({ repo }: Props) {
-  const [open, setOpen] = useState(true);
-  const worktrees = useStore((s) => s.worktreesByRepo[repo.path] ?? []);
-  const filter = useStore((s) => s.filter.toLowerCase());
+export function RepoNode({
+  repo,
+  worktrees,
+  defaultOpen = false,
+  forceOpen = false,
+  totalWorktrees,
+  activeWorktrees,
+  dirtyWorktrees,
+}: Props) {
+  const [open, setOpen] = useState(defaultOpen);
   const openModal = useStore((s) => s.openModal);
   const setRepos = useStore((s) => s.setRepos);
   const selected = useStore((s) => s.selectedSidebarPath === repo.path);
-
-  const filtered = filter
-    ? worktrees.filter(
-        (w) =>
-          w.branch.toLowerCase().includes(filter) ||
-          w.path.toLowerCase().includes(filter),
-      )
-    : worktrees;
+  const pinned = useStore((s) => s.sidebarPins.includes(repo.path));
+  const togglePin = useStore((s) => s.toggleSidebarPin);
+  const expanded = forceOpen || open;
 
   // Group: regular worktrees first, then a "✦ Claude" subgroup for parity with
   // the Rust TUI's visual treatment.
-  const regular = filtered.filter((w) => !w.isClaude);
-  const claude = filtered.filter((w) => w.isClaude);
+  const regular = worktrees.filter((w) => !w.isClaude);
+  const claude = worktrees.filter((w) => w.isClaude);
 
   const onRemoveRepo = async () => {
     await window.treeline.repos.remove(repo.path);
@@ -54,10 +61,36 @@ export function RepoNode({ repo }: Props) {
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
+          aria-expanded={expanded}
           className="flex flex-1 items-center gap-2 text-left text-treeline-text"
         >
-          <span className="text-xs text-treeline-dim">{open ? '▾' : '▸'}</span>
+          <span className="text-xs text-treeline-dim">{expanded ? '▾' : '▸'}</span>
           <span className="truncate font-medium">{repo.name}</span>
+        </button>
+        {!expanded && (
+          <span className="flex shrink-0 items-center gap-1 text-[10px] text-treeline-dim group-hover/repo:hidden">
+            <span>{totalWorktrees} wt</span>
+            {activeWorktrees > 0 && (
+              <span className="text-treeline-green">{activeWorktrees} open</span>
+            )}
+            {dirtyWorktrees > 0 && (
+              <span className="text-treeline-yellow">{dirtyWorktrees} dirty</span>
+            )}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => togglePin(repo.path)}
+          title={pinned ? 'Remove main worktree from Working' : 'Keep main worktree in Working'}
+          aria-label={pinned ? 'Unpin main worktree' : 'Pin main worktree'}
+          aria-pressed={pinned}
+          className={`rounded px-1 hover:bg-treeline-surface group-hover/repo:opacity-100 ${
+            pinned
+              ? 'text-treeline-yellow opacity-100'
+              : 'text-treeline-dim opacity-0 hover:text-treeline-text'
+          }`}
+        >
+          {pinned ? '★' : '☆'}
         </button>
         <button
           type="button"
@@ -87,27 +120,21 @@ export function RepoNode({ repo }: Props) {
           ×
         </button>
       </div>
-      {open && (
+      {expanded && (
         <ul className="mt-1 flex flex-col gap-px">
-          {regular.length === 0 && claude.length === 0 ? (
-            <li className="px-2 py-1 text-xs text-treeline-dim">no worktrees</li>
-          ) : (
+          {regular.map((w) => (
+            <WorktreeRow key={w.path} worktree={w} repoPath={repo.path} />
+          ))}
+          {claude.length > 0 && (
             <>
-              {regular.map((w) => (
+              <li
+                className={`mt-1 px-2 py-0.5 text-[10px] uppercase tracking-wide ${AGENTS.claude.colorClassDim}`}
+              >
+                {AGENTS.claude.glyph} {AGENTS.claude.label}
+              </li>
+              {claude.map((w) => (
                 <WorktreeRow key={w.path} worktree={w} repoPath={repo.path} />
               ))}
-              {claude.length > 0 && (
-                <>
-                  <li
-                    className={`mt-1 px-2 py-0.5 text-[10px] uppercase tracking-wide ${AGENTS.claude.colorClassDim}`}
-                  >
-                    {AGENTS.claude.glyph} {AGENTS.claude.label}
-                  </li>
-                  {claude.map((w) => (
-                    <WorktreeRow key={w.path} worktree={w} repoPath={repo.path} />
-                  ))}
-                </>
-              )}
             </>
           )}
         </ul>

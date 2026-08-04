@@ -63,6 +63,7 @@ ALL_SCENARIOS=(
   "39-restore-prompt"
   "40-scratch-restored"
   "41-worktree-merged"
+  "42-sidebar-scale"
 )
 
 if [ $# -gt 0 ]; then

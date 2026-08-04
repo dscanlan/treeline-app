@@ -1,8 +1,7 @@
 import type { Folder } from '@shared/types';
 import { useStore } from '../store';
-import { toggleDir } from '../actions/editor';
+import { openSidebarFiles } from '../actions/sidebar';
 import { openTabAt } from '../actions/tabs';
-import { FileTree } from './FileTree';
 
 interface Props {
   folder: Folder;
@@ -15,9 +14,10 @@ interface Props {
  * mechanism the worktree rows use — so the root's children populate on first open.
  */
 export function FolderNode({ folder }: Props) {
-  const open = useStore((s) => !!s.expandedDirs[folder.path]);
   const setFolders = useStore((s) => s.setFolders);
   const selected = useStore((s) => s.selectedSidebarPath === folder.path);
+  const pinned = useStore((s) => s.sidebarPins.includes(folder.path));
+  const togglePin = useStore((s) => s.toggleSidebarPin);
 
   const onRemove = async () => {
     await window.treeline.folders.remove(folder.path);
@@ -40,16 +40,27 @@ export function FolderNode({ folder }: Props) {
           onClick={() => {
             // Selecting the folder makes it the ⌘P / ⌘⇧F search scope, like a
             // worktree row.
-            useStore.getState().setSelected(folder.path);
-            void toggleDir(folder.path);
+            void openSidebarFiles(folder.path);
           }}
-          aria-expanded={open}
           title={folder.path}
           className="flex flex-1 items-center gap-2 text-left text-treeline-text"
         >
-          <span className="text-xs text-treeline-dim">{open ? '▾' : '▸'}</span>
-          <FolderGlyph open={open} />
+          <FolderGlyph open={false} />
           <span className="truncate font-medium">{folder.name}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => togglePin(folder.path)}
+          title={pinned ? 'Remove from Working' : 'Keep in Working'}
+          aria-label={pinned ? 'Unpin folder' : 'Pin folder'}
+          aria-pressed={pinned}
+          className={`rounded px-1 hover:bg-treeline-surface group-hover/folder:opacity-100 ${
+            pinned
+              ? 'text-treeline-yellow opacity-100'
+              : 'text-treeline-dim opacity-0 hover:text-treeline-text'
+          }`}
+        >
+          {pinned ? '★' : '☆'}
         </button>
         <button
           type="button"
@@ -70,11 +81,6 @@ export function FolderNode({ folder }: Props) {
           ×
         </button>
       </div>
-      {open && (
-        <div className="mt-1">
-          <FileTree dirPath={folder.path} depth={0} />
-        </div>
-      )}
     </div>
   );
 }

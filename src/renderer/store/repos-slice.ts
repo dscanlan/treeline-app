@@ -7,6 +7,10 @@ export const SIDEBAR_MAX_WIDTH = 600;
 export const SIDEBAR_DEFAULT_WIDTH = 256;
 
 const WIDTH_STORAGE_KEY = 'treeline.sidebarWidth';
+const MODE_STORAGE_KEY = 'treeline.sidebarMode';
+const PINS_STORAGE_KEY = 'treeline.sidebarPins';
+
+export type SidebarMode = 'working' | 'library';
 
 function loadPersistedWidth(): number {
   // Guard: store creation runs at module load. In an Electron renderer
@@ -31,6 +35,43 @@ function persistWidth(w: number): void {
   }
 }
 
+function loadPersistedMode(): SidebarMode {
+  if (typeof localStorage === 'undefined') return 'working';
+  try {
+    return localStorage.getItem(MODE_STORAGE_KEY) === 'library' ? 'library' : 'working';
+  } catch {
+    return 'working';
+  }
+}
+
+function persistMode(mode: SidebarMode): void {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // Best-effort UI preference.
+  }
+}
+
+function loadPersistedPins(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PINS_STORAGE_KEY) ?? '[]') as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((path): path is string => typeof path === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistPins(paths: string[]): void {
+  try {
+    localStorage.setItem(PINS_STORAGE_KEY, JSON.stringify(paths));
+  } catch {
+    // Best-effort UI preference.
+  }
+}
+
 export interface ReposSlice {
   repos: Repo[];
   /** Plain (non-git) directories pinned to the sidebar as bare file trees. */
@@ -52,6 +93,14 @@ export interface ReposSlice {
    */
   selectedScratchId: string | null;
   filter: string;
+  /** Operational targets or the full registered catalog. */
+  sidebarMode: SidebarMode;
+  /** Worktree/folder paths manually retained in the Working view. */
+  sidebarPins: string[];
+  /** A single target whose files replace the repo navigator. */
+  sidebarFileRoot: string | null;
+  /** Optional status-focused subset of either list mode. */
+  sidebarAttentionOnly: boolean;
   sidebarCollapsed: boolean;
   /** Sidebar width in px when expanded. Persisted to localStorage. */
   sidebarWidth: number;
@@ -72,6 +121,10 @@ export interface ReposSlice {
   setSelected: (path: string | null) => void;
   setSelectedScratch: (id: string | null) => void;
   setFilter: (s: string) => void;
+  setSidebarMode: (mode: SidebarMode) => void;
+  toggleSidebarPin: (path: string) => void;
+  setSidebarFileRoot: (path: string | null) => void;
+  setSidebarAttentionOnly: (v: boolean) => void;
   setSidebarCollapsed: (v: boolean) => void;
   setSidebarWidth: (w: number) => void;
   setSidebarResizing: (v: boolean) => void;
@@ -85,6 +138,10 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   selectedSidebarPath: null,
   selectedScratchId: null,
   filter: '',
+  sidebarMode: loadPersistedMode(),
+  sidebarPins: loadPersistedPins(),
+  sidebarFileRoot: null,
+  sidebarAttentionOnly: false,
   sidebarCollapsed: false,
   sidebarWidth: loadPersistedWidth(),
   sidebarResizing: false,
@@ -101,6 +158,20 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   setSelected: (path) => set({ selectedSidebarPath: path, selectedScratchId: null }),
   setSelectedScratch: (id) => set({ selectedScratchId: id, selectedSidebarPath: null }),
   setFilter: (filter) => set({ filter }),
+  setSidebarMode: (sidebarMode) => {
+    persistMode(sidebarMode);
+    set({ sidebarMode, sidebarFileRoot: null });
+  },
+  toggleSidebarPin: (path) =>
+    set((s) => {
+      const sidebarPins = s.sidebarPins.includes(path)
+        ? s.sidebarPins.filter((p) => p !== path)
+        : [...s.sidebarPins, path];
+      persistPins(sidebarPins);
+      return { sidebarPins };
+    }),
+  setSidebarFileRoot: (sidebarFileRoot) => set({ sidebarFileRoot }),
+  setSidebarAttentionOnly: (sidebarAttentionOnly) => set({ sidebarAttentionOnly }),
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
   setSidebarWidth: (w) => {
     const sidebarWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, w));

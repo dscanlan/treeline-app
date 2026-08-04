@@ -23,6 +23,7 @@ export function AddRepoButton() {
       } else {
         useStore.getState().setFolders(cfg.folders);
       }
+      useStore.getState().setSidebarMode('library');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

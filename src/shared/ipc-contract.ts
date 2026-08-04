@@ -59,6 +59,10 @@ export interface ScreenshotHydratePayload {
     }
   >;
   filter?: string;
+  sidebarMode?: 'working' | 'library';
+  sidebarPins?: string[];
+  sidebarFileRoot?: string | null;
+  sidebarAttentionOnly?: boolean;
   sidebarCollapsed?: boolean;
   /** Override the persisted settings (theme/font/keybindings) for the capture. */
   settings?: SettingsConfig;
@@ -244,10 +248,7 @@ export interface TreelineApi {
     /** Thaw a {@link pause}d pane (SIGCONT). Resolves true if resumed. */
     resume(id: string): Promise<boolean>;
     onData(id: string, cb: (chunk: string) => void): () => void;
-    onExit(
-      id: string,
-      cb: (info: { code: number; signal: number | null }) => void,
-    ): () => void;
+    onExit(id: string, cb: (info: { code: number; signal: number | null }) => void): () => void;
     /**
      * Agent-attention notifications raised by a terminal via an OSC 9/99/777
      * desktop-notification escape. Unfiltered — the callback receives the
@@ -299,11 +300,7 @@ export interface TreelineApi {
    */
   search: {
     /** Find-in-files (⌘⇧F): match line contents under `root`. */
-    content(
-      root: string,
-      query: string,
-      opts?: ContentSearchOptions,
-    ): Promise<ContentSearchResult>;
+    content(root: string, query: string, opts?: ContentSearchOptions): Promise<ContentSearchResult>;
     /** Enumerate files under `root` for the fuzzy quick-open list (⌘P). */
     files(root: string): Promise<string[]>;
   };

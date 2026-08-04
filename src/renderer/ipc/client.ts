@@ -33,9 +33,7 @@ export function attachIpc(): () => void {
   // Process snapshots — main computes the worktree-path index and ships both.
   unsubs.push(
     api.processes.subscribe((snap) => {
-      useStore
-        .getState()
-        .setProcesses(snap.procs, snap.byWorktreePath, snap.portsByWorktreePath);
+      useStore.getState().setProcesses(snap.procs, snap.byWorktreePath, snap.portsByWorktreePath);
     }),
   );
 
@@ -141,9 +139,7 @@ export function attachIpc(): () => void {
   // agent flow, where no shell cwd actually changes.
   unsubs.push(
     api.worktrees.onCreated((path) => {
-      useStore
-        .getState()
-        .enqueueWorktreeOpen({ toWorktree: path, reason: 'created' });
+      useStore.getState().enqueueWorktreeOpen({ toWorktree: path, reason: 'created' });
     }),
   );
 
@@ -190,6 +186,10 @@ export function attachIpc(): () => void {
           pendingDiscoveries: [],
           driftByWorktree: {},
           filter: '',
+          sidebarMode: 'library',
+          sidebarPins: [],
+          sidebarFileRoot: null,
+          sidebarAttentionOnly: false,
           sidebarCollapsed: false,
           modal: null,
           tabs: [],
@@ -251,6 +251,14 @@ export function attachIpc(): () => void {
       }
       if (p.selected !== undefined) s.setSelected(p.selected);
       if (p.filter !== undefined) s.setFilter(p.filter);
+      if (p.sidebarMode !== undefined) useStore.setState({ sidebarMode: p.sidebarMode });
+      if (p.sidebarPins !== undefined) useStore.setState({ sidebarPins: p.sidebarPins });
+      if (p.sidebarFileRoot !== undefined) {
+        useStore.setState({ sidebarFileRoot: p.sidebarFileRoot });
+      }
+      if (p.sidebarAttentionOnly !== undefined) {
+        useStore.setState({ sidebarAttentionOnly: p.sidebarAttentionOnly });
+      }
       if (p.sidebarCollapsed !== undefined) s.setSidebarCollapsed(p.sidebarCollapsed);
       if (p.scratches !== undefined) {
         // Replace wholesale — addScratch would append on top of any prior
@@ -300,9 +308,7 @@ export function attachIpc(): () => void {
         s.applyStatusUpdates(p.terminalStatus);
       }
       if (p.forceTooltipNear !== undefined) {
-        s.setForceTooltip(
-          p.forceTooltipNear === null ? null : p.forceTooltipNear,
-        );
+        s.setForceTooltip(p.forceTooltipNear === null ? null : p.forceTooltipNear);
       }
       // Code-viewer state — set directly (the slice's setters are granular and
       // the harness wants a wholesale snapshot).

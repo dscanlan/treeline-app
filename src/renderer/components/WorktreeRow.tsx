@@ -3,11 +3,10 @@ import { AGENTS } from '@shared/agents';
 import type { Worktree } from '@shared/types';
 import { basename } from '../util/path';
 import { openTabAt } from '../actions/tabs';
-import { toggleDir } from '../actions/editor';
+import { openSidebarFiles } from '../actions/sidebar';
 import { TabStatusDot } from './TabStatusDot';
 import { ProcessBadge } from './ProcessBadge';
 import { PrBadge } from './PrBadge';
-import { WorktreeFiles } from './WorktreeFiles';
 
 interface Props {
   worktree: Worktree;
@@ -25,7 +24,9 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
   const hasUnread = useStore((s) => s.cwdHasUnread(worktree.path));
   const pr = useStore((s) => s.prByRepoBranch[repoPath]?.[worktree.branch]);
   const openModal = useStore((s) => s.openModal);
-  const treeOpen = useStore((s) => !!s.expandedDirs[worktree.path]);
+  const filesOpen = useStore((s) => s.sidebarFileRoot === worktree.path);
+  const pinned = useStore((s) => s.sidebarPins.includes(worktree.path));
+  const togglePin = useStore((s) => s.toggleSidebarPin);
 
   // Glyph/colour for agent-convention worktrees come from the shared registry.
   const agent = worktree.isClaude ? AGENTS.claude : null;
@@ -48,19 +49,32 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
         } ${merged ? 'opacity-50' : ''}`}
       >
         {/* Top line: folder toggle, branch name (gets the full width), and the
-          * hover-only delete affordance. */}
+         * hover-only delete affordance. */}
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => void toggleDir(worktree.path)}
-            title={treeOpen ? 'Hide files' : 'Browse files'}
-            aria-label={treeOpen ? 'Hide files' : 'Browse files'}
-            aria-expanded={treeOpen}
+            onClick={() => void openSidebarFiles(worktree.path)}
+            title="Browse files"
+            aria-label="Browse files"
             className={`flex w-4 shrink-0 items-center justify-center hover:text-treeline-text ${
-              treeOpen ? 'text-treeline-cyan' : 'text-treeline-dim'
+              filesOpen ? 'text-treeline-cyan' : 'text-treeline-dim'
             }`}
           >
-            <FolderIcon open={treeOpen} />
+            <FolderIcon open={filesOpen} />
+          </button>
+          <button
+            type="button"
+            onClick={() => togglePin(worktree.path)}
+            title={pinned ? 'Remove from Working' : 'Keep in Working'}
+            aria-label={pinned ? 'Unpin worktree' : 'Pin worktree'}
+            aria-pressed={pinned}
+            className={`shrink-0 rounded px-1 hover:bg-treeline-surface group-hover/wt:opacity-100 ${
+              pinned
+                ? 'text-treeline-yellow opacity-100'
+                : 'text-treeline-dim opacity-0 hover:text-treeline-text'
+            }`}
+          >
+            {pinned ? '★' : '☆'}
           </button>
           <button
             type="button"
@@ -111,14 +125,14 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
             <ProcessBadge key={p.pid} proc={p} />
           ))}
           {/* ── listening-port chips (feature #4) ──────────────────────────
-            * Self-contained region: renders `:3000 :5173` for ports owned by
-            * processes rooted in this worktree. FUTURE BADGE OWNER (#5 PR
-            * status / #6 notifications): add your badge before or after this
-            * block on the same metadata line — do NOT refactor the layout. */}
+           * Self-contained region: renders `:3000 :5173` for ports owned by
+           * processes rooted in this worktree. FUTURE BADGE OWNER (#5 PR
+           * status / #6 notifications): add your badge before or after this
+           * block on the same metadata line — do NOT refactor the layout. */}
           <PortChips ports={ports} />
           {/* ── end listening-port chips ─────────────────────────────────── */}
           {/* Linked PR badge (feature #5): #NNN + state color + CI glyph, opens
-            * the PR on GitHub. Self-contained, sibling to the port chips. */}
+           * the PR on GitHub. Self-contained, sibling to the port chips. */}
           {pr && <PrBadge pr={pr} />}
           {worktree.isDirty && (
             <span className="text-treeline-yellow" title="dirty">
@@ -129,7 +143,6 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
           {wtStatus && <TabStatusDot status={wtStatus} />}
         </div>
       </div>
-      {treeOpen && <WorktreeFiles worktreePath={worktree.path} />}
     </li>
   );
 }

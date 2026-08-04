@@ -55,3 +55,15 @@ and cleans everything up on exit. Use this for screenshots or live demos.
 Both scripts are idempotent. The fixture marker file
 `.treeline-test-scenario` lets the launcher know the directory is disposable;
 it will refuse to remove a directory that doesn't have it.
+
+## Sidebar scale demo
+
+`launch-sidebar-scale-demo.sh` creates 30 real repositories across three parent
+directories, linked worktrees in several repositories, and three plain folders.
+It launches Treeline with isolated user data and opens six terminals through the
+CLI so the `Working | Library` behavior can be exercised without touching the
+normal application config.
+
+```bash
+./scripts/launch-sidebar-scale-demo.sh
+```

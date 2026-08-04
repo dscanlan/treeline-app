@@ -39,13 +39,29 @@ overview see the [README](../README.md); for the scriptable CLI see
 | Add an existing repo (or non-git folder) | **+ Add repo / folder** (native picker) |
 | Create a new repo | **✱ New repo** (modal — `git init` in a new/empty folder) |
 | Open a scratch terminal | **`>_ Scratch`** (shell in your home dir) |
-| Filter worktrees by branch/path | **Filter…** input above the list |
+| Show only open/running/pinned work | **Working** above the list |
+| Browse every registered target | **Library** above the list |
+| Find any repo, branch, path, or folder | **Find repos or branches…** (`/` or **⌘⇧O**) |
+| Keep an inactive target in Working | **`☆`** on hover |
+| Show dirty/merged/unread/failing work | **`!`** beside Working/Library |
 | Open a repo root in a new tab | **`>_`** icon on hover (next to the repo name) |
 | Create a worktree | **`+`** icon on hover (next to the repo name) |
 | Browse a worktree's files | **folder** icon at the left of a worktree row |
 | Remove a repo from the sidebar | **`×`** icon on hover (data on disk untouched) |
 | Delete a worktree | **`×`** icon on hover (next to the worktree row) |
 | Collapse/expand the sidebar | **`‹` / `›`** in the title bar, or **⌘B** |
+
+**Working and Library.** Working is derived from open tabs, detected running
+processes, and pinned targets, so a large repository catalog stays out of the
+way during normal work. Library contains the complete catalog, grouped by parent
+directory with repositories collapsed by default. Searching is global: it finds
+inactive Library targets even when Working is selected.
+
+![Working view derived from a 30-repository Library](img/42-sidebar-scale.png)
+
+The folder button opens one focused Files view with a back button. This keeps
+deep file trees out of the repo/worktree navigator; only one target's files are
+shown at a time.
 
 **Resizing the sidebar.** Drag the divider on the sidebar's right edge to widen
 or narrow it. **Double-click the divider** to reset it to the default width.

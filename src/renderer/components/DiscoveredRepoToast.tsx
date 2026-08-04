@@ -45,6 +45,7 @@ export function DiscoveredRepoToast() {
       // Park focus on the just-added repo so the user can immediately click
       // through to its worktrees without hunting in the sidebar.
       useStore.getState().setSelected(added.path);
+      useStore.getState().setSidebarMode('library');
       dismiss(head.repoPath);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -76,9 +77,7 @@ export function DiscoveredRepoToast() {
     >
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <h3 className="text-sm text-treeline-cyan">Track {basename}?</h3>
-        {queueLen > 1 && (
-          <span className="text-xs text-treeline-dim">+{queueLen - 1} more</span>
-        )}
+        {queueLen > 1 && <span className="text-xs text-treeline-dim">+{queueLen - 1} more</span>}
       </div>
       <p className="mb-2 break-all text-xs text-treeline-dim">{head.repoPath}</p>
       <p className="mb-3 truncate text-xs text-treeline-dim">

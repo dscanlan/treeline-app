@@ -7,12 +7,18 @@ import { ChangedFilesList } from './ChangedFilesList';
  * The body shown under an expanded worktree row: an `All | Changed` toggle and
  * either the full lazy file tree or the flat working-tree change list.
  */
-export function WorktreeFiles({ worktreePath }: { worktreePath: string }) {
+export function WorktreeFiles({
+  worktreePath,
+  focused = false,
+}: {
+  worktreePath: string;
+  focused?: boolean;
+}) {
   const view = useStore((s) => s.worktreeFileView[worktreePath] ?? 'all');
 
   return (
     <div className="mb-1">
-      <div className="flex items-center gap-1 px-2 pb-1 pl-6">
+      <div className={`flex items-center gap-1 px-2 pb-1 ${focused ? '' : 'pl-6'}`}>
         <ViewTab
           label="All"
           active={view === 'all'}

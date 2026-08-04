@@ -165,6 +165,89 @@ const ALL_WORKTREES = {
   [REPO_DASHBOARD.path]: WORKTREES_DASHBOARD,
 };
 
+const SCALE_REPO_NAMES = [
+  'accounts-api',
+  'audit-service',
+  'auth-gateway',
+  'billing-worker',
+  'catalog-api',
+  'checkout-web',
+  'customer-data',
+  'design-system',
+  'developer-portal',
+  'event-router',
+  'feature-flags',
+  'fulfilment-api',
+  'identity-service',
+  'inventory-worker',
+  'mobile-app',
+  'notifications-api',
+  'observability',
+  'orders-service',
+  'payments-api',
+  'pricing-engine',
+  'reporting-web',
+  'risk-service',
+  'search-api',
+  'shipping-worker',
+  'support-tools',
+  'tax-service',
+  'treeline-app',
+  'web-storefront',
+  'workflow-engine',
+  'workspace-tools',
+];
+
+function buildScaleFixtures(): {
+  repos: Repo[];
+  worktreesByRepo: Record<string, Worktree[]>;
+} {
+  const repos: Repo[] = [];
+  const worktreesByRepo: Record<string, Worktree[]> = {};
+  for (const [index, name] of SCALE_REPO_NAMES.entries()) {
+    const area = index < 10 ? 'platform' : index < 20 ? 'products' : 'labs';
+    const path = `/Users/example/work/${area}/${name}`;
+    const repo: Repo = { path, name, addedAt: 1_700_000_000_000 + index };
+    const worktrees: Worktree[] = [
+      {
+        path,
+        branch: 'main',
+        commit: `${index.toString(16).padStart(2, '0')}a12bc`,
+        isBare: false,
+        isDirty: index === 8 || index === 22,
+        isCurrent: false,
+        isClaude: false,
+        merged: false,
+      },
+      {
+        path: `${path}-worktrees/feature-${index + 1}`,
+        branch: `feat/initiative-${index + 1}`,
+        commit: `${index.toString(16).padStart(2, '0')}d45ef`,
+        isBare: false,
+        isDirty: index === 3 || index === 27,
+        isCurrent: false,
+        isClaude: false,
+        merged: index === 12,
+      },
+    ];
+    if (index % 6 === 0) {
+      worktrees.push({
+        path: `${path}/.claude/worktrees/agent-${index + 1}`,
+        branch: `worktree-agent-${index + 1}`,
+        commit: `${index.toString(16).padStart(2, '0')}f67ab`,
+        isBare: false,
+        isDirty: false,
+        isCurrent: false,
+        isClaude: true,
+        merged: false,
+      });
+    }
+    repos.push(repo);
+    worktreesByRepo[path] = worktrees;
+  }
+  return { repos, worktreesByRepo };
+}
+
 /** Build a SettingsConfig from factory defaults plus per-scenario overrides. */
 function settingsCfg(overrides: Partial<SettingsConfig> = {}): SettingsConfig {
   return {
@@ -219,6 +302,33 @@ const SCENARIOS: Record<string, Scenario> = {
       reset: true,
       repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
       worktreesByRepo: ALL_WORKTREES,
+    });
+  },
+
+  '42-sidebar-scale': async ({ win }) => {
+    const { repos, worktreesByRepo } = buildScaleFixtures();
+    const activePaths = [
+      worktreesByRepo[repos[1]!.path]![0]!.path,
+      worktreesByRepo[repos[3]!.path]![1]!.path,
+      worktreesByRepo[repos[8]!.path]![0]!.path,
+      worktreesByRepo[repos[12]!.path]![1]!.path,
+      worktreesByRepo[repos[22]!.path]![0]!.path,
+      worktreesByRepo[repos[27]!.path]![1]!.path,
+    ];
+    const processesByWorktreePath = Object.fromEntries(
+      activePaths.map((path, index) => [
+        path,
+        [{ pid: 41_000 + index, kind: 'claude' as const, cwd: path, idle: index % 2 === 0 }],
+      ]),
+    );
+    sendHydrate(win, {
+      reset: true,
+      repos,
+      worktreesByRepo,
+      processesByWorktreePath,
+      sidebarMode: 'working',
+      sidebarPins: [worktreesByRepo[repos[26]!.path]![0]!.path],
+      selected: activePaths[1],
     });
   },
 
@@ -846,6 +956,7 @@ const SCENARIOS: Record<string, Scenario> = {
       // Code viewer: expand feat-auth's folder, show its Changed list, and open
       // login.ts as a diff in the panel.
       expandedDirs: { [wt.path]: true },
+      sidebarFileRoot: wt.path,
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: { [wt.path]: changed },
       codePanelOpen: true,
@@ -877,6 +988,7 @@ const SCENARIOS: Record<string, Scenario> = {
       selected: wt.path,
       terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       expandedDirs: { [wt.path]: true },
+      sidebarFileRoot: wt.path,
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: {
         [wt.path]: [
@@ -912,6 +1024,7 @@ const SCENARIOS: Record<string, Scenario> = {
       selected: wt.path,
       terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       expandedDirs: { [wt.path]: true },
+      sidebarFileRoot: wt.path,
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: {
         [wt.path]: [{ path: file, relPath: 'src/auth/login.ts', status: 'modified' }],
@@ -978,6 +1091,7 @@ const SCENARIOS: Record<string, Scenario> = {
       selected: wt.path,
       terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
       expandedDirs: { [wt.path]: true },
+      sidebarFileRoot: wt.path,
       worktreeFileView: { [wt.path]: 'changed' },
       changedByWorktree: {
         [wt.path]: [{ path: file, relPath: 'README.md', status: 'modified' }],
@@ -1234,6 +1348,7 @@ const SCENARIOS: Record<string, Scenario> = {
       // Expand the folder's bare tree and pre-load its children. The opened
       // file is highlighted because openFilePath matches its entry path.
       expandedDirs: { [folder.path]: true },
+      sidebarFileRoot: folder.path,
       dirChildren: {
         [folder.path]: [
           entry('document-repo.md'),
