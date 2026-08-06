@@ -1,7 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 import type { DirEntry } from '@shared/types';
 import { useStore } from '../store';
-import { openFileInPanel, toggleDir } from '../actions/editor';
+import { openFileInPanel, toggleDir, toggleFilePin } from '../actions/editor';
 
 /** Indentation step per tree depth, in px. */
 const INDENT = 12;
@@ -32,10 +32,11 @@ export function FileTree({ dirPath, depth }: { dirPath: string; depth: number })
 }
 
 function FileTreeNode({ entry, depth }: { entry: DirEntry; depth: number }) {
-  const { expanded, selected } = useStore(
+  const { expanded, selected, pinned } = useStore(
     useShallow((s) => ({
       expanded: !!s.expandedDirs[entry.path],
       selected: s.openFilePath === entry.path,
+      pinned: s.pinnedFilePaths.includes(entry.path),
     })),
   );
   const padLeft = BASE_PAD + depth * INDENT;
@@ -61,21 +62,39 @@ function FileTreeNode({ entry, depth }: { entry: DirEntry; depth: number }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void openFileInPanel(entry.path)}
-      title={entry.path}
-      style={{ paddingLeft: padLeft }}
-      className={`flex w-full items-center gap-1.5 rounded py-0.5 pr-2 text-left ${
-        selected
-          ? 'bg-treeline-highlight text-treeline-text'
-          : 'text-treeline-dim hover:bg-treeline-highlight/60 hover:text-treeline-text'
+    <div
+      className={`group/file flex w-full items-center rounded ${
+        selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'
       }`}
     >
-      {/* spacer to align file names with dir names (no chevron) */}
-      <span className="w-3 shrink-0" />
-      <span className="truncate">{entry.name}</span>
-    </button>
+      <button
+        type="button"
+        onClick={() => void openFileInPanel(entry.path)}
+        title={entry.path}
+        style={{ paddingLeft: padLeft }}
+        className={`flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left ${
+          selected ? 'text-treeline-text' : 'text-treeline-dim hover:text-treeline-text'
+        }`}
+      >
+        {/* spacer to align file names with dir names (no chevron) */}
+        <span className="w-3 shrink-0" />
+        <span className="truncate">{entry.name}</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => toggleFilePin(entry.path)}
+        title={pinned ? 'Unpin file' : 'Pin file'}
+        aria-label={`${pinned ? 'Unpin' : 'Pin'} ${entry.name}`}
+        aria-pressed={pinned}
+        className={`mr-1 shrink-0 rounded px-1 hover:bg-treeline-surface group-hover/file:opacity-100 ${
+          pinned
+            ? 'text-treeline-yellow opacity-100'
+            : 'text-treeline-dim opacity-0 hover:text-treeline-text'
+        }`}
+      >
+        {pinned ? '★' : '☆'}
+      </button>
+    </div>
   );
 }
 

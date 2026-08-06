@@ -325,6 +325,11 @@ viewer does that without leaving treeline or breaking your terminal flow.
   that splits in beside the terminal**, so you can reference code and keep
   working in the same view. Language is picked from the file extension
   (`.env` and unknown types render as plain text).
+- **Pin frequently referenced files.** Hover a file in the tree, or use the
+  star in the open file's panel header, to add it to the global **Pinned Files**
+  list. Pins stay above both the repository navigator and focused file browser,
+  persist across restarts, and can span multiple worktrees or folders. A file
+  moved or deleted outside Treeline remains as a dimmed, removable missing pin.
 - **Diff view.** Clicking a file in the **Changed** list opens its **diff**
   (working tree vs `HEAD`): a unified view with a per-file summary, line
   numbers, and red `-` / green `+` rows. Untracked files render as all
@@ -349,6 +354,8 @@ viewer does that without leaving treeline or breaking your terminal flow.
 Guard rails keep it snappy: files over 1 MB are shown truncated (with a
 `truncated` badge), and binary files (detected by a NUL byte) show a
 placeholder instead of mojibake.
+
+![Pinned Files above a focused worktree browser, showing shortcuts from multiple roots, duplicate README names with context, and a removable missing file](docs/img/43-pinned-files.png)
 
 ![A README opened in the rendered Markdown Preview beside the terminal: formatted headings, a task list, a status-legend table, and a syntax-highlighted code block, with a Preview | Diff | File toggle in the panel header](docs/img/24-markdown-preview.png)
 

@@ -118,6 +118,10 @@ export interface ScreenshotHydratePayload {
   dirChildren?: Record<string, DirEntry[]>;
   worktreeFileView?: Record<string, 'all' | 'changed'>;
   changedByWorktree?: Record<string, ChangedFile[]>;
+  /** Seed global file shortcuts (newest first) for deterministic captures. */
+  pinnedFilePaths?: string[];
+  /** Subset of `pinnedFilePaths` rendered as confirmed missing. */
+  missingPinnedFiles?: string[];
   codePanelOpen?: boolean;
   codePanelWidth?: number;
   openFilePath?: string | null;

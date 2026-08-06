@@ -64,6 +64,7 @@ ALL_SCENARIOS=(
   "40-scratch-restored"
   "41-worktree-merged"
   "42-sidebar-scale"
+  "43-pinned-files"
 )
 
 if [ $# -gt 0 ]; then
