@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { AGENTS } from '@shared/agents';
 import type { Repo } from '@shared/types';
 import { useStore } from '../store';
@@ -8,7 +7,8 @@ import { openTabAt } from '../actions/tabs';
 interface Props {
   repo: Repo;
   worktrees: ReturnType<typeof useStore.getState>['worktreesByRepo'][string];
-  defaultOpen?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   forceOpen?: boolean;
   totalWorktrees: number;
   activeWorktrees: number;
@@ -18,13 +18,13 @@ interface Props {
 export function RepoNode({
   repo,
   worktrees,
-  defaultOpen = false,
+  open,
+  onOpenChange,
   forceOpen = false,
   totalWorktrees,
   activeWorktrees,
   dirtyWorktrees,
 }: Props) {
-  const [open, setOpen] = useState(defaultOpen);
   const openModal = useStore((s) => s.openModal);
   const setRepos = useStore((s) => s.setRepos);
   const selected = useStore((s) => s.selectedSidebarPath === repo.path);
@@ -60,7 +60,9 @@ export function RepoNode({
       >
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            if (!forceOpen) onOpenChange(!open);
+          }}
           aria-expanded={expanded}
           className="flex flex-1 items-center gap-2 text-left text-treeline-text"
         >

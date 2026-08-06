@@ -54,8 +54,10 @@ overview see the [README](../README.md); for the scriptable CLI see
 **Working and Library.** Working is derived from open tabs, detected running
 processes, and pinned targets, so a large repository catalog stays out of the
 way during normal work. Library contains the complete catalog, grouped by parent
-directory with repositories collapsed by default. Searching is global: it finds
-inactive Library targets even when Working is selected.
+directory with repositories collapsed by default. Parent and repository
+disclosure choices are remembered while browsing files, switching modes,
+searching, and across app restarts. Searching is global: it finds inactive
+Library targets even when Working is selected.
 
 ![Working view derived from a 30-repository Library](img/42-sidebar-scale.png)
 

@@ -188,6 +188,8 @@ export function attachIpc(): () => void {
           filter: '',
           sidebarMode: 'library',
           sidebarPins: [],
+          sidebarCollapsedLocations: [],
+          sidebarRepoOpen: {},
           sidebarFileRoot: null,
           sidebarAttentionOnly: false,
           sidebarCollapsed: false,
