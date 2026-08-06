@@ -42,11 +42,12 @@ overview see the [README](../README.md); for the scriptable CLI see
 | Show only open/running/pinned work | **Working** above the list |
 | Browse every registered target | **Library** above the list |
 | Find any repo, branch, path, or folder | **Find repos or branches…** (`/` or **⌘⇧O**) |
-| Keep an inactive target in Working | **`☆`** on hover |
+| Keep an inactive target in Working | **`☆`** on hover over a repo/worktree row |
 | Show dirty/merged/unread/failing work | **`!`** beside Working/Library |
 | Open a repo root in a new tab | **`>_`** icon on hover (next to the repo name) |
 | Create a worktree | **`+`** icon on hover (next to the repo name) |
 | Browse a worktree's files | **folder** icon at the left of a worktree row |
+| [Pin a file](#pinning-files-you-keep-coming-back-to) for quick access | **`☆`** on hover over a file in the tree |
 | Remove a repo from the sidebar | **`×`** icon on hover (data on disk untouched) |
 | Delete a worktree | **`×`** icon on hover (next to the worktree row) |
 | Collapse/expand the sidebar | **`‹` / `›`** in the title bar, or **⌘B** |
@@ -69,6 +70,13 @@ shown at a time.
 or narrow it. **Double-click the divider** to reset it to the default width.
 (The divider is hidden while the sidebar is collapsed — the **⌘B** toggle is the
 way back.)
+
+**Hiding the sidebar.** **⌘B** (or the **`‹`** button in the title bar) hides it
+entirely, and that choice is remembered across restarts. If you relaunch with the
+sidebar hidden and nothing open, the window isn't empty by mistake — it tells you
+where your repos went and offers a **Show sidebar (⌘B)** button:
+
+![The empty state with the sidebar hidden — "no terminals open", "Your repos and worktrees are in the sidebar, which is hidden.", and a Show sidebar (⌘B) button](img/44-sidebar-hidden-empty.png)
 
 Each worktree row shows: the branch name, short SHA, a yellow **`●`** if the
 working tree is dirty, a status dot for any open tabs on that path (green =
@@ -317,6 +325,35 @@ Click the **folder icon** on a worktree row to expand its file tree.
 ![Editing a file](img/22-file-editing.png)
 
 Files over 1 MB are shown truncated; binary files show a placeholder.
+
+### Pinning files you keep coming back to
+
+The focused Files view only shows one target at a time, so the handful of files
+you reference constantly — a spec, a scratch TODO, the config you keep checking —
+would otherwise mean navigating back and forth. **Pinned Files** is a single
+global shortcut list that sits above whichever navigator is showing.
+
+- **Pin from the tree.** Hover a file row and click the **`☆`** on its right;
+  it fills in to **`★`**.
+- **Pin the open file.** The **`☆`** in the code panel's header pins whatever
+  you're currently reading — useful right after arriving via quick-open or a
+  find-in-files hit. (The star only appears for files inside a repo, worktree,
+  or folder you've added to treeline.)
+- **Newest pin goes to the top** of the list; click any row to open that file in
+  the panel. Clicking its **`★`** unpins it.
+
+![Pinned Files above a focused worktree browser, showing shortcuts from multiple roots, duplicate README names disambiguated by context, and a dimmed missing file](img/43-pinned-files.png)
+
+The list is **global, not per-worktree** — pins from different worktrees, repos,
+and plain folders sit side by side, and they survive a restart. Each row shows
+the filename with its context underneath (the branch or folder label plus the
+path within it), so several files all called `README.md` stay distinguishable.
+
+If a pinned file is moved or deleted outside treeline, its row doesn't vanish —
+it goes dimmed and struck-through with **`File missing`**, and the row stops
+responding to clicks rather than opening an error. Every pin is re-checked at
+startup, so a file that comes back (a branch checked out again, say) is live
+again on the next launch. Use the **`★`** to clear a pin you're done with.
 
 ### Non-git folders
 

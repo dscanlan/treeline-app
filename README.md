@@ -711,11 +711,17 @@ pause to find it.
 
 ### Sidebar collapse
 
-![Sidebar collapsed — the terminal occupies the full window width](docs/img/06-collapsed.png)
+![Sidebar hidden with a main tab open — the terminal occupies the full window width, leaving only the title bar and the `›` re-open button](docs/img/06-collapsed.png)
 
 `⌘B` (or the `‹` button in the title bar) hides the sidebar entirely.
 The terminal re-fits to the new width on the next animation frame.
 Collapse state persists across launches via the app config.
+
+Because that state survives a restart, you can land on a hidden sidebar with
+no terminals open — a window that would otherwise be blank. The empty state is
+sidebar-aware and says so, with a **Show sidebar (⌘B)** button as the way back:
+
+![The empty state with the sidebar hidden: "no terminals open", the line "Your repos and worktrees are in the sidebar, which is hidden.", and a Show sidebar (⌘B) button](docs/img/44-sidebar-hidden-empty.png)
 
 ## Keyboard shortcuts
 

@@ -453,7 +453,33 @@ const SCENARIOS: Record<string, Scenario> = {
     });
   },
 
-  '06-collapsed': async ({ win }) => {
+  // The point of ⌘B: with a tab open, hiding the sidebar hands the whole
+  // window width to the terminal. Spawns a real PTY so the captured pane
+  // shows an actual shell rather than the empty state (which is what
+  // 44-sidebar-hidden-empty covers instead).
+  '06-collapsed': async (ctx) => {
+    const { tab, ptyId } = await spawnTabPty(ctx, 'main');
+    await waitForPtySettle(ctx, ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: ALL_WORKTREES,
+      tabs: [tab],
+      activeTabId: tab.id,
+      sidebarCollapsed: true,
+    });
+    await delay(400);
+    await typeAndSettle(ctx, ptyId, [
+      'clear\n',
+      "echo 'treeline-app on main · sidebar hidden (⌘B)'\n",
+      'git --version\n',
+    ]);
+  },
+
+  // The escape hatch: sidebar collapsed *and* no terminals open, so the
+  // window would otherwise be blank. TerminalHost swaps the empty-state copy
+  // for a sidebar-aware message plus a real "Show sidebar (⌘B)" button.
+  '44-sidebar-hidden-empty': async ({ win }) => {
     sendHydrate(win, {
       reset: true,
       repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],

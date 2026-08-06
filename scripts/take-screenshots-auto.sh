@@ -65,6 +65,7 @@ ALL_SCENARIOS=(
   "41-worktree-merged"
   "42-sidebar-scale"
   "43-pinned-files"
+  "44-sidebar-hidden-empty"
 )
 
 if [ $# -gt 0 ]; then
