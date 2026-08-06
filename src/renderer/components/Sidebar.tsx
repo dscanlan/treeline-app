@@ -12,6 +12,7 @@ import { ScratchList } from './ScratchList';
 import { ScratchTerminalButton } from './ScratchTerminalButton';
 import { SidebarToggle } from './SidebarToggle';
 import { SidebarFiles } from './SidebarFiles';
+import { PinnedFiles } from './PinnedFiles';
 
 export function Sidebar() {
   const state = useStore(
@@ -69,6 +70,8 @@ export function Sidebar() {
       <div className="flex shrink-0 items-center justify-end px-2 pt-1.5">
         <SidebarToggle />
       </div>
+
+      <PinnedFiles />
 
       {state.sidebarFileRoot ? (
         <SidebarFiles root={state.sidebarFileRoot} />

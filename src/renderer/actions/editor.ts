@@ -143,6 +143,41 @@ export async function openFileInPanel(
   await doOpenFile(path, history);
 }
 
+/** Pin/unpin a browsed file and immediately refresh its availability if added. */
+export function toggleFilePin(path: string): void {
+  const s = useStore.getState();
+  const wasPinned = s.pinnedFilePaths.includes(path);
+  s.togglePinnedFile(path);
+  if (!wasPinned) void refreshPinnedFileAvailability(path);
+}
+
+/** Refresh one pin's last-known on-disk status using the existing system bridge. */
+export async function refreshPinnedFileAvailability(path: string): Promise<boolean | null> {
+  try {
+    const exists = await window.treeline.system.pathExists(path);
+    // Ignore a late response for a pin that was removed while the IPC was in flight.
+    if (useStore.getState().pinnedFilePaths.includes(path)) {
+      useStore.getState().setPinnedFileMissing(path, !exists);
+    }
+    return exists;
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort async availability refresh for all restored pins. */
+export async function refreshPinnedFilesAvailability(): Promise<void> {
+  const paths = useStore.getState().pinnedFilePaths;
+  await Promise.all(paths.map(refreshPinnedFileAvailability));
+}
+
+/** Revalidate a global pin before opening; confirmed-missing rows remain inert. */
+export async function openPinnedFile(path: string): Promise<void> {
+  const exists = await refreshPinnedFileAvailability(path);
+  if (exists === false) return;
+  await openFileInPanel(path);
+}
+
 /**
  * Open `path` and scroll to + highlight `line` (1-based) — the action behind a
  * find-in-files result click. Forces raw 'file' mode (not markdown Preview) so

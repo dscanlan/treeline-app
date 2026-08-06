@@ -1,5 +1,26 @@
 import type { StateCreator } from 'zustand';
 import type { ChangedFile, DirEntry, FileContents, FileDiff } from '@shared/types';
+import { sanitizePinnedFilePaths, togglePinnedFilePath } from '@shared/file-pins';
+
+const FILE_PINS_STORAGE_KEY = 'treeline.pinnedFilePaths';
+
+function loadPersistedFilePins(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    return sanitizePinnedFilePaths(JSON.parse(localStorage.getItem(FILE_PINS_STORAGE_KEY) ?? '[]'));
+  } catch {
+    return [];
+  }
+}
+
+function persistFilePins(paths: string[]): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(FILE_PINS_STORAGE_KEY, JSON.stringify(paths));
+  } catch {
+    // Best-effort renderer preference, matching the other sidebar pins.
+  }
+}
 
 /** Which view a worktree's expanded file area is showing. */
 export type WorktreeFileView = 'all' | 'changed';
@@ -68,6 +89,11 @@ export interface EditorSlice {
   /** Per-worktree in-flight flag for the changed-file fetch. */
   changedLoading: Record<string, boolean>;
 
+  /** Global file shortcuts, newest first, persisted in renderer localStorage. */
+  pinnedFilePaths: string[];
+  /** Pinned paths confirmed absent on disk. Presence with `true` means missing. */
+  missingPinnedFiles: Record<string, boolean>;
+
   setCodePanelWidth: (w: number) => void;
   closeCodePanel: () => void;
 
@@ -121,6 +147,10 @@ export interface EditorSlice {
   setChangedLoading: (worktreePath: string, loading: boolean) => void;
   /** Cache a worktree's changed-file list (clears its loading flag). */
   setChangedFiles: (worktreePath: string, files: ChangedFile[]) => void;
+  /** Add a new file pin at the top, or remove an existing one. */
+  togglePinnedFile: (path: string) => void;
+  /** Mark or clear a pin's last-known missing status. */
+  setPinnedFileMissing: (path: string, missing: boolean) => void;
 }
 
 export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> = (set) => ({
@@ -151,6 +181,8 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
   worktreeFileView: {},
   changedByWorktree: {},
   changedLoading: {},
+  pinnedFilePaths: loadPersistedFilePins(),
+  missingPinnedFiles: {},
 
   setCodePanelWidth: (w) =>
     set({
@@ -264,4 +296,21 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
       changedByWorktree: { ...s.changedByWorktree, [worktreePath]: files },
       changedLoading: { ...s.changedLoading, [worktreePath]: false },
     })),
+
+  togglePinnedFile: (path) =>
+    set((s) => {
+      const pinnedFilePaths = togglePinnedFilePath(s.pinnedFilePaths, path);
+      const missingPinnedFiles = { ...s.missingPinnedFiles };
+      if (!pinnedFilePaths.includes(path)) delete missingPinnedFiles[path];
+      persistFilePins(pinnedFilePaths);
+      return { pinnedFilePaths, missingPinnedFiles };
+    }),
+
+  setPinnedFileMissing: (path, missing) =>
+    set((s) => {
+      const missingPinnedFiles = { ...s.missingPinnedFiles };
+      if (missing) missingPinnedFiles[path] = true;
+      else delete missingPinnedFiles[path];
+      return { missingPinnedFiles };
+    }),
 });

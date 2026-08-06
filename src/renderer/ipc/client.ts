@@ -1,7 +1,7 @@
 // Wires IPC events from the preload bridge into the Zustand store. Call
 // `attachIpc(store)` once at startup; it returns an unsubscribe.
 import { useStore } from '../store';
-import { refreshChangedFiles } from '../actions/editor';
+import { refreshChangedFiles, refreshPinnedFilesAvailability } from '../actions/editor';
 import { openTabAt, jumpToMostRecentUnread } from '../actions/tabs';
 import { toggleSidebar } from '../actions/sidebar';
 import { registerScratchCleanup } from '../actions/scratch';
@@ -208,6 +208,8 @@ export function attachIpc(): () => void {
           worktreeFileView: {},
           changedByWorktree: {},
           changedLoading: {},
+          pinnedFilePaths: [],
+          missingPinnedFiles: {},
           codePanelOpen: false,
           openFilePath: null,
           panelMode: 'file',
@@ -317,6 +319,12 @@ export function attachIpc(): () => void {
       if (p.dirChildren !== undefined) editor.dirChildren = p.dirChildren;
       if (p.worktreeFileView !== undefined) editor.worktreeFileView = p.worktreeFileView;
       if (p.changedByWorktree !== undefined) editor.changedByWorktree = p.changedByWorktree;
+      if (p.pinnedFilePaths !== undefined) editor.pinnedFilePaths = p.pinnedFilePaths;
+      if (p.missingPinnedFiles !== undefined) {
+        editor.missingPinnedFiles = Object.fromEntries(
+          p.missingPinnedFiles.map((path) => [path, true]),
+        );
+      }
       if (p.codePanelOpen !== undefined) editor.codePanelOpen = p.codePanelOpen;
       if (p.codePanelWidth !== undefined) editor.codePanelWidth = p.codePanelWidth;
       if (p.openFilePath !== undefined) editor.openFilePath = p.openFilePath;
@@ -505,6 +513,9 @@ export async function loadInitialState(): Promise<void> {
   useStore.getState().setFolders(cfg.folders);
   useStore.getState().setSidebarCollapsed(cfg.sidebarCollapsed);
   useStore.getState().setSettings(cfg.settings);
+  // Pins live in renderer storage rather than config.json. Validate them in
+  // parallel without delaying the rest of startup; rows update as checks land.
+  void refreshPinnedFilesAvailability();
 
   // Restore the persisted scratchpad buffer. Best-effort: a read failure just
   // leaves the buffer empty.

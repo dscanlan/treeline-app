@@ -332,6 +332,41 @@ const SCENARIOS: Record<string, Scenario> = {
     });
   },
 
+  '43-pinned-files': async ({ win }) => {
+    const wt = WORKTREES_TREELINE_APP[1]!;
+    const selectedFile = `${wt.path}/src/auth/login.ts`;
+    const otherReadme = `${REPO_CGS.path}/README.md`;
+    const missingReadme = '/Users/example/archive/README.md';
+    sendHydrate(win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP, REPO_CGS],
+      worktreesByRepo: {
+        [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP,
+        [REPO_CGS.path]: WORKTREES_CGS,
+      },
+      selected: wt.path,
+      sidebarFileRoot: wt.path,
+      expandedDirs: { [wt.path]: true, [`${wt.path}/src`]: true },
+      dirChildren: {
+        [wt.path]: [
+          { name: 'src', path: `${wt.path}/src`, type: 'dir' },
+          { name: 'README.md', path: `${wt.path}/README.md`, type: 'file' },
+        ],
+        [`${wt.path}/src`]: [
+          { name: 'auth', path: `${wt.path}/src/auth`, type: 'dir' },
+          { name: 'index.ts', path: `${wt.path}/src/index.ts`, type: 'file' },
+        ],
+      },
+      pinnedFilePaths: [missingReadme, selectedFile, otherReadme],
+      missingPinnedFiles: [missingReadme],
+      codePanelOpen: true,
+      codePanelWidth: 520,
+      openFilePath: selectedFile,
+      panelMode: 'file',
+      openFileText: LOGIN_TS,
+    });
+  },
+
   '32-listening-ports': async ({ win }) => {
     // Listening-port chips: a dim cyan `:PORT` per TCP port a process rooted in
     // the worktree is listening on. feat-auth runs a dev server across two

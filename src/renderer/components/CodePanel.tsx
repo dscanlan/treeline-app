@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { FileDiff } from '@shared/types';
+import { buildFilePinRoots, containingFilePinRoot } from '@shared/file-pins';
 import { useStore } from '../store';
 import { basename, isMarkdownPath } from '../util/path';
 import {
@@ -7,6 +9,7 @@ import {
   setPanelMode,
   tryCloseCodePanel,
   tryStopEditing,
+  toggleFilePin,
 } from '../actions/editor';
 import { openNoteFromHistory } from '../actions/vault';
 import { CodeMirrorView } from './CodeMirrorView';
@@ -41,10 +44,21 @@ export function CodePanel() {
       revealLine: st.revealLine,
       revealTick: st.revealTick,
       noteHistory: st.noteHistory,
+      pinnedFilePaths: st.pinnedFilePaths,
+      repos: st.repos,
+      folders: st.folders,
+      worktreesByRepo: st.worktreesByRepo,
     })),
   );
 
   const isMarkdown = s.openFilePath !== null && isMarkdownPath(s.openFilePath);
+  const filePinRoots = useMemo(
+    () => buildFilePinRoots(s.repos, s.folders, s.worktreesByRepo),
+    [s.folders, s.repos, s.worktreesByRepo],
+  );
+  const filePinned = s.openFilePath !== null && s.pinnedFilePaths.includes(s.openFilePath);
+  const filePinnable =
+    s.openFilePath !== null && containingFilePinRoot(s.openFilePath, filePinRoots) !== null;
   const dirty = s.editing && s.draft !== null && s.draft !== s.openFileText;
   // Editable only for a fully-loaded, non-binary, non-truncated text file.
   const canEdit =
@@ -69,6 +83,21 @@ export function CodePanel() {
           )}
           <span className="truncate">{s.openFilePath ? basename(s.openFilePath) : 'Code'}</span>
         </span>
+
+        {s.openFilePath && (filePinned || filePinnable) && (
+          <button
+            type="button"
+            onClick={() => toggleFilePin(s.openFilePath!)}
+            title={filePinned ? 'Unpin file' : 'Pin file'}
+            aria-label={filePinned ? 'Unpin file' : 'Pin file'}
+            aria-pressed={filePinned}
+            className={`shrink-0 rounded px-1 hover:bg-treeline-highlight ${
+              filePinned ? 'text-treeline-yellow' : 'text-treeline-dim hover:text-treeline-text'
+            }`}
+          >
+            {filePinned ? '★' : '☆'}
+          </button>
+        )}
 
         {s.panelMode === 'file' && s.openFileTruncated && (
           <span
