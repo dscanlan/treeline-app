@@ -131,9 +131,11 @@ up on exit.
 
 Working contains only targets with open tabs, detected running processes, or a
 manual pin. Library retains the complete catalog, groups repos by parent
-directory, and keeps repos collapsed with worktree/activity summaries. Search
-is global even from Working, and file browsing replaces the catalog with one
-focused tree rather than nesting multiple trees beneath worktrees.
+directory, and keeps repos collapsed with worktree/activity summaries. Parent
+and repository disclosure choices survive file browsing, mode changes, search,
+and app restarts. Search is global even from Working, and file browsing replaces
+the catalog with one focused tree rather than nesting multiple trees beneath
+worktrees.
 
 ![Seven working targets projected from a 30-repository Library](docs/img/42-sidebar-scale.png)
 

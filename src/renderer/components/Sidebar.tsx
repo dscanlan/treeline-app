@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { leaves } from '@shared/pane-tree';
+import { sidebarLocationIsOpen, sidebarRepoIsOpen } from '@shared/sidebar-disclosure';
 import { useStore } from '../store';
 import { buildSidebarModel, type SidebarRepoModel } from '@shared/sidebar-model';
 import { RepoNode } from './RepoNode';
@@ -236,11 +237,14 @@ function RepoEntry({
   mode: 'working' | 'library';
   forceOpen?: boolean;
 }) {
+  const open = useStore((s) => sidebarRepoIsOpen(s.sidebarRepoOpen, mode, entry.repo.path));
+  const setOpen = useStore((s) => s.setSidebarRepoOpen);
   return (
     <RepoNode
       repo={entry.repo}
       worktrees={entry.worktrees}
-      defaultOpen={mode === 'working'}
+      open={open}
+      onOpenChange={(next) => setOpen(mode, entry.repo.path, next)}
       forceOpen={forceOpen}
       totalWorktrees={entry.totalWorktrees}
       activeWorktrees={entry.activeWorktrees}
@@ -258,13 +262,14 @@ function LocationGroup({
   repos: SidebarRepoModel[];
   mode: 'working' | 'library';
 }) {
-  const [open, setOpen] = useState(true);
+  const open = useStore((s) => sidebarLocationIsOpen(s.sidebarCollapsedLocations, parent));
+  const toggleLocation = useStore((s) => s.toggleSidebarLocation);
   const label = parent.split('/').filter(Boolean).pop() ?? parent;
   return (
     <section className="mb-1">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => toggleLocation(parent)}
         aria-expanded={open}
         title={parent}
         className="sticky top-0 z-10 flex w-full items-center gap-1 bg-treeline-surface px-2 py-1 text-left text-[10px] uppercase text-treeline-dim"

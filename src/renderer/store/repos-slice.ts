@@ -1,5 +1,12 @@
 import type { StateCreator } from 'zustand';
 import type { Folder, PrInfo, Repo, Worktree } from '@shared/types';
+import {
+  setSidebarRepoDisclosure,
+  toggleSidebarLocation as toggleCollapsedLocation,
+  type SidebarMode,
+} from '@shared/sidebar-disclosure';
+
+export type { SidebarMode } from '@shared/sidebar-disclosure';
 
 /** Clamp bounds for the resizable sidebar (px). */
 export const SIDEBAR_MIN_WIDTH = 180;
@@ -9,8 +16,8 @@ export const SIDEBAR_DEFAULT_WIDTH = 256;
 const WIDTH_STORAGE_KEY = 'treeline.sidebarWidth';
 const MODE_STORAGE_KEY = 'treeline.sidebarMode';
 const PINS_STORAGE_KEY = 'treeline.sidebarPins';
-
-export type SidebarMode = 'working' | 'library';
+const COLLAPSED_LOCATIONS_STORAGE_KEY = 'treeline.sidebarCollapsedLocations';
+const REPO_OPEN_STORAGE_KEY = 'treeline.sidebarRepoOpen';
 
 function loadPersistedWidth(): number {
   // Guard: store creation runs at module load. In an Electron renderer
@@ -72,6 +79,51 @@ function persistPins(paths: string[]): void {
   }
 }
 
+function loadPersistedCollapsedLocations(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(COLLAPSED_LOCATIONS_STORAGE_KEY) ?? '[]',
+    ) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((path): path is string => typeof path === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistCollapsedLocations(paths: string[]): void {
+  try {
+    localStorage.setItem(COLLAPSED_LOCATIONS_STORAGE_KEY, JSON.stringify(paths));
+  } catch {
+    // Best-effort UI preference.
+  }
+}
+
+function loadPersistedRepoOpen(): Record<string, boolean> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REPO_OPEN_STORAGE_KEY) ?? '{}') as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, boolean] => typeof entry[1] === 'boolean',
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function persistRepoOpen(repoOpen: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(REPO_OPEN_STORAGE_KEY, JSON.stringify(repoOpen));
+  } catch {
+    // Best-effort UI preference.
+  }
+}
+
 export interface ReposSlice {
   repos: Repo[];
   /** Plain (non-git) directories pinned to the sidebar as bare file trees. */
@@ -97,6 +149,10 @@ export interface ReposSlice {
   sidebarMode: SidebarMode;
   /** Worktree/folder paths manually retained in the Working view. */
   sidebarPins: string[];
+  /** Parent-directory groups the user collapsed in the Library. Missing means open. */
+  sidebarCollapsedLocations: string[];
+  /** Explicit repo disclosure state, keyed by mode + absolute repo path. */
+  sidebarRepoOpen: Record<string, boolean>;
   /** A single target whose files replace the repo navigator. */
   sidebarFileRoot: string | null;
   /** Optional status-focused subset of either list mode. */
@@ -123,6 +179,8 @@ export interface ReposSlice {
   setFilter: (s: string) => void;
   setSidebarMode: (mode: SidebarMode) => void;
   toggleSidebarPin: (path: string) => void;
+  toggleSidebarLocation: (parentPath: string) => void;
+  setSidebarRepoOpen: (mode: SidebarMode, repoPath: string, open: boolean) => void;
   setSidebarFileRoot: (path: string | null) => void;
   setSidebarAttentionOnly: (v: boolean) => void;
   setSidebarCollapsed: (v: boolean) => void;
@@ -140,6 +198,8 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
   filter: '',
   sidebarMode: loadPersistedMode(),
   sidebarPins: loadPersistedPins(),
+  sidebarCollapsedLocations: loadPersistedCollapsedLocations(),
+  sidebarRepoOpen: loadPersistedRepoOpen(),
   sidebarFileRoot: null,
   sidebarAttentionOnly: false,
   sidebarCollapsed: false,
@@ -169,6 +229,21 @@ export const createReposSlice: StateCreator<ReposSlice, [], [], ReposSlice> = (s
         : [...s.sidebarPins, path];
       persistPins(sidebarPins);
       return { sidebarPins };
+    }),
+  toggleSidebarLocation: (parentPath) =>
+    set((s) => {
+      const sidebarCollapsedLocations = toggleCollapsedLocation(
+        s.sidebarCollapsedLocations,
+        parentPath,
+      );
+      persistCollapsedLocations(sidebarCollapsedLocations);
+      return { sidebarCollapsedLocations };
+    }),
+  setSidebarRepoOpen: (mode, repoPath, open) =>
+    set((s) => {
+      const sidebarRepoOpen = setSidebarRepoDisclosure(s.sidebarRepoOpen, mode, repoPath, open);
+      persistRepoOpen(sidebarRepoOpen);
+      return { sidebarRepoOpen };
     }),
   setSidebarFileRoot: (sidebarFileRoot) => set({ sidebarFileRoot }),
   setSidebarAttentionOnly: (sidebarAttentionOnly) => set({ sidebarAttentionOnly }),
