@@ -45,14 +45,17 @@ worktree dance is optional.
 
 ## Status
 
-v0.25.0 — feature-complete for v1: macOS only, repos managed manually.
-Open tabs are saved and offered back after a full restart, a
-persistent scratchpad side panel rides alongside them, and a scoped
-fuzzy quick-open (⌘⇧P) plus find-in-files (⌘⇧F) search the active repo.
-Merged worktrees are greyed out in the sidebar with a "merged" badge.
-Markdown previews understand wiki-style `[[wikilinks]]` and YAML frontmatter,
-so any pinned folder of markdown notes is browsable in-app, with a back
-button and breadcrumb trail for hopping between linked notes.
+v0.26.0 — feature-complete for v1: macOS only, repos managed manually.
+The sidebar scales to a large catalog: a **Working** view derived from
+open tabs, running processes, and pins, with the full **Library** a click
+away and search global across both. Open tabs are saved and offered back
+after a full restart, a persistent scratchpad side panel rides alongside
+them, and a scoped fuzzy quick-open (⌘⇧P) plus find-in-files (⌘⇧F) search
+the active repo. Merged worktrees are greyed out in the sidebar with a
+"merged" badge. Markdown previews understand wiki-style `[[wikilinks]]`
+and YAML frontmatter, so any pinned folder of markdown notes is browsable
+in-app, with a back button and breadcrumb trail for hopping between
+linked notes.
 
 ## Install
 
