@@ -361,6 +361,11 @@ placeholder instead of mojibake.
 
 ![A README opened in the rendered Markdown Preview beside the terminal: formatted headings, a task list, a status-legend table, and a syntax-highlighted code block, with a Preview | Diff | File toggle in the panel header](docs/img/24-markdown-preview.png)
 
+Fenced ` ```mermaid ` blocks render as diagrams in the Preview, themed to match
+the rest of the app:
+
+![An ARCHITECTURE.md in Preview beside the terminal, with a mermaid graph LR flowchart and a sequence diagram both rendered as SVG in the app's dark palette](docs/img/45-mermaid-preview.png)
+
 ![Editing login.ts in the File view: an amber unsaved-changes dot by the filename, Save and Done in the panel header, and the editable buffer](docs/img/22-file-editing.png)
 
 ![The unsaved-changes modal — Keep editing or Discard — shown when navigating away mid-edit](docs/img/23-discard-modal.png)

@@ -300,6 +300,12 @@ Click the **folder icon** on a worktree row to expand its file tree.
   the terminal. Clicking a file in **Changed** opens its **diff** (working tree
   vs `HEAD`); a **`Diff | File`** toggle flips between them.
 - **Markdown** files open on a rendered **Preview** (`Preview | Diff | File`).
+- **Mermaid diagrams.** A fenced ` ```mermaid ` block renders as a diagram
+  rather than as code — flowcharts (`graph LR`, `flowchart TD`), sequence
+  diagrams, state charts, and the rest of the mermaid grammar. Diagrams use the
+  colours of your current Appearance theme, so they follow along when you switch
+  between Graphite, Light, and Midnight. A diagram that fails to parse shows the
+  error and its own source in place, leaving the rest of the note readable.
 - **Notes & wikilinks.** The Preview understands wiki-style markdown notes
   (the format used by Obsidian, Logseq, and similar apps — but any folder of
   markdown works):

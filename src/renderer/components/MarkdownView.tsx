@@ -9,7 +9,9 @@ import {
   type NoteIndex,
 } from '@shared/note-link';
 import { remarkWikilinks } from '@shared/remark-wikilink';
+import { mermaidSource, type HastNode } from '@shared/mermaid-block';
 import { splitFrontmatter, parseFrontmatterEntries } from '@shared/frontmatter';
+import { MermaidBlock } from './MermaidBlock';
 import { useStore } from '../store';
 import {
   containingRootFor,
@@ -25,7 +27,10 @@ import {
  *
  * Styling matches the Graphite palette via element overrides (no typography
  * plugin). Fenced code blocks are highlighted by rehype-highlight; their colors
- * come from the `.hljs-*` rules in globals.css.
+ * come from the `.hljs-*` rules in globals.css. ```mermaid fences are the one
+ * exception: the `pre` override hands them to MermaidBlock, which mounts an SVG
+ * mermaid generated and sanitised — see that file for why that stays within the
+ * no-raw-HTML rule.
  *
  * External links open in the OS browser: `target="_blank"` routes the click
  * through the main process's setWindowOpenHandler, which only hands safe
@@ -91,11 +96,19 @@ const components: Components = {
       </code>
     );
   },
-  pre: ({ children }) => (
-    <pre className="my-3 overflow-x-auto rounded border border-treeline-highlight bg-treeline-highlight/40 p-3 font-mono text-xs leading-relaxed">
-      {children}
-    </pre>
-  ),
+  // ```mermaid fences become diagrams; every other fence stays a code block.
+  // The swap happens here rather than in `code` because the diagram replaces
+  // the whole block — rendering it inside this styled `pre` would nest it in
+  // the code-block chrome and inherit the mono/pre text styling.
+  pre: ({ node, children }) => {
+    const diagram = mermaidSource(node as HastNode | undefined);
+    if (diagram !== null) return <MermaidBlock code={diagram} />;
+    return (
+      <pre className="my-3 overflow-x-auto rounded border border-treeline-highlight bg-treeline-highlight/40 p-3 font-mono text-xs leading-relaxed">
+        {children}
+      </pre>
+    );
+  },
   table: ({ children }) => (
     <div className="my-3 overflow-x-auto">
       <table className="w-full border-collapse text-sm">{children}</table>

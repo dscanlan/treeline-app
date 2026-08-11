@@ -128,6 +128,22 @@ renderer's strict CSP; external links use `target="_blank"`, which routes
 through the main window's `setWindowOpenHandler` (safe schemes →
 `shell.openExternal`).
 
+**Mermaid diagrams.** The one place preview mounts markup it did not build as
+React elements. The `pre` override calls `mermaidSource()`
+(`shared/mermaid-block.ts`, a pure hast check for `pre > code.language-mermaid`)
+and, on a match, renders `<MermaidBlock>` instead of the code block — the swap
+happens at `pre` rather than `code` so the diagram replaces the whole block
+instead of inheriting the code-block chrome. `MermaidBlock` imports `mermaid`
+lazily (it is the renderer's largest dependency, and most notes contain no
+diagram), then writes mermaid's generated SVG into a ref'd container. That is
+narrower than it sounds: the markup is generated from the diagram grammar
+rather than copied out of the note, `securityLevel: 'strict'` runs mermaid's
+DOMPurify pass, and `script-src 'self'` would block anything that slipped
+through. Theme variables are derived from the live `AppPalette`
+(`mermaidThemeVariables()`), and mermaid's global config is re-applied before
+each render so an Appearance change repaints existing diagrams. Parse failures
+are caught per block and fall back to the source plus the message.
+
 **Notes reader (wikilinks + frontmatter).** The preview also reads
 wiki-style markdown notes. A dependency-free remark plugin
 (`shared/remark-wikilink.ts`, string logic in `shared/note-link.ts`) rewrites

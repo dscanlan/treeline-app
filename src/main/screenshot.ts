@@ -1169,6 +1169,71 @@ const SCENARIOS: Record<string, Scenario> = {
     await typeAndSettle(ctx, ptyId, ['clear\n', "echo 'markdown preview'\n"]);
   },
 
+  // ── mermaid: a ```mermaid fence renders as a diagram, not a code block ──
+  // Same Preview mode as 24; the fence goes through MermaidBlock instead of
+  // rehype-highlight. mermaid is imported lazily on first diagram, so this
+  // scenario waits noticeably longer than the others before capturing.
+
+  '45-mermaid-preview': async (ctx) => {
+    const wt = WORKTREES_TREELINE_APP[1]!; // feat-auth
+    const file = `${wt.path}/ARCHITECTURE.md`;
+    const md = [
+      '# Architecture',
+      '',
+      'How a note reaches the screen:',
+      '',
+      '```mermaid',
+      'graph LR',
+      '  A[Notes folder] --> B{Preview}',
+      '  B -->|mermaid fence| C[MermaidBlock]',
+      '  B -->|other fence| D[Code block]',
+      '  C --> E((SVG))',
+      '```',
+      '',
+      '## Handshake',
+      '',
+      '```mermaid',
+      'sequenceDiagram',
+      '  Renderer->>Main: read note',
+      '  Main-->>Renderer: markdown',
+      '  Renderer->>Mermaid: render(graph)',
+      '  Mermaid-->>Renderer: svg',
+      '```',
+      '',
+      'Ordinary fences are untouched:',
+      '',
+      '```ts',
+      "const diagram = mermaidSource(node);",
+      '```',
+    ].join('\n');
+
+    const { tab, ptyId } = await spawnTabPty(ctx, 'feat-auth');
+    await waitForPtySettle(ctx, ptyId);
+    sendHydrate(ctx.win, {
+      reset: true,
+      repos: [REPO_TREELINE_APP],
+      worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: wt.path,
+      terminalStatus: [{ ptyId: ptyId, status: 'idle', foregroundCmd: null }],
+      expandedDirs: { [wt.path]: true },
+      sidebarFileRoot: wt.path,
+      worktreeFileView: { [wt.path]: 'changed' },
+      changedByWorktree: {
+        [wt.path]: [{ path: file, relPath: 'ARCHITECTURE.md', status: 'modified' }],
+      },
+      codePanelOpen: true,
+      codePanelWidth: 620,
+      openFilePath: file,
+      panelMode: 'preview',
+      openFileText: md,
+    });
+    // The lazy mermaid chunk has to load and both diagrams lay out before the
+    // capture, which is why this waits far longer than a static scenario.
+    await delay(2500);
+  },
+
   // ── split panes: two terminals side-by-side in one tab ──────────────────
   // Splits the focused pane to the right (⌘D): two live PTYs share the tab,
   // each its own xterm with a status dot + badge. The focused (right) pane

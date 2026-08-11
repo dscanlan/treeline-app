@@ -66,6 +66,7 @@ ALL_SCENARIOS=(
   "42-sidebar-scale"
   "43-pinned-files"
   "44-sidebar-hidden-empty"
+  "45-mermaid-preview"
 )
 
 if [ $# -gt 0 ]; then
