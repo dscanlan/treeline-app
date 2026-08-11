@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.28.0 — feature-complete for v1: macOS only, repos managed manually.
+v0.29.0 — feature-complete for v1: macOS only, repos managed manually.
 The sidebar scales to a large catalog: a **Working** view derived from
 open tabs, running processes, and pins, with the full **Library** a click
 away and search global across both. Open tabs are saved and offered back
