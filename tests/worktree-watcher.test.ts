@@ -5,7 +5,16 @@ import type { Worktree } from '../src/shared/types';
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const wt = (path: string): Worktree =>
-  ({ path, branch: 'main', commit: 'abc1234', isBare: false, dirty: false }) as Worktree;
+  ({
+    path,
+    branch: 'main',
+    commit: 'abc1234',
+    isBare: false,
+    isDirty: false,
+    isCurrent: false,
+    isClaude: false,
+    merged: false,
+  });
 
 let watchers: WorktreeWatcher[] = [];
 
