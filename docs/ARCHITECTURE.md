@@ -296,7 +296,9 @@ and agents can issue the same verbs a user would click.
    `{repo, branch?}` selector to a concrete worktree path.
 4. Verbs that need the UI are forwarded to the renderer over a `cli:command`
    channel: `open` focuses the window and calls the same `openTabAt(cwd)` a sidebar
-   click takes; `send` writes its text to the *focused* tab's PTY (`pty.write`).
+   click takes. Untargeted `send` writes to the *focused* tab's PTY
+   (`pty.write`); `send --self` / `send --pane` bypass renderer focus and write
+   directly to the named live PTY in main (the `tmux send-keys -t` equivalent).
    `notify` feeds the **agent-attention notifications** below (target resolution
    lives in `main/notification-targets.ts`, unit-tested): with a `paneId` (the
    Claude Code hook reads it from the `TREELINE_PANE_ID` env var treeline exports

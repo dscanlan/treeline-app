@@ -160,6 +160,49 @@ describe('treeline hooks setup', () => {
   });
 });
 
+describe('treeline send', () => {
+  it('keeps the original focused-pane request when no target is given', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['send', 'npm test\\n'], { env: { TREELINE_SOCK: sock } });
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({ verb: 'send', args: { text: 'npm test\n' } });
+  });
+
+  it('--self targets the pane inherited through $TREELINE_PANE_ID', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['send', '--self', '/clear\\n'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-own' },
+    });
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({
+      verb: 'send',
+      args: { text: '/clear\n', paneId: 'pane-own' },
+    });
+  });
+
+  it('--pane targets an explicit pane id', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    await run(['send', '--pane', 'pane-7', 'echo ok\\n'], {
+      env: { TREELINE_SOCK: sock },
+    });
+    expect(await received).toEqual({
+      verb: 'send',
+      args: { text: 'echo ok\n', paneId: 'pane-7' },
+    });
+  });
+
+  it('--self fails clearly outside a Treeline pane', async () => {
+    const res = await run(['send', '--self', '/clear\\n'], {
+      env: { TREELINE_PANE_ID: '' },
+    });
+    expect(res.code).toBe(2);
+    expect(res.stderr).toContain('requires $TREELINE_PANE_ID');
+  });
+});
+
 describe('treeline claude-session', () => {
   it('sends the session id with the pane from $TREELINE_PANE_ID', async () => {
     const sock = join(tmp(), 's.sock');

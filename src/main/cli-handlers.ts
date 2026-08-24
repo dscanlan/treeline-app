@@ -33,8 +33,11 @@ export interface CliDeps {
   recordAgentSession(paneId: string, agent: AgentKind, sessionId: string): boolean;
   /** Focus the window and open/focus the tab for `cwd` (drives the renderer). */
   openWorktree(cwd: string): void;
-  /** Type `text` into the focused terminal pane (drives the renderer). */
-  sendKeys(text: string): void;
+  /**
+   * Type `text` into `paneId`, or into the focused pane when it is omitted.
+   * Returns false only when an explicitly targeted pane is not live.
+   */
+  sendKeys(text: string, paneId?: string): boolean;
   /**
    * Open the embedded browser pane and point it at `url` (drives the renderer).
    * When `wait` is set, resolves only after the page finishes loading.
@@ -169,8 +172,11 @@ export function buildCliHandlers(deps: CliDeps): CliHandlerMap {
       // the type is required here — empty string is allowed.
       const text = args['text'];
       if (typeof text !== 'string') throw new Error('missing required argument: text');
-      deps.sendKeys(text);
-      return { sent: text.length };
+      const paneId =
+        typeof args['paneId'] === 'string' && args['paneId'] ? args['paneId'] : undefined;
+      const sent = paneId ? deps.sendKeys(text, paneId) : deps.sendKeys(text);
+      if (paneId && !sent) throw new Error(`unknown pane: ${paneId}`);
+      return { sent: text.length, ...(paneId ? { paneId } : {}) };
     },
 
     // Drive the embedded browser pane. `navigate` opens/points the pane (via the

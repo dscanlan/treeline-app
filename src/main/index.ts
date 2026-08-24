@@ -407,9 +407,15 @@ app.whenReady().then(() => {
         focusMainWindow();
         sendCliCommand({ verb: 'open', cwd });
       },
-      // No focus-steal: scripts/agents type into the active pane in the
-      // background. The renderer no-ops if no terminal is focused.
-      sendKeys: (text) => sendCliCommand({ verb: 'send', text }),
+      // An explicit pane is written in main, bypassing renderer focus. This is
+      // Treeline's `tmux send-keys -t` equivalent: an agent can queue `/clear`
+      // into its own PTY while its turn is still running. Calls without a pane
+      // retain the original focused-pane behaviour through the renderer.
+      sendKeys: (text, paneId) => {
+        if (paneId) return ptyManager?.write(paneId, text) ?? false;
+        sendCliCommand({ verb: 'send', text });
+        return true;
+      },
       // Open the browser pane through the renderer (opening it is React state);
       // eval/screenshot run against the guest webContents directly in main.
       browserNavigate: async (url, wait) => {

@@ -504,6 +504,7 @@ treeline repos                     # tracked repos (JSON)
 treeline worktrees <repo>          # a repo's worktrees (JSON)
 treeline open <repo> [branch]      # focus, or open, that worktree's terminal tab
 treeline send 'npm test\n'         # type keystrokes into the focused terminal
+treeline send --self '/clear\n'    # queue input in the caller's own pane
 treeline notify "build finished"   # native desktop notification from the app
 
 # Drive the embedded browser pane (see "the agent loop" below)

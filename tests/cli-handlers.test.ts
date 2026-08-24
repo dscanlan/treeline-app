@@ -31,7 +31,7 @@ function makeDeps(over: Partial<CliDeps> = {}): CliDeps {
     notify: vi.fn(),
     recordAgentSession: vi.fn(() => true),
     openWorktree: vi.fn(),
-    sendKeys: vi.fn(),
+    sendKeys: vi.fn(() => true),
     browserNavigate: vi.fn(async () => {}),
     browserEval: vi.fn(async () => 'page title'),
     browserScreenshot: vi.fn(async () => 'data:image/png;base64,AAAA'),
@@ -200,12 +200,24 @@ describe('buildCliHandlers', () => {
   });
 
   it('send forwards text to sendKeys (empty string allowed, wrong type rejected)', () => {
-    const sendKeys = vi.fn();
+    const sendKeys = vi.fn(() => true);
     const h = buildCliHandlers(makeDeps({ sendKeys }));
     expect(h.send({ text: 'npm test\n' })).toEqual({ sent: 9 });
     expect(sendKeys).toHaveBeenCalledWith('npm test\n');
     expect(h.send({ text: '' })).toEqual({ sent: 0 });
     expect(() => h.send({})).toThrow(/missing required argument: text/);
+  });
+
+  it('send targets an explicit pane and rejects a pane that is no longer live', () => {
+    const sendKeys = vi.fn((_text: string, paneId?: string) => paneId !== 'gone');
+    const h = buildCliHandlers(makeDeps({ sendKeys }));
+
+    expect(h.send({ text: '/clear\n', paneId: 'pane-1' })).toEqual({
+      sent: 7,
+      paneId: 'pane-1',
+    });
+    expect(sendKeys).toHaveBeenCalledWith('/clear\n', 'pane-1');
+    expect(() => h.send({ text: '/clear\n', paneId: 'gone' })).toThrow(/unknown pane: gone/);
   });
 
   it('browser navigate normalizes the URL then drives browserNavigate', async () => {

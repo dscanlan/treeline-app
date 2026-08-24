@@ -98,7 +98,7 @@ treeline <verb> [args]  ──{verb,args}\n──▶  app main process (CliServe
 | `treeline repos` | List tracked repos (JSON). |
 | `treeline worktrees <repo>` | List a repo's worktrees (JSON). |
 | `treeline open <repo> [branch]` | Focus, or open, that worktree's terminal tab. |
-| `treeline send <text…>` | Type keystrokes into the focused terminal. |
+| `treeline send [--self\|--pane ID] <text…>` | Type keystrokes into the focused, current, or named terminal pane. |
 | `treeline notify <text…>` | Native desktop notification from the app. |
 | `treeline claude-session <session-id> [pane-id]` | Report the Claude session running in a pane (pane defaults to `$TREELINE_PANE_ID`); normally sent by the `SessionStart` hook. |
 | `treeline browser <action> …` | Drive the embedded browser pane (see below). |
@@ -129,6 +129,17 @@ treeline <verb> [args]  ──{verb,args}\n──▶  app main process (CliServe
   Quote the argument so your shell doesn't eat the backslash.
 - `send` accepts an empty/control-only string (e.g. send just a `\n` to press
   Enter, or a raw control char).
+- `send --self` targets the terminal that launched the command, using the
+  inherited `$TREELINE_PANE_ID`. Input goes straight to that PTY even when a
+  different tab is focused. This is the Treeline equivalent of
+  `tmux send-keys -t "$TMUX_PANE"`: input sent while an agent turn is running is
+  queued by the terminal and handled when the agent next reads input. For
+  example, `treeline send --self '/clear\n'` safely schedules Claude Code's
+  `/clear` for the end of the current turn.
+- `send --pane <pane-id>` provides the same targeted behaviour for an explicit
+  pane. A stale or unknown id fails instead of silently dropping the input.
+- With neither targeting option, `send` retains its original behaviour and
+  writes to the focused terminal pane.
 - `notify` joins all trailing words into one message and trims it.
 - For `browser eval`, the JS is the joined trailing args; quote it so your shell
   passes it through intact: `treeline browser eval 'document.title'`.
@@ -306,7 +317,8 @@ The CLI pretty-prints the response `data` payload. Shapes:
 7-char short SHA.
 
 **`open`** → `{ "opened": "<worktree path>" }`
-**`send`** → `{ "sent": <chars typed> }`
+**`send`** → `{ "sent": <chars typed> }`; targeted sends also include
+`{ "paneId": "<target>" }`.
 **`notify`** → no `data` (prints nothing on success).
 
 ---

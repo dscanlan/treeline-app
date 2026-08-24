@@ -11,7 +11,8 @@
 //   treeline repos
 //   treeline worktrees <repo>
 //   treeline open <repo> [branch]
-//   treeline send <text...>            keystrokes to the focused terminal
+//   treeline send [--self|--pane ID] <text...>
+//                                      keystrokes to a terminal pane
 //   treeline notify <text...>
 //   treeline browser navigate <url> [--wait]  open the pane at <url> (--wait: until loaded)
 //   treeline browser eval <js...>      run JS in the pane, print the result (local origins only)
@@ -67,7 +68,8 @@ const USAGE = `treeline — drive the running treeline-app
   treeline repos
   treeline worktrees <repo>
   treeline open <repo> [branch]
-  treeline send <text...>            keystrokes to the focused terminal
+  treeline send [--self|--pane ID] <text...>
+                                     keystrokes to a terminal pane
   treeline notify <text...>
   treeline browser navigate <url> [--wait]  open the pane at <url> (--wait: until loaded)
   treeline browser eval <js...>      run JS in the pane, print the result (local origins only)
@@ -102,9 +104,20 @@ function buildRequest(argv) {
       if (!rest[0]) fail('open requires a <repo> [branch]');
       return { verb, args: { repo: rest[0], ...(rest[1] ? { branch: rest[1] } : {}) } };
     case 'send': {
-      const text = rest.join(' ');
+      let sendArgs = rest;
+      let paneId;
+      if (rest[0] === '--self') {
+        paneId = process.env.TREELINE_PANE_ID;
+        if (!paneId) fail('send --self requires $TREELINE_PANE_ID (run it inside Treeline)');
+        sendArgs = rest.slice(1);
+      } else if (rest[0] === '--pane') {
+        paneId = rest[1];
+        if (!paneId) fail('send --pane requires a <pane-id>');
+        sendArgs = rest.slice(2);
+      }
+      const text = sendArgs.join(' ');
       if (!text) fail('send requires <text>');
-      return { verb, args: { text: unescape(text) } };
+      return { verb, args: { text: unescape(text), ...(paneId ? { paneId } : {}) } };
     }
     case 'notify': {
       const text = rest.join(' ').trim();

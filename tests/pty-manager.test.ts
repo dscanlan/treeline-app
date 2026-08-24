@@ -111,7 +111,8 @@ describe('PtyManager', () => {
     const fake = new FakePty();
     const mgr = new PtyManager(() => fake, undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
-    mgr.write(id, 'pwd\n');
+    expect(mgr.write(id, 'pwd\n')).toBe(true);
+    expect(mgr.write('missing', 'ignored')).toBe(false);
     mgr.resize(id, 100, 30);
     expect(fake.written).toEqual(['pwd\n']);
     expect(fake.resized).toEqual([{ cols: 100, rows: 30 }]);

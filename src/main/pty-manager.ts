@@ -200,8 +200,16 @@ export class PtyManager extends EventEmitter {
     return { id, shellPid: proc.pid };
   }
 
-  write(id: string, data: string): void {
-    this.ptys.get(id)?.proc.write(data);
+  /**
+   * Inject input into one PTY, like `tmux send-keys -t <pane>`. Returns false
+   * when the pane is no longer live so socket callers can report a useful
+   * failure instead of silently sending input nowhere.
+   */
+  write(id: string, data: string): boolean {
+    const entry = this.ptys.get(id);
+    if (!entry) return false;
+    entry.proc.write(data);
+    return true;
   }
 
   resize(id: string, cols: number, rows: number): void {
