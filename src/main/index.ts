@@ -21,6 +21,7 @@ import { buildAppMenu } from './menu';
 import { resolveKeybindings } from '@shared/keybindings';
 import { appPaletteForId } from '@shared/terminal-theme';
 import { WorktreeWatcher } from './worktree-watcher';
+import { NewWorktreeTracker } from './new-worktree-tracker';
 import { TerminalStatusMonitor } from './terminal-status';
 import { ProcessMonitor } from './process-monitor';
 import { PrMonitor } from './pr-monitor';
@@ -259,11 +260,10 @@ app.whenReady().then(() => {
   void prMonitor.start();
 
   worktreeWatcher = new WorktreeWatcher();
-  // Per-repo set of worktree paths we've already seen, so we can tell a
-  // genuinely *new* worktree (created this session) from the ones present at
-  // startup. The first `change` for a repo seeds it silently — so neither app
-  // launch nor adding a repo prompts; only worktrees that appear afterward do.
-  const knownWorktreesByRepo = new Map<string, Set<string>>();
+  // Tells a genuinely *new* worktree (created this session) from the ones
+  // present at startup, and swallows implausible bursts — see
+  // {@link NewWorktreeTracker}.
+  const newWorktrees = new NewWorktreeTracker();
   worktreeWatcher.on(
     'change',
     ({ repoPath, worktrees }: { repoPath: string; worktrees: { path: string }[] }) => {
@@ -277,11 +277,8 @@ app.whenReady().then(() => {
       // Surface newly-created worktrees as "open a terminal?" prompts. This is
       // the reliable trigger for the agent flow (`git worktree add`), where no
       // shell cwd ever actually changes.
-      const repoPaths = worktrees.map((w) => w.path);
-      const seen = knownWorktreesByRepo.get(repoPath);
-      knownWorktreesByRepo.set(repoPath, new Set(repoPaths));
-      if (seen) {
-        for (const p of repoPaths) if (!seen.has(p)) broadcastWorktreeCreated(p);
+      for (const p of newWorktrees.observe(repoPath, worktrees.map((w) => w.path))) {
+        broadcastWorktreeCreated(p);
       }
 
       // A new/removed worktree may add or retire a branch with a PR — refresh

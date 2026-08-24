@@ -19,13 +19,23 @@ interface RepoEntry {
  * snapshot. Combines fs.watch (sub-100ms latency on FSEvents-backed paths)
  * with a 5s polling fallback to catch missed events.
  *
+ * A snapshot is only published when it was actually read: a failed listing for
+ * a repo that's still on disk is dropped rather than reported as "no worktrees"
+ * (see {@link WorktreeWatcher.refresh}), so downstream diffing can trust that a
+ * path disappearing means it was really removed.
+ *
  * Emits:
  *   - 'change' { repoPath: string; worktrees: Worktree[] }
  */
 export class WorktreeWatcher extends EventEmitter {
   private readonly repos = new Map<string, RepoEntry>();
 
-  constructor(private readonly debounceMs = 200, private readonly pollMs = 5000) {
+  constructor(
+    private readonly debounceMs = 200,
+    private readonly pollMs = 5000,
+    private readonly list: (repoPath: string) => Promise<Worktree[]> = listWorktreesIn,
+    private readonly exists: (path: string) => boolean = existsSync,
+  ) {
     super();
   }
 
@@ -98,12 +108,21 @@ export class WorktreeWatcher extends EventEmitter {
       return;
     }
     entry.refreshing = true;
-    let worktrees: Worktree[];
+    // null = the listing failed transiently, so we have nothing trustworthy to
+    // report (distinct from a real, empty [] for a repo that's gone).
+    let worktrees: Worktree[] | null;
     try {
-      worktrees = await listWorktreesIn(repoPath);
+      worktrees = await this.list(repoPath);
     } catch {
-      // Repo dir may have been deleted out from under us; surface as empty.
-      worktrees = [];
+      // The listing failed. If the repo is gone from disk that's real state —
+      // surface it as empty. Otherwise it's transient (a `git worktree list`
+      // that blew its timeout under load, a machine waking from sleep with the
+      // call in flight, a briefly unreadable .git) and publishing an empty set
+      // would *poison* the snapshot: consumers diff consecutive snapshots to
+      // spot newly-created worktrees, so the next successful pass would report
+      // every worktree in the repo as brand new. Keep the last-known snapshot
+      // and let the poll retry.
+      worktrees = this.exists(join(repoPath, '.git')) ? null : [];
     } finally {
       entry.refreshing = false;
     }
@@ -111,6 +130,7 @@ export class WorktreeWatcher extends EventEmitter {
       entry.refreshQueued = false;
       void this.refresh(repoPath);
     }
+    if (worktrees === null) return;
     const next = JSON.stringify(worktrees);
     if (next === entry.cache) return;
     entry.cache = next;
