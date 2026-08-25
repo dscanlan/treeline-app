@@ -14,7 +14,7 @@ export function PinnedFiles() {
       repos: s.repos,
       folders: s.folders,
       worktreesByRepo: s.worktreesByRepo,
-      selectedPath: s.openFilePath,
+      selectedPath: s.activeFilePath,
     })),
   );
   const roots = useMemo(

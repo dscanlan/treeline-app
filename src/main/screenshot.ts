@@ -1098,7 +1098,11 @@ const SCENARIOS: Record<string, Scenario> = {
       editing: true,
       draft: LOGIN_TS_DRAFT,
       // The unsaved-changes confirmation, e.g. triggered by clicking another file.
-      modal: { kind: 'confirm-discard', filename: 'login.ts', then: { type: 'stop-editing' } },
+      modal: {
+        kind: 'confirm-discard',
+        filename: 'login.ts',
+        then: { type: 'stop-editing', path: file },
+      },
     });
     await delay(400);
   },

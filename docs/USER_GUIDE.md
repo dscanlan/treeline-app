@@ -299,6 +299,12 @@ Click the **folder icon** on a worktree row to expand its file tree.
 - **Click a file** → opens read-only and syntax-highlighted, splitting in beside
   the terminal. Clicking a file in **Changed** opens its **diff** (working tree
   vs `HEAD`); a **`Diff | File`** toggle flips between them.
+- **Open several files** → each path gets one tab in the code panel. Switching
+  tabs preserves that file's Preview/Diff/File mode and any edit draft; closing
+  a dirty tab asks before discarding it. Hover a tab and click **`◫`** to open
+  it in a second viewer, so two source files or rendered Markdown previews stay
+  visible simultaneously. Use **`↔`/`↕`** to switch side-by-side/stacked layout
+  and drag the divider to resize them.
 - **Markdown** files open on a rendered **Preview** (`Preview | Diff | File`).
 - **Mermaid diagrams.** A fenced ` ```mermaid ` block renders as a diagram
   rather than as code — flowcharts (`graph LR`, `flowchart TD`), sequence
@@ -325,8 +331,8 @@ Click the **folder icon** on a worktree row to expand its file tree.
   lives inside a larger repo. (Notes hidden by `.gitignore` aren't indexed, so
   links to them show as not found.)
 - **Editing.** Click **Edit**, change the file, and save with **⌘S** (an amber
-  dot marks unsaved changes; writes are atomic). Navigating away with unsaved
-  edits prompts first.
+  dot marks unsaved changes; writes are atomic). You can switch file tabs while
+  editing; closing a dirty tab prompts first.
 
 ![Editing a file](img/22-file-editing.png)
 

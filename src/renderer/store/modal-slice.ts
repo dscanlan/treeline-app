@@ -1,16 +1,12 @@
 import type { StateCreator } from 'zustand';
-import type { NoteHistoryBehavior } from './vault-slice';
-
 /**
  * What to do after the user discards unsaved edits. Encoded as plain data (not a
  * callback) so the modal state stays serializable like the others; the editor
  * actions map it back to the real navigation.
  */
 export type DiscardThen =
-  | { type: 'open-file'; path: string; history?: NoteHistoryBehavior }
-  | { type: 'open-diff'; path: string }
-  | { type: 'close-panel' }
-  | { type: 'stop-editing' };
+  | { type: 'close-file'; path: string }
+  | { type: 'stop-editing'; path: string };
 
 export type Modal =
   | { kind: 'create-worktree'; repoPath: string }

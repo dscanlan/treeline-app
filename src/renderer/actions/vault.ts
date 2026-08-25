@@ -10,6 +10,7 @@ import {
   type NoteIndex,
 } from '@shared/note-link';
 import { useStore } from '../store';
+import type { ViewerPaneId } from '../store/editor-slice';
 import { joinPath } from '../util/path';
 import { openFileInPanel } from './editor';
 
@@ -71,10 +72,14 @@ export async function ensureNoteIndex(root: string): Promise<NoteIndex> {
  * a no-op — the anchor renders as a dim span once the index is loaded, so this
  * only races the very first click.
  */
-export async function openWikilink(root: string, target: string): Promise<void> {
+export async function openWikilink(
+  root: string,
+  target: string,
+  paneId: ViewerPaneId,
+): Promise<void> {
   const index = useStore.getState().noteIndexByRoot[root] ?? (await ensureNoteIndex(root));
   const rel = resolveNoteTarget(index, target);
-  if (rel) await openFileInPanel(joinPath(root, rel), { history: 'push' });
+  if (rel) await openFileInPanel(joinPath(root, rel), { history: 'push', paneId });
 }
 
 /**
@@ -82,9 +87,13 @@ export async function openWikilink(root: string, target: string): Promise<void> 
  * directory of the file being previewed. Escaping paths resolve to null and
  * no-op; a missing target surfaces as the panel's normal read error.
  */
-export async function openRelativeNoteLink(currentFilePath: string, href: string): Promise<void> {
+export async function openRelativeNoteLink(
+  currentFilePath: string,
+  href: string,
+  paneId: ViewerPaneId,
+): Promise<void> {
   const abs = resolveRelativeHref(dirnamePosix(currentFilePath), href);
-  if (abs) await openFileInPanel(abs, { history: 'push' });
+  if (abs) await openFileInPanel(abs, { history: 'push', paneId });
 }
 
 /**
@@ -93,8 +102,8 @@ export async function openRelativeNoteLink(currentFilePath: string, href: string
  * truncates to the landing point (entries above it drop off; the file being
  * left is NOT pushed), matching browser-style back semantics.
  */
-export async function openNoteFromHistory(index: number): Promise<void> {
-  const target = useStore.getState().noteHistory[index];
+export async function openNoteFromHistory(paneId: ViewerPaneId, index: number): Promise<void> {
+  const target = useStore.getState().noteHistoryByPane[paneId][index];
   if (target === undefined) return;
-  await openFileInPanel(target, { history: { truncateTo: index } });
+  await openFileInPanel(target, { history: { truncateTo: index }, paneId });
 }

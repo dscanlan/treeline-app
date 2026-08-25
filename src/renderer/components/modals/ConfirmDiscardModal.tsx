@@ -9,9 +9,9 @@ interface Props {
 }
 
 /**
- * Confirms discarding unsaved edits before a navigation that would lose them
- * (switching files, closing the panel, leaving edit mode). Cancel/Escape keeps
- * editing; Discard drops the draft and runs the pending `then` action.
+ * Confirms discarding unsaved edits before closing a dirty file tab or leaving
+ * its edit mode. Cancel/Escape keeps editing; Discard drops the targeted draft
+ * and runs the pending `then` action.
  */
 export function ConfirmDiscardModal({ filename, then }: Props) {
   const closeModal = useStore((s) => s.closeModal);

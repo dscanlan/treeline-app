@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { NoteIndex } from '@shared/note-link';
+import type { ViewerPaneId } from './editor-slice';
 
 /**
  * How opening a file affects the note-navigation history (the breadcrumb trail
@@ -31,11 +32,12 @@ export interface VaultSlice {
    * first (the currently-open file is NOT in it). Session-only; grows only via
    * note-link navigation and empties on any other open or on panel close.
    */
-  noteHistory: string[];
-  pushNoteHistory: (path: string) => void;
+  noteHistoryByPane: Record<ViewerPaneId, string[]>;
+  pushNoteHistory: (paneId: ViewerPaneId, path: string) => void;
   /** Keep the first `count` entries (a back/breadcrumb jump landed on index `count`). */
-  truncateNoteHistory: (count: number) => void;
-  clearNoteHistory: () => void;
+  truncateNoteHistory: (paneId: ViewerPaneId, count: number) => void;
+  clearNoteHistory: (paneId: ViewerPaneId) => void;
+  clearAllNoteHistories: () => void;
 }
 
 export const createVaultSlice: StateCreator<VaultSlice, [], [], VaultSlice> = (set) => ({
@@ -43,12 +45,38 @@ export const createVaultSlice: StateCreator<VaultSlice, [], [], VaultSlice> = (s
   setNoteIndex: (root, index) =>
     set((s) => ({ noteIndexByRoot: { ...s.noteIndexByRoot, [root]: index } })),
 
-  noteHistory: [],
-  pushNoteHistory: (path) =>
-    set((s) => ({ noteHistory: [...s.noteHistory, path].slice(-NOTE_HISTORY_MAX) })),
-  truncateNoteHistory: (count) =>
+  noteHistoryByPane: { primary: [], secondary: [] },
+  pushNoteHistory: (paneId, path) =>
+    set((s) => ({
+      noteHistoryByPane: {
+        ...s.noteHistoryByPane,
+        [paneId]: [...s.noteHistoryByPane[paneId], path].slice(-NOTE_HISTORY_MAX),
+      },
+    })),
+  truncateNoteHistory: (paneId, count) =>
+    set((s) => {
+      const history = s.noteHistoryByPane[paneId];
+      return count >= history.length
+        ? s
+        : {
+            noteHistoryByPane: {
+              ...s.noteHistoryByPane,
+              [paneId]: history.slice(0, count),
+            },
+          };
+    }),
+  clearNoteHistory: (paneId) =>
     set((s) =>
-      count >= s.noteHistory.length ? s : { noteHistory: s.noteHistory.slice(0, count) },
+      s.noteHistoryByPane[paneId].length === 0
+        ? s
+        : {
+            noteHistoryByPane: { ...s.noteHistoryByPane, [paneId]: [] },
+          },
     ),
-  clearNoteHistory: () => set((s) => (s.noteHistory.length === 0 ? s : { noteHistory: [] })),
+  clearAllNoteHistories: () =>
+    set((s) =>
+      s.noteHistoryByPane.primary.length === 0 && s.noteHistoryByPane.secondary.length === 0
+        ? s
+        : { noteHistoryByPane: { primary: [], secondary: [] } },
+    ),
 });

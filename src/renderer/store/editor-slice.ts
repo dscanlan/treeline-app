@@ -3,20 +3,35 @@ import type { ChangedFile, DirEntry, FileContents, FileDiff } from '@shared/type
 import { sanitizePinnedFilePaths, togglePinnedFilePath } from '@shared/file-pins';
 
 const FILE_PINS_STORAGE_KEY = 'treeline.pinnedFilePaths';
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function rendererStorage(): StorageLike | undefined {
+  try {
+    return (globalThis as typeof globalThis & { localStorage?: StorageLike }).localStorage;
+  } catch {
+    // Access itself can throw for a restricted/opaque renderer origin.
+    return undefined;
+  }
+}
 
 function loadPersistedFilePins(): string[] {
-  if (typeof localStorage === 'undefined') return [];
+  const storage = rendererStorage();
+  if (!storage) return [];
   try {
-    return sanitizePinnedFilePaths(JSON.parse(localStorage.getItem(FILE_PINS_STORAGE_KEY) ?? '[]'));
+    return sanitizePinnedFilePaths(JSON.parse(storage.getItem(FILE_PINS_STORAGE_KEY) ?? '[]'));
   } catch {
     return [];
   }
 }
 
 function persistFilePins(paths: string[]): void {
-  if (typeof localStorage === 'undefined') return;
+  const storage = rendererStorage();
+  if (!storage) return;
   try {
-    localStorage.setItem(FILE_PINS_STORAGE_KEY, JSON.stringify(paths));
+    storage.setItem(FILE_PINS_STORAGE_KEY, JSON.stringify(paths));
   } catch {
     // Best-effort renderer preference, matching the other sidebar pins.
   }
@@ -25,12 +40,64 @@ function persistFilePins(paths: string[]): void {
 /** Which view a worktree's expanded file area is showing. */
 export type WorktreeFileView = 'all' | 'changed';
 
-/**
- * Whether the code panel renders the full file (raw source), its diff, or — for
- * markdown files — a rendered Preview. Preview shares the file's text with the
- * File view (`openFileText`); it's just a different renderer over the same data.
- */
+/** The representation shown for one open document. */
 export type PanelMode = 'file' | 'diff' | 'preview';
+
+export type ViewerPaneId = 'primary' | 'secondary';
+export type ViewerSplitDirection = 'rows' | 'columns';
+
+export interface ViewerPane {
+  id: ViewerPaneId;
+  path: string;
+}
+
+/** All viewer/edit state owned by one file tab. */
+export interface OpenFileState {
+  path: string;
+  panelMode: PanelMode;
+  revealLine: number | null;
+  revealTick: number;
+
+  fileText: string | null;
+  fileTruncated: boolean;
+  fileBinary: boolean;
+  fileError: string | null;
+  fileLoading: boolean;
+  fileRequestId: number;
+
+  diff: FileDiff | null;
+  diffError: string | null;
+  diffLoading: boolean;
+  diffRequestId: number;
+
+  editing: boolean;
+  draft: string | null;
+  saving: boolean;
+  saveError: string | null;
+}
+
+export function createOpenFileState(path: string, panelMode: PanelMode): OpenFileState {
+  return {
+    path,
+    panelMode,
+    revealLine: null,
+    revealTick: 0,
+    fileText: null,
+    fileTruncated: false,
+    fileBinary: false,
+    fileError: null,
+    fileLoading: false,
+    fileRequestId: 0,
+    diff: null,
+    diffError: null,
+    diffLoading: false,
+    diffRequestId: 0,
+    editing: false,
+    draft: null,
+    saving: false,
+    saveError: null,
+  };
+}
 
 /** Clamp bounds for the resizable code panel (px). */
 export const CODE_PANEL_MIN_WIDTH = 280;
@@ -38,146 +105,94 @@ export const CODE_PANEL_MAX_WIDTH = 1000;
 export const CODE_PANEL_DEFAULT_WIDTH = 480;
 
 export interface EditorSlice {
-  /** Whether the split code panel is visible in MainArea. */
   codePanelOpen: boolean;
-  /** Width of the code panel in px (the terminal takes the remaining space). */
   codePanelWidth: number;
 
-  /** Path of the file currently shown in the panel (null = nothing loaded). */
-  openFilePath: string | null;
-  /** Whether the panel is showing the full file or its diff. */
-  panelMode: PanelMode;
+  /** File-tab order and the currently visible tab. Paths are unique tab ids. */
+  openFilePaths: string[];
+  activeFilePath: string | null;
+  openFilesByPath: Record<string, OpenFileState>;
+  /** One or two simultaneous viewers; activeFilePath mirrors the focused pane. */
+  viewerPanes: ViewerPane[];
+  focusedViewerPaneId: ViewerPaneId;
+  viewerSplitDirection: ViewerSplitDirection;
+  viewerSplitRatio: number;
 
-  /**
-   * Line to scroll to + highlight in the File view (1-based), set when a search
-   * hit is opened. `revealTick` bumps on every request so re-selecting the same
-   * line re-fires the scroll even though `revealLine` is unchanged.
-   */
-  revealLine: number | null;
-  revealTick: number;
-
-  openFileText: string | null;
-  openFileTruncated: boolean;
-  openFileBinary: boolean;
-  openFileError: string | null;
-  openFileLoading: boolean;
-
-  /** Diff representation of the open file (lazily loaded). */
-  openDiff: FileDiff | null;
-  diffError: string | null;
-  diffLoading: boolean;
-
-  /**
-   * Edit state for the File view. `editing` flips the read-only viewer into an
-   * editor; `draft` holds the in-progress text (compared against `openFileText`
-   * to know if there are unsaved changes). Diff view and truncated files are
-   * never editable.
-   */
-  editing: boolean;
-  draft: string | null;
-  saving: boolean;
-  saveError: string | null;
-
-  /** Tree state: dir path → expanded, and dir path → lazily-loaded children. */
   expandedDirs: Record<string, boolean>;
   dirChildren: Record<string, DirEntry[]>;
-
-  /** Per-worktree "All | Changed" view mode (defaults to 'all' when absent). */
   worktreeFileView: Record<string, WorktreeFileView>;
-  /** Per-worktree cached changed-file list (from files.changed). */
   changedByWorktree: Record<string, ChangedFile[]>;
-  /** Per-worktree in-flight flag for the changed-file fetch. */
   changedLoading: Record<string, boolean>;
 
-  /** Global file shortcuts, newest first, persisted in renderer localStorage. */
   pinnedFilePaths: string[];
-  /** Pinned paths confirmed absent on disk. Presence with `true` means missing. */
   missingPinnedFiles: Record<string, boolean>;
 
   setCodePanelWidth: (w: number) => void;
+  /** Hide the panel without discarding its tabs or drafts. */
   closeCodePanel: () => void;
+  openInPanel: (path: string, mode: PanelMode, paneId?: ViewerPaneId) => void;
+  activateOpenFile: (path: string) => void;
+  openFileInSplit: (path: string) => void;
+  focusViewerPane: (paneId: ViewerPaneId) => void;
+  closeViewerPane: (paneId: ViewerPaneId) => void;
+  setViewerSplitDirection: (direction: ViewerSplitDirection) => void;
+  setViewerSplitRatio: (ratio: number) => void;
+  closeOpenFile: (path: string) => void;
+  setPanelMode: (path: string, mode: PanelMode) => void;
+  setRevealLine: (path: string, line: number | null) => void;
 
-  /**
-   * Open `path` in the panel in the given mode, clearing both the file and diff
-   * representations and marking that mode loading. The action layer then fetches
-   * the chosen representation.
-   */
-  openInPanel: (path: string, mode: PanelMode) => void;
-  /** Switch the panel between file and diff for the already-open path. */
-  setPanelMode: (mode: PanelMode) => void;
+  beginFileLoad: (path: string) => number;
+  applyFileResult: (result: FileContents, requestId: number) => void;
+  setFileError: (path: string, requestId: number, error: string) => void;
+  beginDiffLoad: (path: string) => number;
+  applyDiffResult: (diff: FileDiff, requestId: number) => void;
+  setDiffError: (path: string, requestId: number, error: string) => void;
 
-  /** Request the File view scroll to + highlight `line` (1-based); null clears. */
-  setRevealLine: (line: number | null) => void;
-
-  /** Mark the file read in-flight (used when lazily loading on a mode switch). */
-  setFileLoading: (loading: boolean) => void;
-  /** Apply a successful read result. Ignored if the user already switched files. */
-  applyFileResult: (result: FileContents) => void;
-  /** Record a read failure for `path`. Ignored if the user already switched. */
-  setFileError: (path: string, error: string) => void;
-
-  /** Mark the diff fetch in-flight (used when lazily loading on a mode switch). */
-  setDiffLoading: (loading: boolean) => void;
-  /** Apply a diff result. Ignored if the user already switched files. */
-  applyDiffResult: (diff: FileDiff) => void;
-  /** Record a diff failure for `path`. Ignored if the user already switched. */
-  setDiffError: (path: string, error: string) => void;
-
-  /** Cache a directory's children (from files.readDir). */
   setDirChildren: (path: string, entries: DirEntry[]) => void;
-  /** Flip a directory's expanded flag. */
   setDirExpanded: (path: string, expanded: boolean) => void;
 
-  /** Enter edit mode for the open file (seeds `draft` from the loaded text). */
-  startEditing: () => void;
-  /** Update the in-progress draft as the user types. */
-  setDraft: (text: string) => void;
-  /** Leave edit mode and drop the draft (caller handles any unsaved warning). */
-  stopEditing: () => void;
-  /** Mark a save in-flight. */
-  setSaving: (saving: boolean) => void;
-  /** Apply a successful save: `content` becomes the new clean baseline. */
+  startEditing: (path: string) => void;
+  setDraft: (path: string, text: string) => void;
+  stopEditing: (path: string) => void;
+  setSaving: (path: string, saving: boolean) => void;
   applySaved: (path: string, content: string) => void;
-  /** Record a save failure for `path`. Ignored if the user already switched. */
   setSaveError: (path: string, error: string) => void;
 
-  /** Set a worktree's All|Changed view mode. */
   setWorktreeFileView: (worktreePath: string, view: WorktreeFileView) => void;
-  /** Mark the changed-file fetch in-flight for a worktree. */
   setChangedLoading: (worktreePath: string, loading: boolean) => void;
-  /** Cache a worktree's changed-file list (clears its loading flag). */
   setChangedFiles: (worktreePath: string, files: ChangedFile[]) => void;
-  /** Add a new file pin at the top, or remove an existing one. */
   togglePinnedFile: (path: string) => void;
-  /** Mark or clear a pin's last-known missing status. */
   setPinnedFileMissing: (path: string, missing: boolean) => void;
+}
+
+function patchOpenFile(
+  state: EditorSlice,
+  path: string,
+  patch: Partial<OpenFileState>,
+): Pick<EditorSlice, 'openFilesByPath'> | EditorSlice {
+  const current = state.openFilesByPath[path];
+  if (!current) return state;
+  return {
+    openFilesByPath: {
+      ...state.openFilesByPath,
+      [path]: { ...current, ...patch },
+    },
+  };
 }
 
 export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> = (set) => ({
   codePanelOpen: false,
   codePanelWidth: CODE_PANEL_DEFAULT_WIDTH,
-
-  openFilePath: null,
-  panelMode: 'file',
-  revealLine: null,
-  revealTick: 0,
-  openFileText: null,
-  openFileTruncated: false,
-  openFileBinary: false,
-  openFileError: null,
-  openFileLoading: false,
-  openDiff: null,
-  diffError: null,
-  diffLoading: false,
-
-  editing: false,
-  draft: null,
-  saving: false,
-  saveError: null,
+  openFilePaths: [],
+  activeFilePath: null,
+  openFilesByPath: {},
+  viewerPanes: [],
+  focusedViewerPaneId: 'primary',
+  viewerSplitDirection: 'rows',
+  viewerSplitRatio: 50,
 
   expandedDirs: {},
   dirChildren: {},
-
   worktreeFileView: {},
   changedByWorktree: {},
   changedLoading: {},
@@ -191,68 +206,222 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
 
   closeCodePanel: () => set({ codePanelOpen: false }),
 
-  openInPanel: (path, mode) =>
-    set({
-      codePanelOpen: true,
-      openFilePath: path,
-      panelMode: mode,
-      // A plain open (tree/changed click) clears any prior reveal target; an
-      // open-at-line follows up with setRevealLine after this.
-      revealLine: null,
-      openFileText: null,
-      openFileTruncated: false,
-      openFileBinary: false,
-      openFileError: null,
-      // Preview reads the same file text as the File view, so both load it.
-      openFileLoading: mode === 'file' || mode === 'preview',
-      openDiff: null,
-      diffError: null,
-      diffLoading: mode === 'diff',
-      // Switching files always leaves edit mode (the guard runs first).
-      editing: false,
-      draft: null,
-      saving: false,
-      saveError: null,
-    }),
-
-  setPanelMode: (mode) => set({ panelMode: mode }),
-
-  setRevealLine: (line) => set((s) => ({ revealLine: line, revealTick: s.revealTick + 1 })),
-
-  setFileLoading: (loading) => set({ openFileLoading: loading }),
-
-  applyFileResult: (result) =>
+  openInPanel: (path, mode, paneId) =>
     set((s) => {
-      // A slow read for a file the user already navigated away from must not
-      // clobber the newer selection.
-      if (s.openFilePath !== result.path) return s;
+      const existing = s.openFilesByPath[path];
+      const file = existing
+        ? { ...existing, panelMode: mode, revealLine: null }
+        : createOpenFileState(path, mode);
+      const alreadyVisible = s.viewerPanes.find((pane) => pane.path === path);
+      const targetId = paneId ?? s.focusedViewerPaneId;
+      let viewerPanes: ViewerPane[];
+      let focusedViewerPaneId: ViewerPaneId;
+      if (alreadyVisible) {
+        viewerPanes = s.viewerPanes;
+        focusedViewerPaneId = alreadyVisible.id;
+      } else if (s.viewerPanes.length === 0) {
+        viewerPanes = [{ id: 'primary', path }];
+        focusedViewerPaneId = 'primary';
+      } else if (
+        targetId === 'secondary' &&
+        !s.viewerPanes.some((pane) => pane.id === 'secondary')
+      ) {
+        viewerPanes = [...s.viewerPanes, { id: 'secondary', path }];
+        focusedViewerPaneId = 'secondary';
+      } else {
+        const target = s.viewerPanes.some((pane) => pane.id === targetId) ? targetId : 'primary';
+        viewerPanes = s.viewerPanes.map((pane) => (pane.id === target ? { ...pane, path } : pane));
+        focusedViewerPaneId = target;
+      }
       return {
-        openFileText: result.text,
-        openFileTruncated: result.truncated,
-        openFileBinary: result.binary,
-        openFileError: null,
-        openFileLoading: false,
+        codePanelOpen: true,
+        activeFilePath: path,
+        focusedViewerPaneId,
+        viewerPanes,
+        openFilePaths: existing ? s.openFilePaths : [...s.openFilePaths, path],
+        openFilesByPath: { ...s.openFilesByPath, [path]: file },
       };
     }),
 
-  setFileError: (path, error) =>
+  activateOpenFile: (path) =>
     set((s) => {
-      if (s.openFilePath !== path) return s;
-      return { openFileError: error, openFileLoading: false };
+      if (!s.openFilesByPath[path]) return s;
+      const alreadyVisible = s.viewerPanes.find((pane) => pane.path === path);
+      if (alreadyVisible) {
+        return {
+          codePanelOpen: true,
+          activeFilePath: path,
+          focusedViewerPaneId: alreadyVisible.id,
+        };
+      }
+      const target = s.viewerPanes.find((pane) => pane.id === s.focusedViewerPaneId);
+      const viewerPanes: ViewerPane[] = target
+        ? s.viewerPanes.map((pane) => (pane.id === target.id ? { ...pane, path } : pane))
+        : [{ id: 'primary', path }];
+      return {
+        codePanelOpen: true,
+        activeFilePath: path,
+        focusedViewerPaneId: target?.id ?? 'primary',
+        viewerPanes,
+      };
     }),
 
-  setDiffLoading: (loading) => set({ diffLoading: loading }),
-
-  applyDiffResult: (diff) =>
+  openFileInSplit: (path) =>
     set((s) => {
-      if (s.openFilePath !== diff.path) return s;
-      return { openDiff: diff, diffError: null, diffLoading: false };
+      if (!s.openFilesByPath[path]) return s;
+      const alreadyVisible = s.viewerPanes.find((pane) => pane.path === path);
+      if (alreadyVisible) {
+        return {
+          codePanelOpen: true,
+          activeFilePath: path,
+          focusedViewerPaneId: alreadyVisible.id,
+        };
+      }
+      if (s.viewerPanes.length === 0) {
+        return {
+          codePanelOpen: true,
+          activeFilePath: path,
+          focusedViewerPaneId: 'primary',
+          viewerPanes: [{ id: 'primary', path }],
+        };
+      }
+      if (s.viewerPanes.length === 1) {
+        return {
+          codePanelOpen: true,
+          activeFilePath: path,
+          focusedViewerPaneId: 'secondary',
+          viewerPanes: [...s.viewerPanes, { id: 'secondary', path }],
+        };
+      }
+      const otherId: ViewerPaneId = s.focusedViewerPaneId === 'primary' ? 'secondary' : 'primary';
+      return {
+        codePanelOpen: true,
+        activeFilePath: path,
+        focusedViewerPaneId: otherId,
+        viewerPanes: s.viewerPanes.map((pane) => (pane.id === otherId ? { ...pane, path } : pane)),
+      };
     }),
 
-  setDiffError: (path, error) =>
+  focusViewerPane: (paneId) =>
     set((s) => {
-      if (s.openFilePath !== path) return s;
-      return { diffError: error, diffLoading: false };
+      const pane = s.viewerPanes.find((candidate) => candidate.id === paneId);
+      return pane ? { focusedViewerPaneId: paneId, activeFilePath: pane.path } : s;
+    }),
+
+  closeViewerPane: (paneId) =>
+    set((s) => {
+      if (s.viewerPanes.length < 2 || !s.viewerPanes.some((pane) => pane.id === paneId)) return s;
+      const remaining = s.viewerPanes.find((pane) => pane.id !== paneId)!;
+      return {
+        viewerPanes: [{ id: 'primary', path: remaining.path }],
+        focusedViewerPaneId: 'primary',
+        activeFilePath: remaining.path,
+      };
+    }),
+
+  setViewerSplitDirection: (viewerSplitDirection) => set({ viewerSplitDirection }),
+  setViewerSplitRatio: (ratio) => set({ viewerSplitRatio: Math.max(20, Math.min(80, ratio)) }),
+
+  closeOpenFile: (path) =>
+    set((s) => {
+      const index = s.openFilePaths.indexOf(path);
+      if (index === -1) return s;
+      const openFilePaths = s.openFilePaths.filter((p) => p !== path);
+      const openFilesByPath = { ...s.openFilesByPath };
+      delete openFilesByPath[path];
+      const wasVisible = s.viewerPanes.some((pane) => pane.path === path);
+      let viewerPanes = s.viewerPanes.filter((pane) => pane.path !== path);
+      if (viewerPanes.length === 1) {
+        viewerPanes = [{ id: 'primary', path: viewerPanes[0].path }];
+      } else if (viewerPanes.length === 0 && openFilePaths.length > 0) {
+        const replacement = openFilePaths[Math.min(index, openFilePaths.length - 1)];
+        viewerPanes = [{ id: 'primary', path: replacement }];
+      }
+      const activeFilePath = wasVisible ? (viewerPanes[0]?.path ?? null) : s.activeFilePath;
+      return {
+        openFilePaths,
+        openFilesByPath,
+        activeFilePath,
+        viewerPanes,
+        focusedViewerPaneId: wasVisible ? 'primary' : s.focusedViewerPaneId,
+        codePanelOpen: openFilePaths.length > 0 && s.codePanelOpen,
+      };
+    }),
+
+  setPanelMode: (path, mode) => set((s) => patchOpenFile(s, path, { panelMode: mode })),
+
+  setRevealLine: (path, line) =>
+    set((s) => {
+      const file = s.openFilesByPath[path];
+      return file
+        ? patchOpenFile(s, path, { revealLine: line, revealTick: file.revealTick + 1 })
+        : s;
+    }),
+
+  beginFileLoad: (path) => {
+    let requestId = 0;
+    set((s) => {
+      const file = s.openFilesByPath[path];
+      if (!file) return s;
+      requestId = file.fileRequestId + 1;
+      return patchOpenFile(s, path, {
+        fileRequestId: requestId,
+        fileLoading: true,
+        fileError: null,
+      });
+    });
+    return requestId;
+  },
+
+  applyFileResult: (result, requestId) =>
+    set((s) => {
+      const file = s.openFilesByPath[result.path];
+      if (!file || file.fileRequestId !== requestId) return s;
+      return patchOpenFile(s, result.path, {
+        fileText: result.text,
+        fileTruncated: result.truncated,
+        fileBinary: result.binary,
+        fileError: null,
+        fileLoading: false,
+      });
+    }),
+
+  setFileError: (path, requestId, error) =>
+    set((s) => {
+      const file = s.openFilesByPath[path];
+      return !file || file.fileRequestId !== requestId
+        ? s
+        : patchOpenFile(s, path, { fileError: error, fileLoading: false });
+    }),
+
+  beginDiffLoad: (path) => {
+    let requestId = 0;
+    set((s) => {
+      const file = s.openFilesByPath[path];
+      if (!file) return s;
+      requestId = file.diffRequestId + 1;
+      return patchOpenFile(s, path, {
+        diffRequestId: requestId,
+        diffLoading: true,
+        diffError: null,
+      });
+    });
+    return requestId;
+  },
+
+  applyDiffResult: (diff, requestId) =>
+    set((s) => {
+      const file = s.openFilesByPath[diff.path];
+      if (!file || file.diffRequestId !== requestId) return s;
+      return patchOpenFile(s, diff.path, { diff, diffError: null, diffLoading: false });
+    }),
+
+  setDiffError: (path, requestId, error) =>
+    set((s) => {
+      const file = s.openFilesByPath[path];
+      return !file || file.diffRequestId !== requestId
+        ? s
+        : patchOpenFile(s, path, { diffError: error, diffLoading: false });
     }),
 
   setDirChildren: (path, entries) =>
@@ -261,29 +430,32 @@ export const createEditorSlice: StateCreator<EditorSlice, [], [], EditorSlice> =
   setDirExpanded: (path, expanded) =>
     set((s) => ({ expandedDirs: { ...s.expandedDirs, [path]: expanded } })),
 
-  startEditing: () =>
-    set((s) => ({ editing: true, draft: s.openFileText ?? '', saveError: null })),
+  startEditing: (path) =>
+    set((s) => {
+      const file = s.openFilesByPath[path];
+      return file
+        ? patchOpenFile(s, path, { editing: true, draft: file.fileText ?? '', saveError: null })
+        : s;
+    }),
 
-  setDraft: (text) => set({ draft: text }),
+  setDraft: (path, text) => set((s) => patchOpenFile(s, path, { draft: text })),
 
-  stopEditing: () => set({ editing: false, draft: null, saving: false, saveError: null }),
+  stopEditing: (path) =>
+    set((s) =>
+      patchOpenFile(s, path, { editing: false, draft: null, saving: false, saveError: null }),
+    ),
 
-  setSaving: (saving) => set({ saving }),
+  setSaving: (path, saving) => set((s) => patchOpenFile(s, path, { saving })),
 
   applySaved: (path, content) =>
     set((s) => {
-      if (s.openFilePath !== path) return s;
-      // `content` becomes the new clean baseline. We deliberately do NOT touch
-      // `draft`: if the user kept typing during the write, their newer draft
-      // stays put and the unsaved indicator (draft !== openFileText) re-arms.
-      return { openFileText: content, saving: false, saveError: null };
+      if (!s.openFilesByPath[path]) return s;
+      // Keep a newer draft typed during the write; it remains dirty against the new baseline.
+      return patchOpenFile(s, path, { fileText: content, saving: false, saveError: null });
     }),
 
   setSaveError: (path, error) =>
-    set((s) => {
-      if (s.openFilePath !== path) return s;
-      return { saveError: error, saving: false };
-    }),
+    set((s) => patchOpenFile(s, path, { saveError: error, saving: false })),
 
   setWorktreeFileView: (worktreePath, view) =>
     set((s) => ({ worktreeFileView: { ...s.worktreeFileView, [worktreePath]: view } })),

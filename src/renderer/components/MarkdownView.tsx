@@ -13,6 +13,7 @@ import { mermaidSource, type HastNode } from '@shared/mermaid-block';
 import { splitFrontmatter, parseFrontmatterEntries } from '@shared/frontmatter';
 import { MermaidBlock } from './MermaidBlock';
 import { useStore } from '../store';
+import type { ViewerPaneId } from '../store/editor-slice';
 import {
   containingRootFor,
   ensureNoteIndex,
@@ -146,13 +147,18 @@ function makeAnchor(
   root: string | null,
   index: NoteIndex | undefined,
   filePath: string | undefined,
+  paneId: ViewerPaneId,
 ): Components['a'] {
   const Anchor = ({ children, href }: { children?: ReactNode; href?: string }) => {
     const url = href ?? '';
 
     if (url.startsWith(WIKILINK_SCHEME)) {
       const parts = parseWikilinkHref(url);
-      const target = parts ? (parts.heading ? `${parts.target}#${parts.heading}` : parts.target) : null;
+      const target = parts
+        ? parts.heading
+          ? `${parts.target}#${parts.heading}`
+          : parts.target
+        : null;
       const unresolved =
         !target || root === null || (index !== undefined && !resolveNoteTarget(index, target));
       if (unresolved) {
@@ -173,7 +179,7 @@ function makeAnchor(
           data-ss="wikilink"
           onClick={(e) => {
             e.preventDefault();
-            void openWikilink(root, target);
+            void openWikilink(root, target, paneId);
           }}
         >
           {children}
@@ -198,7 +204,7 @@ function makeAnchor(
           data-ss="relative-link"
           onClick={(e) => {
             e.preventDefault();
-            void openRelativeNoteLink(filePath, url);
+            void openRelativeNoteLink(filePath, url, paneId);
           }}
         >
           {children}
@@ -250,7 +256,15 @@ function FrontmatterBlock({ yaml }: { yaml: string }) {
 
 const remarkPlugins = [remarkGfm, remarkWikilinks];
 
-export function MarkdownView({ source, filePath }: { source: string; filePath?: string }) {
+export function MarkdownView({
+  source,
+  filePath,
+  paneId,
+}: {
+  source: string;
+  filePath?: string;
+  paneId: ViewerPaneId;
+}) {
   const root = filePath ? containingRootFor(filePath) : null;
   const index = useStore((s) => (root ? s.noteIndexByRoot[root] : undefined));
 
@@ -263,8 +277,8 @@ export function MarkdownView({ source, filePath }: { source: string; filePath?: 
   const { yaml, body } = useMemo(() => splitFrontmatter(source), [source]);
 
   const mergedComponents = useMemo<Components>(
-    () => ({ ...components, a: makeAnchor(root, index, filePath) }),
-    [root, index, filePath],
+    () => ({ ...components, a: makeAnchor(root, index, filePath, paneId) }),
+    [root, index, filePath, paneId],
   );
 
   return (

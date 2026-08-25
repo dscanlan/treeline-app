@@ -1,7 +1,7 @@
 // Code-viewer orchestration: open a file in the side panel, lazily expand
 // directories in the file tree, and drive the All|Changed view. Keeps the IPC
 // dance out of the components, mirroring actions/tabs.ts.
-import type { PanelMode, WorktreeFileView } from '../store/editor-slice';
+import type { PanelMode, ViewerPaneId, WorktreeFileView } from '../store/editor-slice';
 import type { DiscardThen } from '../store/modal-slice';
 import type { NoteHistoryBehavior } from '../store/vault-slice';
 import { useStore } from '../store';
@@ -11,10 +11,12 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** True when edit mode has changes not yet written to disk. */
-export function hasUnsavedEdits(): boolean {
+/** True when a file tab has changes not yet written to disk. */
+export function hasUnsavedEdits(path = useStore.getState().activeFilePath): boolean {
+  if (!path) return false;
   const s = useStore.getState();
-  return s.editing && s.draft !== null && s.draft !== s.openFileText;
+  const file = s.openFilesByPath[path];
+  return !!file && file.editing && file.draft !== null && file.draft !== file.fileText;
 }
 
 /**
@@ -22,15 +24,26 @@ export function hasUnsavedEdits(): boolean {
  * `then` until the user confirms) and return false to abort the caller. With no
  * unsaved edits, return true so the caller proceeds immediately.
  */
-function guardUnsaved(then: DiscardThen): boolean {
-  if (!hasUnsavedEdits()) return true;
-  const path = useStore.getState().openFilePath;
+function guardUnsaved(path: string, then: DiscardThen): boolean {
+  if (!hasUnsavedEdits(path)) return true;
   useStore.getState().openModal({
     kind: 'confirm-discard',
-    filename: path ? basename(path) : 'this file',
+    filename: basename(path),
     then,
   });
   return false;
+}
+
+/** Keep the surviving viewer's breadcrumb trail when a primary pane is promoted. */
+function prepareHistoryForViewerRemoval(paneId: ViewerPaneId): void {
+  const s = useStore.getState();
+  if (s.viewerPanes.length === 2 && paneId === 'primary') {
+    const survivingHistory = [...s.noteHistoryByPane.secondary];
+    s.clearAllNoteHistories();
+    for (const path of survivingHistory) s.pushNoteHistory('primary', path);
+  } else {
+    s.clearNoteHistory(paneId);
+  }
 }
 
 /**
@@ -39,21 +52,19 @@ function guardUnsaved(then: DiscardThen): boolean {
  */
 export function confirmDiscardAndContinue(then: DiscardThen): void {
   const s = useStore.getState();
-  s.stopEditing();
   s.closeModal();
   switch (then.type) {
-    case 'open-file':
-      void doOpenFile(then.path, then.history);
-      break;
-    case 'open-diff':
-      void doOpenDiff(then.path);
-      break;
-    case 'close-panel':
-      s.clearNoteHistory();
-      s.closeCodePanel();
+    case 'close-file':
+      {
+        const pane = s.viewerPanes.find((candidate) => candidate.path === then.path);
+        if (pane) prepareHistoryForViewerRemoval(pane.id);
+      }
+      s.stopEditing(then.path);
+      s.closeOpenFile(then.path);
       break;
     case 'stop-editing':
-      break; // stopEditing already happened above
+      s.stopEditing(then.path);
+      break;
   }
 }
 
@@ -63,15 +74,19 @@ export function confirmDiscardAndContinue(then: DiscardThen): void {
  * trail. `push` records the file being left; everything else ends (or, for a
  * back-jump, truncates) the trail — see NoteHistoryBehavior.
  */
-function applyNoteHistory(behavior: NoteHistoryBehavior, openingPath: string): void {
+function applyNoteHistory(
+  behavior: NoteHistoryBehavior,
+  openingPath: string,
+  paneId: ViewerPaneId,
+): void {
   const s = useStore.getState();
   if (behavior === 'push') {
-    const prev = s.openFilePath;
-    if (prev && prev !== openingPath) s.pushNoteHistory(prev);
+    const prev = s.viewerPanes.find((pane) => pane.id === paneId)?.path;
+    if (prev && prev !== openingPath) s.pushNoteHistory(paneId, prev);
   } else if (behavior === 'clear') {
-    s.clearNoteHistory();
+    s.clearNoteHistory(paneId);
   } else {
-    s.truncateNoteHistory(behavior.truncateTo);
+    s.truncateNoteHistory(paneId, behavior.truncateTo);
   }
 }
 
@@ -80,17 +95,37 @@ function applyNoteHistory(behavior: NoteHistoryBehavior, openingPath: string): v
  * rendered Preview by default; everything else opens as raw source. Both modes
  * read the same file text.
  */
-async function doOpenFile(path: string, history: NoteHistoryBehavior = 'clear'): Promise<void> {
-  applyNoteHistory(history, path);
+async function doOpenFile(
+  path: string,
+  history: NoteHistoryBehavior = 'clear',
+  paneId = useStore.getState().focusedViewerPaneId,
+): Promise<void> {
+  const beforeOpen = useStore.getState();
+  const visibleInOtherPane = beforeOpen.viewerPanes.some(
+    (pane) => pane.path === path && pane.id !== paneId,
+  );
+  // A document remains unique across viewers. If a link targets the file that
+  // is already visible opposite, focus that viewer without creating a bogus
+  // history entry in the source viewer.
+  if (!visibleInOtherPane) applyNoteHistory(history, path, paneId);
   const mode = isMarkdownPath(path) ? 'preview' : 'file';
-  useStore.getState().openInPanel(path, mode);
-  await loadFileContent(path);
+  const existing = beforeOpen.openFilesByPath[path];
+  const dirty = existing
+    ? existing.editing && existing.draft !== null && existing.draft !== existing.fileText
+    : false;
+  useStore.getState().openInPanel(path, mode, paneId);
+  // A direct open doubles as refresh for a clean tab, which matters when an
+  // agent changed the file on disk. Never replace a dirty in-memory draft.
+  if (!dirty) await loadFileContent(path);
 }
 
 /** Load a file into the panel as a diff (no unsaved-edits guard). */
-async function doOpenDiff(path: string): Promise<void> {
-  useStore.getState().clearNoteHistory();
-  useStore.getState().openInPanel(path, 'diff');
+async function doOpenDiff(
+  path: string,
+  paneId = useStore.getState().focusedViewerPaneId,
+): Promise<void> {
+  useStore.getState().clearNoteHistory(paneId);
+  useStore.getState().openInPanel(path, 'diff', paneId);
   await loadFileDiff(path);
 }
 
@@ -109,23 +144,25 @@ function worktreePathFor(filePath: string): string | null {
 
 /** Fetch the full-file representation for `path` into the panel. */
 async function loadFileContent(path: string): Promise<void> {
-  useStore.getState().setFileLoading(true);
+  const requestId = useStore.getState().beginFileLoad(path);
+  if (requestId === 0) return;
   try {
     const result = await window.treeline.files.read(path);
-    useStore.getState().applyFileResult(result);
+    useStore.getState().applyFileResult(result, requestId);
   } catch (err) {
-    useStore.getState().setFileError(path, errMsg(err));
+    useStore.getState().setFileError(path, requestId, errMsg(err));
   }
 }
 
 /** Fetch the diff representation for `path` into the panel. */
 async function loadFileDiff(path: string): Promise<void> {
-  useStore.getState().setDiffLoading(true);
+  const requestId = useStore.getState().beginDiffLoad(path);
+  if (requestId === 0) return;
   try {
     const diff = await window.treeline.files.diff(path);
-    useStore.getState().applyDiffResult(diff);
+    useStore.getState().applyDiffResult(diff, requestId);
   } catch (err) {
-    useStore.getState().setDiffError(path, errMsg(err));
+    useStore.getState().setDiffError(path, requestId, errMsg(err));
   }
 }
 
@@ -136,11 +173,10 @@ async function loadFileDiff(path: string): Promise<void> {
  */
 export async function openFileInPanel(
   path: string,
-  opts?: { history?: NoteHistoryBehavior },
+  opts?: { history?: NoteHistoryBehavior; paneId?: ViewerPaneId },
 ): Promise<void> {
   const history = opts?.history ?? 'clear';
-  if (!guardUnsaved({ type: 'open-file', path, history })) return;
-  await doOpenFile(path, history);
+  await doOpenFile(path, history, opts?.paneId);
 }
 
 /** Pin/unpin a browsed file and immediately refresh its availability if added. */
@@ -185,49 +221,86 @@ export async function openPinnedFile(path: string): Promise<void> {
  * CodeMirror view consumes once the text loads.
  */
 export async function openFileAtLine(path: string, line: number): Promise<void> {
-  if (!guardUnsaved({ type: 'open-file', path })) return;
-  useStore.getState().clearNoteHistory();
-  useStore.getState().openInPanel(path, 'file');
-  await loadFileContent(path);
-  useStore.getState().setRevealLine(line);
+  const paneId = useStore.getState().focusedViewerPaneId;
+  useStore.getState().clearNoteHistory(paneId);
+  const dirty = hasUnsavedEdits(path);
+  useStore.getState().openInPanel(path, 'file', paneId);
+  if (!dirty) await loadFileContent(path);
+  useStore.getState().setRevealLine(path, line);
 }
 
 /** Open a file in the panel showing its diff (used by the Changed list). */
 export async function openDiffInPanel(path: string): Promise<void> {
-  if (!guardUnsaved({ type: 'open-diff', path })) return;
   await doOpenDiff(path);
 }
 
-/** Close the panel, warning first if there are unsaved edits. */
-export function tryCloseCodePanel(): void {
-  if (!guardUnsaved({ type: 'close-panel' })) return;
+/** Activate an existing file tab without re-reading it. */
+export function activateOpenFile(path: string): void {
   const s = useStore.getState();
-  s.stopEditing();
-  s.clearNoteHistory();
+  const paneId = s.viewerPanes.find((pane) => pane.path === path)?.id ?? s.focusedViewerPaneId;
+  s.clearNoteHistory(paneId);
+  s.activateOpenFile(path);
+}
+
+/** Display an existing file tab in the other viewer, creating the split when needed. */
+export function openFileInSplit(path: string): void {
+  const s = useStore.getState();
+  const visible = s.viewerPanes.find((pane) => pane.path === path);
+  const paneId =
+    visible?.id ??
+    (s.viewerPanes.length < 2
+      ? 'secondary'
+      : s.focusedViewerPaneId === 'primary'
+        ? 'secondary'
+        : 'primary');
+  s.clearNoteHistory(paneId);
+  s.openFileInSplit(path);
+}
+
+/** Collapse a two-viewer split without closing either file tab. */
+export function closeViewerPane(paneId: ViewerPaneId): void {
+  const s = useStore.getState();
+  prepareHistoryForViewerRemoval(paneId);
+  s.closeViewerPane(paneId);
+}
+
+/** Close one tab, warning only when that tab owns an unsaved draft. */
+export function tryCloseOpenFile(path: string): void {
+  if (!guardUnsaved(path, { type: 'close-file', path })) return;
+  const s = useStore.getState();
+  const pane = s.viewerPanes.find((candidate) => candidate.path === path);
+  if (pane) prepareHistoryForViewerRemoval(pane.id);
+  s.closeOpenFile(path);
+}
+
+/** Hide the panel. Tabs and drafts stay in memory and reopen on the next file click. */
+export function tryCloseCodePanel(): void {
+  const s = useStore.getState();
+  s.clearAllNoteHistories();
   s.closeCodePanel();
 }
 
 /** Leave edit mode (back to read-only), warning first if there are unsaved edits. */
-export function tryStopEditing(): void {
-  if (!guardUnsaved({ type: 'stop-editing' })) return;
-  useStore.getState().stopEditing();
+export function tryStopEditing(path = useStore.getState().activeFilePath): void {
+  if (!path || !guardUnsaved(path, { type: 'stop-editing', path })) return;
+  useStore.getState().stopEditing(path);
 }
 
 /** Save the open file's draft to disk (⌘S / Save button). */
-export async function saveOpenFile(): Promise<void> {
+export async function saveOpenFile(path = useStore.getState().activeFilePath): Promise<void> {
   const s = useStore.getState();
-  const path = s.openFilePath;
-  if (!path || !s.editing || s.draft === null) return;
-  if (s.draft === s.openFileText) return; // nothing changed
-  const content = s.draft;
+  if (!path) return;
+  const file = s.openFilesByPath[path];
+  if (!file?.editing || file.draft === null || file.draft === file.fileText) return;
+  const content = file.draft;
 
-  s.setSaving(true);
+  s.setSaving(path, true);
   try {
     await window.treeline.files.write(path, content);
     useStore.getState().applySaved(path, content);
     // The on-disk file changed — refresh the cached diff (if loaded) and the
     // containing worktree's Changed list so both reflect the save.
-    if (useStore.getState().openDiff !== null) void loadFileDiff(path);
+    if (useStore.getState().openFilesByPath[path]?.diff !== null) void loadFileDiff(path);
     const wtPath = worktreePathFor(path);
     if (wtPath) void refreshChangedFiles(wtPath);
   } catch (err) {
@@ -239,17 +312,18 @@ export async function saveOpenFile(): Promise<void> {
  * Flip the open file between File and Diff in the panel header, lazily fetching
  * the other representation the first time it's needed.
  */
-export function setPanelMode(mode: PanelMode): void {
+export function setPanelMode(mode: PanelMode, path = useStore.getState().activeFilePath): void {
   const s = useStore.getState();
-  const path = s.openFilePath;
   if (!path) return;
-  s.setPanelMode(mode);
+  const file = s.openFilesByPath[path];
+  if (!file) return;
+  s.setPanelMode(path, mode);
   // File and Preview both render the file's text; load it on first need.
   const needsFileText = mode === 'file' || mode === 'preview';
-  if (needsFileText && s.openFileText === null && s.openFileError === null && !s.openFileLoading) {
+  if (needsFileText && file.fileText === null && file.fileError === null && !file.fileLoading) {
     void loadFileContent(path);
   }
-  if (mode === 'diff' && s.openDiff === null && s.diffError === null && !s.diffLoading) {
+  if (mode === 'diff' && file.diff === null && file.diffError === null && !file.diffLoading) {
     void loadFileDiff(path);
   }
 }

@@ -22,11 +22,11 @@ const STATUS_META: Record<ChangedFileStatus, { letter: string; className: string
  * but not clickable — there's nothing on disk to read.
  */
 export function ChangedFilesList({ worktreePath }: { worktreePath: string }) {
-  const { files, loading, openFilePath } = useStore(
+  const { files, loading, activeFilePath } = useStore(
     useShallow((s) => ({
       files: s.changedByWorktree[worktreePath],
       loading: s.changedLoading[worktreePath],
-      openFilePath: s.openFilePath,
+      activeFilePath: s.activeFilePath,
     })),
   );
 
@@ -51,7 +51,7 @@ export function ChangedFilesList({ worktreePath }: { worktreePath: string }) {
   return (
     <>
       {files.map((file) => (
-        <ChangedRow key={file.path} file={file} selected={openFilePath === file.path} />
+        <ChangedRow key={file.path} file={file} selected={activeFilePath === file.path} />
       ))}
     </>
   );

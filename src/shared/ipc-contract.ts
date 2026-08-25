@@ -74,11 +74,7 @@ export interface ScreenshotHydratePayload {
     | {
         kind: 'confirm-discard';
         filename: string;
-        then:
-          | { type: 'open-file'; path: string }
-          | { type: 'open-diff'; path: string }
-          | { type: 'close-panel' }
-          | { type: 'stop-editing' };
+        then: { type: 'close-file'; path: string } | { type: 'stop-editing'; path: string };
       }
     | null;
   /** Inject scratch-terminal rows into the sidebar. */
@@ -124,6 +120,24 @@ export interface ScreenshotHydratePayload {
   missingPinnedFiles?: string[];
   codePanelOpen?: boolean;
   codePanelWidth?: number;
+  /** Seed several code-panel document tabs (preferred over the legacy singleton fields below). */
+  openFiles?: Array<{
+    path: string;
+    panelMode?: 'file' | 'diff' | 'preview';
+    fileText?: string | null;
+    fileTruncated?: boolean;
+    fileBinary?: boolean;
+    diff?: FileDiff | null;
+    editing?: boolean;
+    draft?: string | null;
+    saveError?: string | null;
+  }>;
+  activeFilePath?: string | null;
+  viewerPanes?: Array<{ id: 'primary' | 'secondary'; path: string }>;
+  focusedViewerPaneId?: 'primary' | 'secondary';
+  viewerSplitDirection?: 'rows' | 'columns';
+  viewerSplitRatio?: number;
+  /** Legacy single-file screenshot fields; converted to one document tab by the renderer. */
   openFilePath?: string | null;
   panelMode?: 'file' | 'diff' | 'preview';
   openFileText?: string | null;

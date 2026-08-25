@@ -124,6 +124,8 @@ async function main() {
   const results = {};
   try {
     // Select the vault worktree (sets the search root) by opening a terminal in it.
+    await page.getByRole('button', { name: /^Library/ }).click();
+    await page.locator(`[data-ss-repo="${vault}"]`).getByRole('button').first().click();
     await page.waitForSelector('[data-ss="worktree-row"]', { timeout: 15000 });
     await page.locator(`[data-ss-path="${vault}"] button[title="${vault}"]`).first().click();
     await page.waitForSelector('.xterm-rows', { timeout: 15000 });
@@ -172,10 +174,9 @@ async function main() {
 
     // ── Click the wikilink → alpha note opens in the same panel ──
     await page.locator('[data-ss="wikilink"]', { hasText: 'alpha-note' }).first().click();
-    await page.waitForFunction(
-      () => document.body.innerText.includes('ALPHA-BODY-TOKEN'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('ALPHA-BODY-TOKEN'), {
+      timeout: 10000,
+    });
     results.wikilinkNavigated = true;
 
     // ── Breadcrumb trail: index → alpha pushed one crumb ──
@@ -187,22 +188,22 @@ async function main() {
 
     // ── Second hop: alpha → beta gives a two-crumb chain ──
     await page.locator('[data-ss="wikilink"]', { hasText: 'beta-note' }).first().click();
-    await page.waitForFunction(
-      () => document.body.innerText.includes('BETA-BODY-TOKEN'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('BETA-BODY-TOKEN'), {
+      timeout: 10000,
+    });
     const crumbs2 = await page.evaluate(() =>
       [...document.querySelectorAll('[data-ss="note-crumb"]')].map((el) => el.innerText),
     );
     results.breadcrumbChain =
-      crumbs2.length === 2 && crumbs2[0].includes('index-note') && crumbs2[1].includes('alpha-note');
+      crumbs2.length === 2 &&
+      crumbs2[0].includes('index-note') &&
+      crumbs2[1].includes('alpha-note');
 
     // ── Back button: beta → alpha, one crumb left ──
     await page.locator('[data-ss="note-back"]').click();
-    await page.waitForFunction(
-      () => document.body.innerText.includes('ALPHA-BODY-TOKEN'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('ALPHA-BODY-TOKEN'), {
+      timeout: 10000,
+    });
     const crumbs3 = await page.evaluate(() =>
       [...document.querySelectorAll('[data-ss="note-crumb"]')].map((el) => el.innerText),
     );
@@ -210,15 +211,13 @@ async function main() {
 
     // ── Crumb jump across two entries: re-hop to beta, click the root crumb ──
     await page.locator('[data-ss="wikilink"]', { hasText: 'beta-note' }).first().click();
-    await page.waitForFunction(
-      () => document.body.innerText.includes('BETA-BODY-TOKEN'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('BETA-BODY-TOKEN'), {
+      timeout: 10000,
+    });
     await page.locator('[data-ss="note-crumb"]').first().click();
-    await page.waitForFunction(
-      () => document.body.innerText.includes('for details'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('for details'), {
+      timeout: 10000,
+    });
     // Landing on the trail root empties the trail, so the bar unmounts.
     results.crumbJumpClearsTrail = await page.evaluate(
       () => document.querySelector('[data-ss="note-breadcrumbs"]') === null,
@@ -228,23 +227,58 @@ async function main() {
     await openViaQuickOpen(page, app, 'index-note');
     await page.waitForSelector('[data-ss="relative-link"]', { timeout: 10000 });
     await page.locator('[data-ss="relative-link"]').first().click();
-    await page.waitForFunction(
-      () => document.body.innerText.includes('BETA-BODY-TOKEN'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('BETA-BODY-TOKEN'), {
+      timeout: 10000,
+    });
     results.relativeNavigated = true;
 
     // ── Fresh navigation (⌘P) ends the trail — the bar disappears ──
     // The relative-link hop above pushed index-note, so the bar is showing now.
     await page.waitForSelector('[data-ss="note-breadcrumbs"]', { timeout: 10000 });
     await openViaQuickOpen(page, app, 'alpha-note');
-    await page.waitForFunction(
-      () => document.body.innerText.includes('ALPHA-BODY-TOKEN'),
-      { timeout: 10000 },
-    );
+    await page.waitForFunction(() => document.body.innerText.includes('ALPHA-BODY-TOKEN'), {
+      timeout: 10000,
+    });
     results.freshOpenClearsTrail = await page.evaluate(
       () => document.querySelector('[data-ss="note-breadcrumbs"]') === null,
     );
+
+    // ── File tabs retain notes; two Markdown previews render simultaneously ──
+    results.multipleFileTabs = (await page.locator('[data-ss="file-tab"]').count()) >= 3;
+    await page.getByRole('button', { name: 'Open index-note.md in split' }).click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-ss="viewer-pane"]').length === 2,
+      { timeout: 10000 },
+    );
+    const primaryPane = page.locator('[data-ss="viewer-pane"][data-ss-pane="primary"]');
+    const secondaryPane = page.locator('[data-ss="viewer-pane"][data-ss-pane="secondary"]');
+    results.simultaneousMarkdown =
+      (await primaryPane.innerText()).includes('ALPHA-BODY-TOKEN') &&
+      (await secondaryPane.innerText()).includes('for details') &&
+      (await primaryPane.getByRole('button', { name: 'Preview' }).getAttribute('aria-pressed')) ===
+        'true' &&
+      (await secondaryPane
+        .getByRole('button', { name: 'Preview' })
+        .getAttribute('aria-pressed')) === 'true';
+
+    // A relative link in the secondary viewer replaces only that viewer.
+    await secondaryPane.locator('[data-ss="relative-link"]').first().click();
+    await page.waitForFunction(
+      () => {
+        const left = document.querySelector('[data-ss="viewer-pane"][data-ss-pane="primary"]');
+        const right = document.querySelector('[data-ss="viewer-pane"][data-ss-pane="secondary"]');
+        return (
+          left?.textContent?.includes('ALPHA-BODY-TOKEN') &&
+          right?.textContent?.includes('BETA-BODY-TOKEN')
+        );
+      },
+      { timeout: 10000 },
+    );
+    results.splitNavigationIsolated = true;
+    await page.getByRole('button', { name: 'Show viewers side by side' }).click();
+    results.splitDirectionToggle =
+      (await page.locator('[data-ss="viewer-split"]').getAttribute('data-ss-direction')) ===
+      'columns';
 
     // ── Folder search scoping: select the plain folder, ⌘P lists only it ──
     await page.locator(`[data-ss-folder="${plain}"] button[title="${plain}"]`).first().click();
@@ -266,15 +300,29 @@ async function main() {
     await vaultInput.waitFor({ timeout: 10000 });
     await vaultInput.fill(vault);
     await page.getByRole('button', { name: 'Save' }).click();
-    await page.waitForFunction(
-      () => !document.querySelector('[data-ss="frontmatter"], [role="dialog"]')?.closest('[role="dialog"]'),
-      { timeout: 5000 },
-    ).catch(() => {});
+    await page
+      .waitForFunction(
+        () =>
+          !document
+            .querySelector('[data-ss="frontmatter"], [role="dialog"]')
+            ?.closest('[role="dialog"]'),
+        { timeout: 5000 },
+      )
+      .catch(() => {});
     await page.waitForTimeout(500); // atomic write settle
     const savedCfg = JSON.parse(readFileSync(configPath, 'utf8'));
     results.vaultPathPersisted = savedCfg.settings?.vaultPath === vault;
   } catch (err) {
     results.error = err instanceof Error ? err.message : String(err);
+    results.pageState = await page
+      .evaluate(() => ({
+        href: location.href,
+        readyState: document.readyState,
+        body: document.body.innerText.slice(0, 500),
+      }))
+      .catch((pageErr) => ({
+        pageError: pageErr instanceof Error ? pageErr.message : String(pageErr),
+      }));
   }
 
   const checks = [
@@ -289,9 +337,16 @@ async function main() {
     ['breadcrumb bar shows after a wikilink hop', results.breadcrumbShown],
     ['two hops build a two-crumb chain', results.breadcrumbChain],
     ['back button returns to the previous note', results.backNavigated],
-    ['crumb jump across two entries lands on the root, trail cleared', results.crumbJumpClearsTrail],
+    [
+      'crumb jump across two entries lands on the root, trail cleared',
+      results.crumbJumpClearsTrail,
+    ],
     ['clicking a relative md link opened the target note in-panel', results.relativeNavigated],
     ['fresh ⌘P open clears the trail (negative control)', results.freshOpenClearsTrail],
+    ['several markdown files stay open as file tabs', results.multipleFileTabs],
+    ['two markdown previews render simultaneously', results.simultaneousMarkdown],
+    ['note navigation changes only its originating viewer', results.splitNavigationIsolated],
+    ['viewer split switches between stacked and side-by-side', results.splitDirectionToggle],
     ['⌘P scopes to a selected plain folder', results.folderScoped],
     ['Settings vault path persists to config.json', results.vaultPathPersisted],
   ];
@@ -300,6 +355,7 @@ async function main() {
   log('────────────────────────────────────────');
   for (const [name, ok] of checks) log(`  ${ok ? '✓' : '✗'} ${name}`);
   if (results.error) log('  harness error:', results.error);
+  if (results.pageState) log('  page state:', JSON.stringify(results.pageState));
   log('RESULT:', pass ? 'PASS ✅' : 'FAIL ❌');
   if (!pass) {
     log('──── console (all) ────');

@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.30.0 — feature-complete for v1: macOS only, repos managed manually.
+v0.31.0 — feature-complete for v1: macOS only, repos managed manually.
 The sidebar scales to a large catalog: a **Working** view derived from
 open tabs, running processes, and pins, with the full **Library** a click
 away and search global across both. Open tabs are saved and offered back
@@ -326,7 +326,11 @@ viewer does that without leaving treeline or breaking your terminal flow.
 - **Click a file** → it opens in a read-only, syntax-highlighted **panel
   that splits in beside the terminal**, so you can reference code and keep
   working in the same view. Language is picked from the file extension
-  (`.env` and unknown types render as plain text).
+  (`.env` and unknown types render as plain text). Opening more files adds
+  them to a horizontally scrollable file-tab strip; switching tabs preserves
+  each file's view mode, loaded content, and edit draft. Use a tab's **`◫`**
+  action to show a second file at the same time. The two viewers stack by
+  default, can switch to side-by-side, and have a draggable divider.
 - **Pin frequently referenced files.** Hover a file in the tree, or use the
   star in the open file's panel header, to add it to the global **Pinned Files**
   list. Pins stay above both the repository navigator and focused file browser,
@@ -348,10 +352,11 @@ viewer does that without leaving treeline or breaking your terminal flow.
   panel header, then it becomes editable. Save with **⌘S** (or the Save
   button); an amber dot by the filename marks unsaved changes, and writes
   are atomic (temp file + rename). After a save, the diff and **Changed**
-  list refresh. Switching files or closing the panel with unsaved edits
-  prompts first. Truncated (>1 MB) and binary files stay read-only.
+  list refresh. Switching file tabs preserves unsaved edits; closing a dirty
+  file tab prompts first. Truncated (>1 MB) and binary files stay read-only.
 - **Drag the divider** between the terminal and the panel to resize; the
-  terminal re-fits to the new width. The `×` in the panel header closes it.
+  terminal re-fits to the new width. The `×` in the panel header hides it
+  without discarding its file tabs or drafts.
 
 Guard rails keep it snappy: files over 1 MB are shown truncated (with a
 `truncated` badge), and binary files (detected by a NUL byte) show a

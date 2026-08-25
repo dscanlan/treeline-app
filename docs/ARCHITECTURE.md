@@ -95,11 +95,23 @@ say `window.treeline.repos.list()` instead of touching IPC directly.
 4. Main's `files-io.ts:readFileGuarded()` stats the file, reads up to
    1 MB (flagging `truncated`), sniffs the head for a NUL byte (flagging
    `binary`), and returns `FileContents`.
-5. The editor slice stores the result (ignoring it if the user already
-   switched files), `<MainArea>` splits in `<CodePanel>`, and
+5. The editor slice stores the result in `openFilesByPath[path]` (ignoring a
+   stale request generation), `<MainArea>` splits in `<CodePanel>`, and
    `<CodeMirrorView>` renders it read-only with an extension-derived
    language and the Graphite theme. (Markdown files instead default to the
    rendered **Preview** — see below.)
+
+The panel keeps a unique tab per absolute path: `openFilePaths` defines the
+strip order, each `OpenFileState` owns its mode, text/diff caches,
+loading/errors, search reveal, and edit draft, and `viewerPanes` assigns one or
+two of those paths to stable `primary`/`secondary` viewers. `activeFilePath`
+mirrors the focused viewer for sidebar highlighting and legacy consumers.
+Regular tab/tree/search navigation replaces only the focused viewer; a tab's
+split action fills the other viewer. Split direction (`rows`/`columns`) and a
+clamped ratio drive the draggable divider. Opening an existing clean path from
+the tree or quick-open refreshes it from disk, while a dirty draft is never
+overwritten. Closing the last file tab collapses the panel. Hiding the panel
+preserves tabs, viewers, layout, and drafts in the renderer session.
 
 The `All | Changed` toggle (`<WorktreeFiles>`) swaps the tree for
 `<ChangedFilesList>`, fed by `window.treeline.files.changed(path)` →
@@ -117,9 +129,9 @@ representation isn't cached yet.
 
 **Markdown preview.** `panelMode` has a third value, `'preview'`. Markdown
 files (`isMarkdownPath()` — `.md`/`.markdown`/`.mdx`) open on it by default;
-`<CodePanel>` shows an extra `Preview` tab and renders `<MarkdownView>`
-instead of `<CodeMirrorView>`. Preview reuses the same `openFileText` the
-File view loads (no separate fetch), so toggling between them is free.
+`<CodePanel>` shows an extra `Preview` mode and renders `<MarkdownView>`
+instead of `<CodeMirrorView>`. Preview reuses the active tab's `fileText` that
+the File view loads (no separate fetch), so toggling between them is free.
 `<MarkdownView>` renders with `react-markdown` + `remark-gfm` (tables, task
 lists, …) + `rehype-highlight` (fenced-code highlighting, themed via
 `.hljs-*` rules in `globals.css`). It emits React elements only — no
@@ -162,11 +174,12 @@ directory and open in-panel; absolute-scheme links keep the external path
 above. Leading YAML frontmatter is split off (`shared/frontmatter.ts`, a
 tolerant display-only parser — no YAML dep) and rendered as a properties
 table. No new IPC surface: reads ride `files.read`, indexing rides
-`search.files`. Link hops record the departed note in a session-only trail
-(`vault-slice` `noteHistory`, capped at 50) rendered as a back button +
-breadcrumbs under the panel header; back/crumb jumps truncate browser-style,
-and any fresh open or panel close clears the trail. History mutations run
-after the unsaved-edits guard so a cancelled discard leaves the trail intact.
+`search.files`. Link hops record the departed note in a per-viewer, session-only
+trail (`vault-slice` `noteHistoryByPane`, capped at 50) rendered as a back button
++ breadcrumbs under that viewer's header; back/crumb jumps truncate
+browser-style, and fresh navigation clears only its target viewer's trail.
+This keeps Markdown navigation in one simultaneous preview independent from
+the other.
 
 **Editing.** The File view flips editable via the panel's `Edit` button
 (`editing` + a `draft` in the editor slice). `⌘S` / Save calls
@@ -174,8 +187,10 @@ after the unsaved-edits guard so a cancelled discard leaves the trail intact.
 which writes a sibling temp file and `rename()`s it over the target
 (atomic) and refuses anything but an existing regular file. On success the
 saved text becomes the clean baseline and the diff + Changed list refresh.
-Switching files / closing the panel with unsaved edits prompts first
-(`confirmDiscard`); truncated and binary files stay read-only.
+Each file tab owns its edit state, so switching tabs preserves drafts. Closing
+a dirty tab or leaving its edit mode prompts first (`confirmDiscard`); hiding
+the panel preserves its tabs and drafts. Truncated and binary files stay
+read-only.
 
 Both read handlers validate the renderer-supplied path with `safe-path.ts`.
 This isn't a new trust boundary — PTYs already grant full shell access —

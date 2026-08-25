@@ -35,7 +35,7 @@ function FileTreeNode({ entry, depth }: { entry: DirEntry; depth: number }) {
   const { expanded, selected, pinned } = useStore(
     useShallow((s) => ({
       expanded: !!s.expandedDirs[entry.path],
-      selected: s.openFilePath === entry.path,
+      selected: s.activeFilePath === entry.path,
       pinned: s.pinnedFilePaths.includes(entry.path),
     })),
   );

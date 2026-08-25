@@ -8,6 +8,7 @@ import { registerScratchCleanup } from '../actions/scratch';
 import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
 import { agentPaneCwds, toPersistedSession } from '@shared/session-serialize';
+import { createOpenFileState } from '../store/editor-slice';
 
 export function attachIpc(): () => void {
   const api = window.treeline;
@@ -213,14 +214,14 @@ export function attachIpc(): () => void {
           pinnedFilePaths: [],
           missingPinnedFiles: {},
           codePanelOpen: false,
-          openFilePath: null,
-          panelMode: 'file',
-          openFileText: null,
-          openDiff: null,
-          editing: false,
-          draft: null,
-          saving: false,
-          saveError: null,
+          openFilePaths: [],
+          activeFilePath: null,
+          openFilesByPath: {},
+          viewerPanes: [],
+          focusedViewerPaneId: 'primary',
+          viewerSplitDirection: 'rows',
+          viewerSplitRatio: 50,
+          noteHistoryByPane: { primary: [], secondary: [] },
           browserPanelOpen: false,
         });
       }
@@ -329,13 +330,51 @@ export function attachIpc(): () => void {
       }
       if (p.codePanelOpen !== undefined) editor.codePanelOpen = p.codePanelOpen;
       if (p.codePanelWidth !== undefined) editor.codePanelWidth = p.codePanelWidth;
-      if (p.openFilePath !== undefined) editor.openFilePath = p.openFilePath;
-      if (p.panelMode !== undefined) editor.panelMode = p.panelMode;
-      if (p.openFileText !== undefined) editor.openFileText = p.openFileText;
-      if (p.openDiff !== undefined) editor.openDiff = p.openDiff;
-      if (p.editing !== undefined) editor.editing = p.editing;
-      if (p.draft !== undefined) editor.draft = p.draft;
-      if (p.saveError !== undefined) editor.saveError = p.saveError;
+      if (p.openFiles !== undefined) {
+        const openFilesByPath = Object.fromEntries(
+          p.openFiles.map((seed) => {
+            const file = createOpenFileState(seed.path, seed.panelMode ?? 'file');
+            file.fileText = seed.fileText ?? null;
+            file.fileTruncated = seed.fileTruncated ?? false;
+            file.fileBinary = seed.fileBinary ?? false;
+            file.diff = seed.diff ?? null;
+            file.editing = seed.editing ?? false;
+            file.draft = seed.draft ?? null;
+            file.saveError = seed.saveError ?? null;
+            return [seed.path, file];
+          }),
+        );
+        editor.openFilePaths = p.openFiles.map((file) => file.path);
+        editor.openFilesByPath = openFilesByPath;
+        const activeFilePath = p.activeFilePath ?? p.openFiles.at(-1)?.path ?? null;
+        editor.activeFilePath = activeFilePath;
+        editor.viewerPanes =
+          p.viewerPanes ?? (activeFilePath ? [{ id: 'primary', path: activeFilePath }] : []);
+        editor.focusedViewerPaneId = p.focusedViewerPaneId ?? 'primary';
+        if (p.viewerSplitDirection !== undefined) {
+          editor.viewerSplitDirection = p.viewerSplitDirection;
+        }
+        if (p.viewerSplitRatio !== undefined) editor.viewerSplitRatio = p.viewerSplitRatio;
+      } else if (p.openFilePath !== undefined) {
+        if (p.openFilePath === null) {
+          editor.openFilePaths = [];
+          editor.openFilesByPath = {};
+          editor.activeFilePath = null;
+          editor.viewerPanes = [];
+        } else {
+          const file = createOpenFileState(p.openFilePath, p.panelMode ?? 'file');
+          file.fileText = p.openFileText ?? null;
+          file.diff = p.openDiff ?? null;
+          file.editing = p.editing ?? false;
+          file.draft = p.draft ?? null;
+          file.saveError = p.saveError ?? null;
+          editor.openFilePaths = [p.openFilePath];
+          editor.openFilesByPath = { [p.openFilePath]: file };
+          editor.activeFilePath = p.openFilePath;
+          editor.viewerPanes = [{ id: 'primary', path: p.openFilePath }];
+          editor.focusedViewerPaneId = 'primary';
+        }
+      }
       if (Object.keys(editor).length > 0) useStore.setState(editor);
 
       // Embedded-browser pane — set directly so the harness can open the
