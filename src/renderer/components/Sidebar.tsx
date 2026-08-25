@@ -62,7 +62,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`flex h-full shrink-0 flex-col bg-treeline-surface text-sm ${
+      className={`flex h-full shrink-0 flex-col bg-treeline-panel text-sm ${
         state.sidebarResizing ? '' : 'transition-[width] duration-150 ease-out'
       }`}
       style={{ width: state.sidebarCollapsed ? 0 : state.sidebarWidth, overflow: 'hidden' }}
@@ -104,7 +104,7 @@ export function Sidebar() {
                 className={`ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded border ${
                   state.sidebarAttentionOnly
                     ? 'border-treeline-yellow bg-treeline-yellow/10 text-treeline-yellow'
-                    : 'border-treeline-highlight text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text'
+                    : 'border-treeline-border text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text'
                 }`}
               >
                 !
@@ -127,7 +127,7 @@ export function Sidebar() {
             {state.sidebarMode === 'working' && !model.searching && state.hasScratches && (
               <>
                 <ScratchList />
-                <hr className="my-2 border-treeline-highlight" />
+                <hr className="my-2 border-treeline-border" />
               </>
             )}
             <SidebarContents model={model} mode={state.sidebarMode} />
@@ -157,7 +157,7 @@ function ModeButton({
       className={`flex h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded border px-2 text-xs ${
         active
           ? 'border-treeline-cyan/60 bg-treeline-highlight text-treeline-text'
-          : 'border-treeline-highlight text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text'
+          : 'border-treeline-border text-treeline-dim hover:bg-treeline-highlight hover:text-treeline-text'
       }`}
     >
       <span className="truncate">{label}</span>
@@ -217,7 +217,7 @@ function SidebarContents({
             />
           ))}
       {model.folders.length > 0 && (
-        <section className="mt-3 border-t border-treeline-highlight pt-2">
+        <section className="mt-3 border-t border-treeline-border pt-2">
           <div className="px-2 pb-1 text-[10px] uppercase text-treeline-dim">Folders</div>
           {model.folders.map((folder) => (
             <FolderNode key={folder.path} folder={folder} />
@@ -272,7 +272,7 @@ function LocationGroup({
         onClick={() => toggleLocation(parent)}
         aria-expanded={open}
         title={parent}
-        className="sticky top-0 z-10 flex w-full items-center gap-1 bg-treeline-surface px-2 py-1 text-left text-[10px] uppercase text-treeline-dim"
+        className="sticky top-0 z-10 flex w-full items-center gap-1 bg-treeline-panel px-2 py-1 text-left text-[10px] uppercase tracking-wide text-treeline-dim"
       >
         <span>{open ? '▾' : '▸'}</span>
         <span className="truncate">{label}</span>

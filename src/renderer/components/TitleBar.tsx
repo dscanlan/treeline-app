@@ -14,7 +14,7 @@ import { SidebarToggle } from './SidebarToggle';
 export function TitleBar() {
   const sidebarCollapsed = useStore((s) => s.sidebarCollapsed);
   return (
-    <div className="drag flex h-9 shrink-0 items-center border-b border-treeline-highlight bg-treeline-surface select-none">
+    <div className="drag flex h-9 shrink-0 items-center border-b border-treeline-border bg-treeline-chrome select-none">
       {/* Traffic-light gap. macOS traffic lights are positioned by the OS at
         * about (18, 13) with a ~52px run, so 78px gives a comfortable margin. */}
       <div className="w-[78px] shrink-0" aria-hidden />

@@ -8,7 +8,8 @@ import CodeMirror, {
   type ReactCodeMirrorRef,
 } from '@uiw/react-codemirror';
 import { loadLanguage, type LanguageName } from '@uiw/codemirror-extensions-langs';
-import { graphiteCodeMirrorTheme } from './codemirror-theme';
+import { codeMirrorThemeForId } from './codemirror-theme';
+import { useStore } from '../store';
 
 /**
  * Map a file extension to a CodeMirror language. Unknown extensions (and
@@ -98,6 +99,7 @@ export function CodeMirrorView({
   revealTick = 0,
 }: Props) {
   const cmRef = useRef<ReactCodeMirrorRef>(null);
+  const themeId = useStore((s) => s.settings.terminalTheme);
 
   // Scroll to + select the target line when a search hit is opened. Keyed on
   // revealTick so the same line re-reveals, and on `value` so it re-fires once
@@ -121,7 +123,7 @@ export function CodeMirrorView({
   }, [revealTick, value]);
 
   const extensions = useMemo(() => {
-    const exts: Extension[] = [...graphiteCodeMirrorTheme, EditorView.lineWrapping];
+    const exts: Extension[] = [...codeMirrorThemeForId(themeId), EditorView.lineWrapping];
     const lang = languageExtensionFor(filename);
     if (lang) exts.push(lang);
     // Intercept ⌘S/Ctrl-S so it saves the file instead of doing nothing.
@@ -143,7 +145,7 @@ export function CodeMirrorView({
     // onSave is stable enough (module-level action); excluding it keeps the
     // editor from rebuilding extensions on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filename]);
+  }, [filename, themeId]);
 
   return (
     <CodeMirror

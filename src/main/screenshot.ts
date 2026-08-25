@@ -1412,14 +1412,27 @@ const SCENARIOS: Record<string, Scenario> = {
   },
 
   // App-wide theming: the Light preset repaints the whole chrome (sidebar,
-  // tabs, panels), not just the terminal.
-  '30-theme-light': async ({ win }) => {
-    sendHydrate(win, {
+  // tabs, panels), not just the terminal. Keep a live terminal in this capture
+  // because ANSI white/black pairs are an important light-theme regression:
+  // TUIs commonly use them for full-width composers and inverse-video rows.
+  '30-theme-light': async (ctx) => {
+    const { tab, ptyId } = await spawnTabPty(ctx, 'main');
+    await waitForPtySettle(ctx, ptyId);
+    sendHydrate(ctx.win, {
       reset: true,
       repos: [REPO_DASHBOARD, REPO_TREELINE_APP, REPO_CGS],
       worktreesByRepo: ALL_WORKTREES,
       settings: settingsCfg({ terminalTheme: 'graphite-light' }),
+      tabs: [tab],
+      activeTabId: tab.id,
+      selected: REPO_TREELINE_APP.path,
+      terminalStatus: [{ ptyId, status: 'idle', foregroundCmd: null }],
     });
+    await delay(400);
+    await typeAndSettle(ctx, ptyId, [
+      ':\n',
+      "clear; printf '\\033[1;34m›_ OpenAI Codex\\033[0m  \\033[90m(light theme)\\033[0m\\n\\n'; printf '\\033[47;30m  › Ask Codex to do anything\\033[K\\033[0m\\n'; printf '\\033[34mgpt-5.6-sol high\\033[0m · \\033[32m~/code/treeline-app\\033[0m\\n'\n",
+    ]);
   },
 
   // App-wide theming: the Midnight preset.

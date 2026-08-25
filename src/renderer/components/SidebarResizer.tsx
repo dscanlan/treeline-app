@@ -40,7 +40,7 @@ export function SidebarResizer() {
       aria-orientation="vertical"
       onPointerDown={onPointerDown}
       onDoubleClick={() => useStore.getState().setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
-      className="w-1 shrink-0 cursor-col-resize bg-treeline-highlight transition-colors hover:bg-treeline-cyan/40"
+      className="w-px shrink-0 cursor-col-resize bg-treeline-border transition-[width,background-color] hover:w-1 hover:bg-treeline-cyan/40"
     />
   );
 }

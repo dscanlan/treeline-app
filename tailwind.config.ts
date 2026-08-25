@@ -31,6 +31,9 @@ export default {
           red: 'var(--treeline-red)',         // close / error
           dim: 'var(--treeline-dim)',         // secondary text
           surface: 'var(--treeline-surface)', // base
+          chrome: 'var(--treeline-chrome)',   // titlebar / window-level chrome
+          panel: 'var(--treeline-panel)',     // sidebar / titlebar / elevated cards
+          border: 'var(--treeline-border)',   // hairlines / control outlines
           highlight: 'var(--treeline-highlight)', // hover / selection / borders
           text: 'var(--treeline-text)',       // primary fg
         },

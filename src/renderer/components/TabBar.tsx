@@ -63,7 +63,7 @@ export function TabBar() {
   return (
     <div
       ref={stripRef}
-      className="flex h-9 shrink-0 items-end gap-px overflow-x-auto border-b border-treeline-highlight bg-treeline-surface px-2"
+      className="flex h-9 shrink-0 items-end gap-px overflow-x-auto border-b border-treeline-border bg-treeline-panel px-2"
     >
       {tabs.map((tab) => (
         <TabItem

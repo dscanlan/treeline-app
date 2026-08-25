@@ -58,6 +58,10 @@ export function useXterm(
       lineHeight: 1.2,
       scrollback: 5000,
       cursorBlink: true,
+      // ANSI applications often combine their own foreground/background
+      // cells. Enforce readable text for those combinations, especially in
+      // the light preset where an explicit white can otherwise disappear.
+      minimumContrastRatio: 4.5,
       allowTransparency: false,
       macOptionIsMeta: true,
       cols: opts.initialCols ?? 80,

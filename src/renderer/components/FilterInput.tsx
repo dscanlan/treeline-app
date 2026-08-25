@@ -35,7 +35,7 @@ export function FilterInput() {
         }}
         placeholder="Find repos or branches…"
         aria-label="Find repository, worktree, or folder"
-        className="w-full rounded bg-treeline-highlight py-1 pl-2 pr-7 text-treeline-text placeholder:text-treeline-dim focus:outline-none focus:ring-1 focus:ring-treeline-cyan"
+        className="w-full rounded border border-treeline-border bg-treeline-surface py-1 pl-2 pr-7 text-treeline-text placeholder:text-treeline-dim focus:border-treeline-cyan/60 focus:outline-none focus:ring-1 focus:ring-treeline-cyan/30"
       />
       {filter && (
         <button

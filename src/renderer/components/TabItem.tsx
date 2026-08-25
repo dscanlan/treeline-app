@@ -68,7 +68,7 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
           : unread
             ? 'animate-pulse border-treeline-magenta bg-treeline-magenta/20 text-treeline-magenta ring-1 ring-treeline-magenta'
             : isActive
-              ? 'border-treeline-highlight bg-treeline-highlight text-treeline-text'
+              ? 'border-treeline-border bg-treeline-surface text-treeline-text shadow-sm'
               : 'border-transparent text-treeline-dim hover:text-treeline-text'
       }`}
       title={unread ? 'An agent here is waiting for you' : tab.cwd}

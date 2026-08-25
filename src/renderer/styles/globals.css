@@ -7,9 +7,12 @@
  * whole app. Seeded here with the Graphite (default) palette so the first paint
  * — before React mounts and `useAppTheme` runs — is already on-theme;
  * `useAppTheme` then overrides them from the selected preset's `app` palette
- * (src/shared/terminal-theme.ts). Keep these nine in sync with GRAPHITE_APP. */
+ * (src/shared/terminal-theme.ts). Keep these values in sync with GRAPHITE_APP. */
 :root {
   --treeline-surface: #0e0f12;
+  --treeline-chrome: #0e0f12;
+  --treeline-panel: #0e0f12;
+  --treeline-border: #1c1e24;
   --treeline-highlight: #1c1e24;
   --treeline-text: #e6e8ee;
   --treeline-dim: #7a7f8c;
@@ -22,8 +25,16 @@
   /* App font — the Tailwind `mono` token resolves to this; `useAppTheme`
    * overrides it from the Settings font family so the whole app follows it.
    * Default matches DEFAULT_TERMINAL_FONT_FAMILY. */
-  --treeline-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    'Liberation Mono', monospace;
+  --treeline-font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--treeline-cyan) 28%, transparent);
+}
+
+:focus-visible {
+  outline-color: var(--treeline-cyan);
 }
 
 /* Electron drag regions — these CSS rules don't exist in browsers, only in

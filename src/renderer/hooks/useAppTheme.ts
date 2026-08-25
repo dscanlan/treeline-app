@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import {
   APP_PALETTE_SLOTS,
   appPaletteForId,
+  colorSchemeForId,
   DEFAULT_TERMINAL_FONT_FAMILY,
 } from '@shared/terminal-theme';
 
@@ -29,6 +30,9 @@ export function useAppTheme(): void {
     for (const slot of APP_PALETTE_SLOTS) {
       root.style.setProperty(`--treeline-${slot}`, palette[slot]);
     }
+    const scheme = colorSchemeForId(themeId);
+    root.style.colorScheme = scheme;
+    root.dataset.colorScheme = scheme;
   }, [themeId]);
 
   useEffect(() => {

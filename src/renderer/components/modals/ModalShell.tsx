@@ -24,7 +24,7 @@ export function ModalShell({ title, onClose, children }: Props) {
       onClick={onClose}
     >
       <div
-        className="min-w-[360px] max-w-[480px] rounded border border-treeline-highlight bg-treeline-surface p-4 text-treeline-text shadow-2xl"
+        className="min-w-[360px] max-w-[480px] rounded border border-treeline-border bg-treeline-panel p-4 text-treeline-text shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">

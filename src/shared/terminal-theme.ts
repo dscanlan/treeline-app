@@ -39,14 +39,22 @@ export interface XtermTheme {
 export type TerminalThemeId = 'graphite' | 'graphite-light' | 'midnight';
 
 /**
- * App-chrome palette: the nine `treeline-*` slots that drive the whole UI
+ * App-chrome palette: the `treeline-*` slots that drive the whole UI
  * (sidebar, tabs, panels, badges), mirroring the Tailwind token names. The
  * Tailwind tokens resolve to CSS variables (`var(--treeline-<slot>)`), so a
  * theme switch repaints the entire app by reassigning these at `:root` — see
  * `useAppTheme` and `tailwind.config.ts`.
  */
 export interface AppPalette {
+  /** Primary workspace / terminal canvas. */
   surface: string;
+  /** Window-level chrome such as the native-style titlebar. */
+  chrome: string;
+  /** Sidebar, tab strips, and elevated cards. */
+  panel: string;
+  /** Hairlines and control outlines (kept separate from selected fills). */
+  border: string;
+  /** Hover, selected-row, and input fills. */
   highlight: string;
   text: string;
   dim: string;
@@ -60,6 +68,9 @@ export interface AppPalette {
 /** Ordered list of app-palette slots — drives `:root` var application. */
 export const APP_PALETTE_SLOTS: readonly (keyof AppPalette)[] = [
   'surface',
+  'chrome',
+  'panel',
+  'border',
   'highlight',
   'text',
   'dim',
@@ -73,6 +84,7 @@ export const APP_PALETTE_SLOTS: readonly (keyof AppPalette)[] = [
 export interface TerminalThemePreset {
   id: TerminalThemeId;
   label: string;
+  appearance: 'dark' | 'light';
   /** xterm colors for the terminal panes. */
   theme: XtermTheme;
   /** chrome colors for the rest of the app. */
@@ -105,29 +117,34 @@ const GRAPHITE: XtermTheme = {
   brightWhite: '#fafafc',
 };
 
-// A light companion to Graphite for users on bright displays.
+// A light companion to Graphite for users on bright displays. Its neutral
+// surface hierarchy and blue accent take their cues from Zed's One Light,
+// adapted to Treeline's smaller palette and terminal-first layout.
 const GRAPHITE_LIGHT: XtermTheme = {
-  background: '#f6f7f9',
-  foreground: '#1c1e24',
-  cursor: '#1c1e24',
-  cursorAccent: '#f6f7f9',
-  selectionBackground: '#d7dbe2',
-  black: '#1c1e24',
-  red: '#c0392b',
-  green: '#2e7d32',
-  yellow: '#a16207',
-  blue: '#2f5fd0',
-  magenta: '#7c3aed',
-  cyan: '#0e7490',
-  white: '#1c1e24',
-  brightBlack: '#7a7f8c',
-  brightRed: '#e74c3c',
-  brightGreen: '#4ade80',
-  brightYellow: '#ca8a04',
-  brightBlue: '#3b82f6',
-  brightMagenta: '#a78bfa',
-  brightCyan: '#0891b2',
-  brightWhite: '#0e0f12',
+  background: '#fafafa',
+  foreground: '#2a2c33',
+  cursor: '#5c78e2',
+  cursorAccent: '#fafafa',
+  selectionBackground: '#d1d8f2',
+  black: '#000000',
+  red: '#de3e35',
+  green: '#3f953a',
+  yellow: '#a48819',
+  blue: '#2f5af3',
+  magenta: '#950095',
+  cyan: '#0997b3',
+  // ANSI white must stay light even in a light theme. Full-screen TUIs use
+  // it as a foreground over explicit dark backgrounds; mapping it to near
+  // black made those regions render as black-on-black.
+  white: '#bbbbbb',
+  brightBlack: '#555555',
+  brightRed: '#de3e35',
+  brightGreen: '#3f953a',
+  brightYellow: '#d2b67c',
+  brightBlue: '#2f5af3',
+  brightMagenta: '#a00095',
+  brightCyan: '#0bbcd6',
+  brightWhite: '#ffffff',
 };
 
 // A deeper, cooler blue-black variant with more saturated ANSI colors.
@@ -161,6 +178,9 @@ const MIDNIGHT: XtermTheme = {
 // xterm presets above.
 const GRAPHITE_APP: AppPalette = {
   surface: '#0e0f12',
+  chrome: '#0e0f12',
+  panel: '#0e0f12',
+  border: '#1c1e24',
   highlight: '#1c1e24',
   text: '#e6e8ee',
   dim: '#7a7f8c',
@@ -172,19 +192,25 @@ const GRAPHITE_APP: AppPalette = {
 };
 
 const GRAPHITE_LIGHT_APP: AppPalette = {
-  surface: '#f6f7f9',
-  highlight: '#e4e7ec',
-  text: '#1c1e24',
-  dim: '#6b7280',
-  cyan: '#2f5fd0',
-  magenta: '#7c3aed',
-  green: '#2e7d32',
-  yellow: '#a16207',
-  red: '#c0392b',
+  surface: '#fafafa',
+  chrome: '#dcdcdd',
+  panel: '#ebebec',
+  border: '#c9c9ca',
+  highlight: '#dfdfe0',
+  text: '#242529',
+  dim: '#58585a',
+  cyan: '#5c78e2',
+  magenta: '#984ea5',
+  green: '#669f59',
+  yellow: '#a48819',
+  red: '#d36151',
 };
 
 const MIDNIGHT_APP: AppPalette = {
   surface: '#0a0e1a',
+  chrome: '#0a0e1a',
+  panel: '#0a0e1a',
+  border: '#1b2440',
   highlight: '#1b2440',
   text: '#c7d2e0',
   dim: '#5b6478',
@@ -197,14 +223,27 @@ const MIDNIGHT_APP: AppPalette = {
 
 /** All treeline-native presets, in display order. */
 export const TERMINAL_THEME_PRESETS: readonly TerminalThemePreset[] = [
-  { id: 'graphite', label: 'Graphite (Dark)', theme: GRAPHITE, app: GRAPHITE_APP },
+  {
+    id: 'graphite',
+    label: 'Graphite (Dark)',
+    appearance: 'dark',
+    theme: GRAPHITE,
+    app: GRAPHITE_APP,
+  },
   {
     id: 'graphite-light',
     label: 'Graphite (Light)',
+    appearance: 'light',
     theme: GRAPHITE_LIGHT,
     app: GRAPHITE_LIGHT_APP,
   },
-  { id: 'midnight', label: 'Midnight', theme: MIDNIGHT, app: MIDNIGHT_APP },
+  {
+    id: 'midnight',
+    label: 'Midnight',
+    appearance: 'dark',
+    theme: MIDNIGHT,
+    app: MIDNIGHT_APP,
+  },
 ] as const;
 
 /** The factory default theme id. */
@@ -230,6 +269,12 @@ export function themeForId(id: string | null | undefined): XtermTheme {
 export function appPaletteForId(id: string | null | undefined): AppPalette {
   const found = TERMINAL_THEME_PRESETS.find((p) => p.id === id);
   return (found ?? TERMINAL_THEME_PRESETS[0]!).app;
+}
+
+/** Resolve a theme id to the browser/native control color scheme. */
+export function colorSchemeForId(id: string | null | undefined): 'dark' | 'light' {
+  const found = TERMINAL_THEME_PRESETS.find((p) => p.id === id);
+  return (found ?? TERMINAL_THEME_PRESETS[0]!).appearance;
 }
 
 /** True when `id` names a known preset. */
