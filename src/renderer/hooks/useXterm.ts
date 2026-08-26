@@ -8,8 +8,31 @@ import {
   DEFAULT_TERMINAL_FONT_SIZE,
   themeForId,
 } from '@shared/terminal-theme';
-import { isLocalDevUrl } from '@shared/browser-url';
+import { isPaneNavigableUrl } from '@shared/browser-url';
 import { useStore } from '../store';
+
+/**
+ * Clicking a link in terminal output opens it in treeline's own browser pane —
+ * a dev server the running command printed, a PR the AI tool linked, docs — so
+ * you stay in the app instead of bouncing to the OS browser. Anything the pane
+ * won't navigate (mailto:, file://, custom schemes) still goes out to the OS
+ * via main's window-open handler, which allowlists what it will hand over.
+ *
+ * Shared by BOTH link paths, which xterm keeps separate: WebLinksAddon's regex
+ * scan of plain text, and xterm core's OscLinkProvider for OSC 8 hyperlinks
+ * (what `gh`, `ls --hyperlink`, and AI CLIs emit). Leaving the OSC 8 path on
+ * xterm's default was a dead click — that default confirms with a scary
+ * "could potentially be dangerous" prompt, then calls `window.open()` with NO
+ * url, which main's `setWindowOpenHandler` denies as `about:blank`, so the
+ * returned window is null and the href is never assigned.
+ */
+function openTerminalLink(uri: string): void {
+  if (isPaneNavigableUrl(uri)) {
+    useStore.getState().openBrowserPanel(uri);
+  } else {
+    window.open(uri);
+  }
+}
 
 export interface XtermHandle {
   /** Force a re-fit + PTY resize. Call after parent visibility changes. */
@@ -66,23 +89,19 @@ export function useXterm(
       macOptionIsMeta: true,
       cols: opts.initialCols ?? 80,
       rows: opts.initialRows ?? 24,
+      // OSC 8 hyperlinks — emitted by `gh`, `ls --hyperlink`, and AI CLIs —
+      // are resolved by xterm core, not by WebLinksAddon, so they need this
+      // handler as well as the addon's below. See `openTerminalLink`.
+      linkHandler: {
+        activate: (_event, uri) => openTerminalLink(uri),
+      },
     });
 
     const fit = new FitAddon();
     term.loadAddon(fit);
-    // Clicking a link in terminal output: a local dev-server URL (e.g. the
-    // `http://localhost:5174/` Vite prints) opens in the embedded browser pane
-    // — the "run your app, click it, see it" flow. Any other URL falls back to
-    // the OS browser via main's window-open handler (the prior behaviour).
-    term.loadAddon(
-      new WebLinksAddon((_event, uri) => {
-        if (isLocalDevUrl(uri)) {
-          useStore.getState().openBrowserPanel(uri);
-        } else {
-          window.open(uri);
-        }
-      }),
-    );
+    // Plain URLs in output, found by regex. OSC 8 links take `linkHandler`
+    // above instead; both land in `openTerminalLink`.
+    term.loadAddon(new WebLinksAddon((_event, uri) => openTerminalLink(uri)));
 
     let disposed = false;
     let opened = false; // term.open() has been called

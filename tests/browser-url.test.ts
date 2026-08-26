@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLocalDevUrl, normalizeBrowserUrl } from '@shared/browser-url';
+import { isPaneNavigableUrl, normalizeBrowserUrl } from '@shared/browser-url';
 
 describe('normalizeBrowserUrl', () => {
   it('passes through http(s) URLs unchanged', () => {
@@ -42,19 +42,25 @@ describe('normalizeBrowserUrl', () => {
   });
 });
 
-describe('isLocalDevUrl', () => {
-  it('is true for http(s) URLs on a local host', () => {
-    expect(isLocalDevUrl('http://localhost:5173/')).toBe(true);
-    expect(isLocalDevUrl('http://127.0.0.1:8080/app')).toBe(true);
-    expect(isLocalDevUrl('https://localhost:3000')).toBe(true);
-    expect(isLocalDevUrl('http://[::1]:5174/')).toBe(true);
+describe('isPaneNavigableUrl', () => {
+  it('is true for any fully-qualified http(s) URL, local or remote', () => {
+    expect(isPaneNavigableUrl('http://localhost:5173/')).toBe(true);
+    expect(isPaneNavigableUrl('http://127.0.0.1:8080/app')).toBe(true);
+    expect(isPaneNavigableUrl('http://[::1]:5174/')).toBe(true);
+    expect(isPaneNavigableUrl('https://example.com')).toBe(true);
+    expect(isPaneNavigableUrl('https://github.com/o/r/pull/1')).toBe(true);
+    expect(isPaneNavigableUrl('http://192.168.1.10:3000')).toBe(true);
   });
 
-  it('is false for remote hosts and non-web schemes', () => {
-    expect(isLocalDevUrl('https://example.com')).toBe(false);
-    expect(isLocalDevUrl('http://192.168.1.10:3000')).toBe(false);
-    expect(isLocalDevUrl('file:///etc/passwd')).toBe(false);
-    expect(isLocalDevUrl('localhost:3000')).toBe(false); // not fully-qualified
-    expect(isLocalDevUrl('not a url')).toBe(false);
+  it('is false for non-web schemes and unqualified text', () => {
+    // file:// is pane-loadable from the address bar but never from a clicked
+    // link — terminal output must not turn one click into a local-file read.
+    expect(isPaneNavigableUrl('file:///etc/passwd')).toBe(false);
+    expect(isPaneNavigableUrl('mailto:a@b.com')).toBe(false);
+    expect(isPaneNavigableUrl('javascript:alert(1)')).toBe(false);
+    expect(isPaneNavigableUrl('data:text/html,<h1>x</h1>')).toBe(false);
+    expect(isPaneNavigableUrl('smb://host/share')).toBe(false);
+    expect(isPaneNavigableUrl('localhost:3000')).toBe(false); // not fully-qualified
+    expect(isPaneNavigableUrl('not a url')).toBe(false);
   });
 });

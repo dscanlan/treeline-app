@@ -5,7 +5,8 @@
 
 const WEB_SCHEME = /^https?:\/\//i;
 // A local-file URL. Only honoured for address-bar / CLI input (an explicit user
-// action), not for attacker-influenceable clicked links — see `isLocalDevUrl`.
+// action), not for attacker-influenceable clicked links — see
+// `isPaneNavigableUrl`.
 const FILE_SCHEME = /^file:\/\//i;
 // A real URL scheme: letters/digits/+-. then ':' NOT immediately followed by a
 // digit. The negative lookahead is what keeps `localhost:3000` (host:port) from
@@ -34,18 +35,27 @@ export function normalizeBrowserUrl(input: string): string | null {
   return `http://${trimmed}`;
 }
 
-/** Hostnames that resolve to the local machine — i.e. a local dev server. */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-
 /**
- * True when `url` is a fully-qualified http(s) URL pointing at this machine.
- * Used to decide whether a clicked terminal link should open in the embedded
- * browser pane (local dev server) versus the OS browser (anything else).
+ * True when a link clicked in terminal output should open in the embedded
+ * browser pane rather than being handed to the OS browser. Web content stays
+ * inside treeline — you click a URL a command printed and read it in the pane,
+ * without a context switch.
+ *
+ * Deliberately narrower than `normalizeBrowserUrl`, which serves the address
+ * bar and CLI (explicit user input):
+ *
+ * - Requires a fully-qualified http(s) URL. Scheme-less text is not inferred
+ *   into `http://` here — terminal output is attacker-influenceable, and a bare
+ *   word shouldn't become a navigation.
+ * - `file://` is excluded even though the pane can load it, so printed output
+ *   can't turn one click into a local-file read. Those, `mailto:`, and every
+ *   custom scheme fall through to the OS path, which main's `isSafeExternalUrl`
+ *   allowlist then filters.
  */
-export function isLocalDevUrl(url: string): boolean {
+export function isPaneNavigableUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return (u.protocol === 'http:' || u.protocol === 'https:') && LOCAL_HOSTS.has(u.hostname);
+    return u.protocol === 'http:' || u.protocol === 'https:';
   } catch {
     return false;
   }
