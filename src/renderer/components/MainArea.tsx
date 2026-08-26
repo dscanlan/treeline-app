@@ -37,7 +37,10 @@ export function MainArea() {
         {codePanelOpen && (
           <>
             <CodePanelResizer />
-            <div className="shrink-0" style={{ width: codePanelWidth }}>
+            {/* The drag clamps to 90% of the free space; this is the backstop
+              * for the cases no drag is involved — a restored width from a
+              * wider window, or the window being resized smaller afterwards. */}
+            <div className="min-w-0 shrink-0" style={{ width: codePanelWidth, maxWidth: '90%' }}>
               <CodePanel />
             </div>
           </>

@@ -101,8 +101,33 @@ export function createOpenFileState(path: string, panelMode: PanelMode): OpenFil
 
 /** Clamp bounds for the resizable code panel (px). */
 export const CODE_PANEL_MIN_WIDTH = 280;
-export const CODE_PANEL_MAX_WIDTH = 1000;
+/**
+ * Absolute ceiling, kept deliberately high: the real limit is the responsive
+ * one below. A fixed pixel cap here used to be the binding constraint on large
+ * displays — on a 4K window the panel stopped at 1000px (~26% of the window)
+ * however far you dragged.
+ */
+export const CODE_PANEL_MAX_WIDTH = 10000;
 export const CODE_PANEL_DEFAULT_WIDTH = 480;
+
+/** The panel may take at most this share of the space available to it. */
+export const CODE_PANEL_MAX_FRACTION = 0.9;
+
+/**
+ * Clamp a dragged code-panel width against the space actually available to it.
+ *
+ * `available` is the width the panel could occupy at most — the workspace row
+ * minus any other panels sharing it (browser/scratchpad/search), so the 90%
+ * ceiling is measured against real free space rather than the whole row.
+ *
+ * The floor wins on very narrow windows: below ~311px of available space,
+ * CODE_PANEL_MIN_WIDTH exceeds 90% of it and MainArea's `max-width: 90%`
+ * backstop clips the render instead.
+ */
+export function clampCodePanelWidth(desired: number, available: number): number {
+  const ceiling = Math.min(CODE_PANEL_MAX_WIDTH, available * CODE_PANEL_MAX_FRACTION);
+  return Math.max(CODE_PANEL_MIN_WIDTH, Math.min(ceiling, desired));
+}
 
 export interface EditorSlice {
   codePanelOpen: boolean;
