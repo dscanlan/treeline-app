@@ -305,6 +305,11 @@ Click the **folder icon** on a worktree row to expand its file tree.
   it in a second viewer, so two source files or rendered Markdown previews stay
   visible simultaneously. Use **`↔`/`↕`** to switch side-by-side/stacked layout
   and drag the divider to resize them.
+- **Widening the panel.** Drag the divider on its left edge. The panel takes at
+  most 90% of the space available beside it, leaving the terminal a sliver, and
+  that ceiling follows the window rather than a fixed pixel width — so it fills
+  a large display proportionally. For more room still, collapse the sidebar with
+  **⌘B**: the workspace the 90% is measured against grows with it.
 - **Markdown** files open on a rendered **Preview** (`Preview | Diff | File`).
 - **Mermaid diagrams.** A fenced ` ```mermaid ` block renders as a diagram
   rather than as code — flowcharts (`graph LR`, `flowchart TD`), sequence

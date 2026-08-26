@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.32.0 — feature-complete for v1: macOS only, repos managed manually.
+v0.32.1 — feature-complete for v1: macOS only, repos managed manually.
 The sidebar scales to a large catalog: a **Working** view derived from
 open tabs, running processes, and pins, with the full **Library** a click
 away and search global across both. Open tabs are saved and offered back
@@ -355,8 +355,10 @@ viewer does that without leaving treeline or breaking your terminal flow.
   list refresh. Switching file tabs preserves unsaved edits; closing a dirty
   file tab prompts first. Truncated (>1 MB) and binary files stay read-only.
 - **Drag the divider** between the terminal and the panel to resize; the
-  terminal re-fits to the new width. The `×` in the panel header hides it
-  without discarding its file tabs or drafts.
+  terminal re-fits to the new width. The panel stops at 90% of the space
+  available beside it, so the terminal always keeps a sliver — hide the sidebar
+  (**⌘B**) to widen the workspace that 90% is measured against. The `×` in the
+  panel header hides it without discarding its file tabs or drafts.
 
 Guard rails keep it snappy: files over 1 MB are shown truncated (with a
 `truncated` badge), and binary files (detected by a NUL byte) show a
