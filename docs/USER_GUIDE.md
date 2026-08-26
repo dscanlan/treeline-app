@@ -110,8 +110,10 @@ Terminals are real PTYs (`node-pty` + `xterm.js`).
 - **Drag a tab** along the tab strip to reorder it. A plain click still selects
   (the drag only engages past a small threshold).
 - **Click a tab's `×`** → close the tab and kill its PTY.
-- **Click a link in terminal output** → a local dev-server URL opens in the
-  embedded browser pane; any other URL opens in your OS browser.
+- **Click a link in terminal output** → any web URL opens in the embedded
+  browser pane, whether it's a plain URL or an OSC 8 hyperlink (the kind `gh`
+  and AI CLIs emit). `mailto:` and other schemes go to the OS; `file://` links
+  in terminal output are ignored.
 
 **Splits.** A tab is a *tree* of panes:
 

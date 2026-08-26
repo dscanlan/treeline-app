@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.32.1 — feature-complete for v1: macOS only, repos managed manually.
+v0.33.0 — feature-complete for v1: macOS only, repos managed manually.
 The sidebar scales to a large catalog: a **Working** view derived from
 open tabs, running processes, and pins, with the full **Library** a click
 away and search global across both. Open tabs are saved and offered back
@@ -209,9 +209,11 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
   worktree if any.
 - **Drag a tab** along the tab strip to reorder it; a short click still
   selects (the drag only engages past a small threshold).
-- **Click a link in terminal output** → a local dev-server URL (e.g. the
-  `http://localhost:5173/` Vite prints) opens in the [embedded
-  browser](#browser) pane; any other URL opens in your OS browser.
+- **Click a link in terminal output** → any web URL (the
+  `http://localhost:5173/` Vite prints, a PR link `gh` emits, docs) opens in
+  the [embedded browser](#browser) pane, so you stay in the app. Both plain
+  URLs and OSC 8 hyperlinks are clickable. `mailto:` and other schemes go to
+  the OS; `file://` links in terminal output are ignored.
 
 Terminals stay mounted (consuming PTY data into their scrollback) when
 not visible, so switching back is instant — no replay flicker.
@@ -435,8 +437,9 @@ without alt-tabbing to Safari/Chrome and hunting for the port.
   refused. The pane opens pointed at `http://localhost:3000` by default.
 - **Real Chromium, not an iframe** — it's an Electron `<webview>` with its own
   isolated session (`persist:treeline-browser`). The guest runs with no node
-  integration and no preload; links that try to open a new window are handed to
-  your OS browser (web/mail schemes only), mirroring the terminal's link policy.
+  integration and no preload; links *inside a page* that try to open a new
+  window are handed to your OS browser (web/mail schemes only) — unlike links
+  clicked in terminal output, which load in this pane.
 - **Drag the divider** on the pane's left edge to resize (the terminal re-fits);
   the `×` in the header closes it.
 
