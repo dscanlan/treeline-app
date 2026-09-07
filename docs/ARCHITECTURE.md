@@ -339,14 +339,16 @@ and agents can issue the same verbs a user would click.
    `assertScriptableOrigin` and run only on `localhost`/`127.0.0.1`/`[::1]`; the
    read-only verbs (`navigate`/`snapshot`/`query`/`screenshot`) work on any origin.
 6. `bin/treeline.mjs` is the standalone client — dependency-free Node, symlinkable
-   onto `PATH`. Beyond the socket verbs it carries the Claude Code glue:
-   `hooks setup` atomically merges `Stop`/`Notification` hooks into
-   `~/.claude/settings.json` (idempotent; honours `CLAUDE_CONFIG_DIR`) pointing at
-   an internal `notify-hook`, which reads the hook's stdin JSON, derives a message
-   **and the agent's cwd**, fires `notify` with that cwd, and **always exits 0** so
-   it can never disrupt a Claude turn. (It reports the cwd over the socket rather
-   than emitting an OSC escape because Claude Code runs hooks with no controlling
-   terminal — `/dev/tty` is `ENXIO`.)
+   onto `PATH`. Beyond the socket verbs it carries the agent hook adapters.
+   Claude setup atomically merges `Stop`/`Notification` hooks into
+   `~/.claude/settings.json` (idempotent; honours `CLAUDE_CONFIG_DIR`). Codex
+   setup adds independent `Stop`, `PermissionRequest`, and `SessionStart` groups
+   to `~/.codex/hooks.json` (honours `CODEX_HOME`), so it coexists with a foreign
+   top-level `notify` command. The internal notification hooks read stdin JSON,
+   derive a message **and the agent's cwd**, fire `notify` with that cwd, and
+   **always exit 0** so they can never disrupt an agent turn. They report over
+   the socket rather than emitting an OSC escape because lifecycle hooks may run
+   without a controlling terminal.
 
 ### Settings, theming & keybindings
 
@@ -409,7 +411,7 @@ The `ProcessMonitor` ports `dashboard.rs:103-148` exactly:
 
 1. Every 2 s, run `ps -axo pid=,time=,command=`.
 2. For each row, basename the first whitespace token of `command`. Keep
-   only `claude` / `opencode` / `aider`.
+   only `claude` / `codex` / `opencode` / `aider`.
 3. For each surviving PID, run `lsof -a -d cwd -p <pid> -Fn` (in
    parallel via `Promise.all` — the Rust version was serial).
 4. Maintain a `Map<pid, {cputime, lastChange}>`. If cputime moved >
@@ -504,8 +506,8 @@ paths converge on a single `PtyManager` `notification` event `{ id, text }`:
 1. **OSC scan.** `PtyManager`'s existing per-PTY output scanner (the one that
    parses OSC 7 cwd) also matches **OSC 9 / 99 / 777** desktop-notification
    sequences and emits `notification`. Any terminal program can trigger it.
-2. **Claude Code hook → pane id.** Claude Code hooks have no controlling terminal,
-   so the `notify-hook` reports over the socket. treeline exports a
+2. **Agent hook → pane id.** Claude Code hooks and Codex callbacks report over
+   the socket. treeline exports a
    `TREELINE_PANE_ID` env var into every shell it spawns; the hook inherits it (via
    the agent process tree) and sends it back, so the `notify` dep lights *exactly*
    that pane (`PtyManager.has`). It also sends its cwd, used only as a *unique*-pane
@@ -618,7 +620,7 @@ toggle live inside it.
 ## File layout (annotated)
 
 ```
-bin/treeline.mjs                  # Standalone CLI client (socket verbs + Claude Code hooks).
+bin/treeline.mjs                  # Standalone CLI client (socket verbs + agent hooks).
 src/
 ├── shared/                       # Pure code; imported by main AND renderer.
 │   ├── types.ts                  # Repo, Worktree, Tab, ProcessSnapshot…

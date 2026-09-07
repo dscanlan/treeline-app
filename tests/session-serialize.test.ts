@@ -67,8 +67,11 @@ describe('toPersistedSession', () => {
   });
 
   it('preserves tab identity and focus', () => {
-    const session = toPersistedSession([splitTab()], 'tab-1');
+    const tab = splitTab();
+    tab.title = 'API migration';
+    const session = toPersistedSession([tab], 'tab-1');
     expect(session.tabs[0].id).toBe('tab-1');
+    expect(session.tabs[0].title).toBe('API migration');
     expect(session.tabs[0].focusedPaneId).toBe('a');
     expect(session.tabs[0].cwd).toBe('/wt');
   });
@@ -230,6 +233,37 @@ describe('toPersistedSession — per-pane pinning', () => {
     expect(session.tabs[0].root).toMatchObject({
       agentKind: 'opencode',
       agentSessionId: 'oc-1',
+    });
+  });
+
+  it('persists the exact Codex session reported for its pane', () => {
+    const tab: Tab = {
+      id: 'tab-codex',
+      cwd: '/wt',
+      title: 'wt',
+      root: liveLeaf('codex-pane', { foregroundCmd: 'codex' }),
+      focusedPaneId: 'codex-pane',
+      createdAt: 0,
+      lastActiveAt: 0,
+    };
+    const session = toPersistedSession(
+      [tab],
+      'tab-codex',
+      new Map(),
+      new Set(),
+      new Map([
+        [
+          'codex-pane-pty',
+          {
+            kind: 'codex' as const,
+            sessionId: '550e8400-e29b-41d4-a716-446655440000',
+          },
+        ],
+      ]),
+    );
+    expect(session.tabs[0].root).toMatchObject({
+      agentKind: 'codex',
+      agentSessionId: '550e8400-e29b-41d4-a716-446655440000',
     });
   });
 });

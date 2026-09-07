@@ -171,6 +171,11 @@ const api: TreelineApi = {
       ipcRenderer.invoke(Channels.AgentSessionIdsByPane) as Promise<
         Record<string, { kind: AgentKind; sessionId: string }>
       >,
+    onChanged: (cb) =>
+      listen<{ paneId: string; kind: AgentKind; sessionId: string }>(
+        Channels.AgentSessionChanged,
+        cb,
+      ),
   },
 
   session: {

@@ -80,7 +80,7 @@ where your repos went and offers a **Show sidebar (⌘B)** button:
 
 Each worktree row shows: the branch name, short SHA, a yellow **`●`** if the
 working tree is dirty, a status dot for any open tabs on that path (green =
-running, cyan = idle, dim = exited), a magenta `claude`/`opencode`/`aider` badge
+running, cyan = idle, dim = exited), a magenta `claude`/`codex`/`opencode`/`aider` badge
 if one of those CLIs is in that worktree, a **`:PORT`** chip per listening port,
 and a **`#NNN`** badge for the branch's linked GitHub PR.
 
@@ -109,6 +109,9 @@ Terminals are real PTYs (`node-pty` + `xterm.js`).
 - **Click a repo's `>_`** → open a fresh tab at the repo root.
 - **Drag a tab** along the tab strip to reorder it. A plain click still selects
   (the drag only engages past a small threshold).
+- **Double-click a tab name** (or click its **`✎`** button on hover) to give it
+  a descriptive name. Press **Enter** or click away to save; press **Escape** to
+  cancel. Custom names are included when the session is saved and restored.
 - **Click a tab's `×`** → close the tab and kill its PTY.
 - **Click a link in terminal output** → any web URL opens in the embedded
   browser pane, whether it's a plain URL or an OSC 8 hyperlink (the kind `gh`
@@ -226,8 +229,9 @@ rebindable in [Settings](#settings--theming).
    so run `treeline hooks setup` once (Claude Code; see the
    [CLI guide](./CLI.md#agent-hooks)) or `treeline hooks setup --agent codex`.
    It wires the agent's own notification mechanism (Claude Code's *Stop* /
-   *Notification* hooks; codex's `notify` config) to treeline, which maps
-   events back to the exact pane the agent is running in. aider has no hook
+   *Notification* hooks; Codex's *Stop* / *PermissionRequest* lifecycle hooks,
+   plus *SessionStart* for session pinning) to treeline, which maps events and
+   session ids back to the exact pane the agent is running in. aider has no hook
    system — path 1 covers it if your setup emits the escape codes.
 
 ---

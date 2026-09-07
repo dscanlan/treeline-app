@@ -59,7 +59,7 @@ function shellQuote(s: string): string {
 /**
  * Render the shim script. Pure (no fs/electron) so it can be unit-tested.
  * `TREELINE_CLI_BIN` is exported so the client can self-reference this stable,
- * Node-free entrypoint when wiring Claude Code hooks instead of its own path.
+ * Node-free entrypoint when wiring agent hooks instead of its own path.
  */
 export function renderShim(opts: { execPath: string; scriptPath: string; shimPath: string }): string {
   return [

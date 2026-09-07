@@ -16,6 +16,13 @@ describe('buildRestoreCommand', () => {
     expect(buildRestoreCommand('opencode', 'ses_9x')).toBe('opencode --session ses_9x');
   });
 
+  it('codex resumes by exact session id, with a cwd-scoped last-session fallback', () => {
+    expect(buildRestoreCommand('codex', '550e8400-e29b-41d4-a716-446655440000')).toBe(
+      'codex resume 550e8400-e29b-41d4-a716-446655440000',
+    );
+    expect(buildRestoreCommand('codex', null)).toBe('codex resume --last');
+  });
+
   it('aider resumes id-less from its cwd-keyed history', () => {
     expect(buildRestoreCommand('aider', null)).toBe('aider --restore-chat-history');
     // Even when a (nonsense) id is present, aider has no id-based restore —
@@ -60,6 +67,10 @@ describe('session id injection guard', () => {
     expect(buildRestoreCommand('opencode', id)).toBeNull();
   });
 
+  it.each(hostile)('codex falls back without interpolating %j', (id) => {
+    expect(buildRestoreCommand('codex', id)).toBe('codex resume --last');
+  });
+
   it.each(hostile)('the claude fork builder is guarded by the same validator (%j)', (id) => {
     const cap = AGENTS.claude.resume!;
     // The fork call-site (worktree handoff) checks isValidSessionId before
@@ -70,6 +81,9 @@ describe('session id injection guard', () => {
   it('accepts filename-shaped ids (UUIDs, ses_… ids)', () => {
     const cap = AGENTS.claude.resume!;
     expect(cap.isValidSessionId('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    expect(AGENTS.codex.resume!.isValidSessionId('550e8400-e29b-41d4-a716-446655440000')).toBe(
+      true,
+    );
     expect(AGENTS.opencode.resume!.isValidSessionId('ses_4Xq9zK')).toBe(true);
   });
 });

@@ -159,7 +159,7 @@ visual treatment.
 A background `lsof -iTCP -sTCP:LISTEN` pass (folded into the same 2s
 process scan) finds every listening TCP socket, resolves the owning
 process's working directory, and attributes the port to a worktree by
-the same longest-path-prefix match used for the `claude`/`opencode`/`aider`
+the same longest-path-prefix match used for the `claude`/`codex`/`opencode`/`aider`
 badges. So when a dev server, test runner, or preview boots inside a
 worktree, its `:5173` shows up on that row — and disappears when the
 process exits — without you running `lsof` yourself. Ports are deduped
@@ -544,11 +544,14 @@ The CLI is a self-contained Node script (`bin/treeline.mjs`) that
 Claude Code): for Claude it adds `Stop` and `Notification` entries to
 `~/.claude/settings.json` that call an internal `notify-hook`, turning *"Claude
 finished / Claude needs input"* into a desktop ping from the running app; for
-codex (`--agent codex`) it wires the `notify` key in `~/.codex/config.toml` the
-same way (`treeline hooks remove` reverses either). The hooks point at the
-stable shim so they survive app updates, and never block the agent — if the app
-is down they exit cleanly without a notification. See [docs/CLI.md](docs/CLI.md)
-for the full per-agent support matrix.
+codex (`--agent codex`) it adds `Stop`, `PermissionRequest`, and `SessionStart`
+lifecycle hooks to `~/.codex/hooks.json`. Those hooks cover completed turns,
+approval prompts, and exact per-pane session pinning without taking over
+Codex's single top-level `notify` command. `treeline hooks remove` reverses the
+wiring. The hooks point at the stable shim so they survive app updates, and
+never block the agent — if the app is down they exit cleanly without a
+notification. See [docs/CLI.md](docs/CLI.md) for the full per-agent support
+matrix.
 
 > Notifications are delivered by macOS only from a **signed packaged build**; the
 > unsigned `npm run dev` binary is denied by the OS (`UNError 1`). The socket,
@@ -866,7 +869,7 @@ node-pty stays matched to Electron's ABI. If you ever see
 ## Layout
 
 ```
-bin/treeline.mjs          # standalone CLI client (socket + Claude Code hooks)
+bin/treeline.mjs          # standalone CLI client (socket + agent hooks)
 src/
 ├── shared/               # types + IPC contract (used by main and renderer)
 │   ├── types.ts

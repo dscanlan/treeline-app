@@ -8,8 +8,8 @@ export type { AgentSessionRef, AgentSessionStore } from './types';
 /**
  * The main-process session-store registry: which agents can answer "what
  * session was running in this cwd". Partial by design — an agent with no
- * store (opencode until its storage layout is verified; codex until its
- * detection lands) resolves to "nothing to resume", the same contract the
+ * store (opencode and codex deliberately have no internal-store adapters)
+ * resolves to "nothing to resume", the same contract the
  * renderer already handles. Keep this in sync with the shared registry's
  * `sessionStore` capability flags (`shared/agents.ts`), which is what gates
  * the UI.

@@ -89,6 +89,9 @@ export const Channels = {
   // pane id → kind-tagged session id reported by each pane's session-start
   // hook — the save path pins these per-pane (exact even when panes share a cwd).
   AgentSessionIdsByPane: 'agentSession:idsByPane',
+  // Emitted whenever a lifecycle hook reports a new pane → session mapping so
+  // the renderer persists it even when the tab layout itself did not change.
+  AgentSessionChanged: 'agentSession:changed',
 
   // system (open external URLs via the safe-url allowlist)
   SystemOpenExternal: 'system:openExternal',

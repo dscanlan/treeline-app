@@ -13,10 +13,7 @@
 // precisely so the `colorClass` strings below survive purging. Keep them as
 // plain string literals.
 
-export type AgentKind = 'claude' | 'opencode' | 'aider';
-// codex: detection has not landed (no `codex` process basename below) — when
-// it does, add a fourth entry; `codex resume <id>` is the verified resume
-// shape (checked against codex CLI, 2026-07).
+export type AgentKind = 'claude' | 'codex' | 'opencode' | 'aider';
 
 /**
  * How an agent resumes a saved session. Commands are pure string builders so
@@ -53,7 +50,7 @@ const isFilenameShapedId = (id: string): boolean => FILENAME_SHAPED_ID.test(id);
 
 export interface AgentDefinition {
   kind: AgentKind;
-  /** Human label: 'Claude', 'opencode', 'aider'. */
+  /** Human label: 'Claude', 'Codex', 'opencode', 'aider'. */
   label: string;
   /** Sidebar glyph, e.g. '✦' for Claude. */
   glyph: string;
@@ -111,13 +108,35 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
     sessionStore: { canCopyToCwd: true },
     hooks: null,
   },
+  codex: {
+    kind: 'codex',
+    label: 'Codex',
+    glyph: '›_',
+    colorClass: 'text-treeline-magenta',
+    colorClassDim: 'text-treeline-magenta/70',
+    order: 1,
+    processBasenames: ['codex'],
+    worktreeDetect: null,
+    // Codex sessions are globally addressable UUIDs. SessionStart hooks pin
+    // the exact id per pane; --last is the documented cwd-scoped fallback for
+    // older/untrusted hook installations.
+    resume: {
+      restore: (id) => `codex resume ${id}`,
+      isValidSessionId: isFilenameShapedId,
+      resumeWithoutId: 'codex resume --last',
+    },
+    // Exact ids come from the lifecycle hook. Deliberately do not scrape
+    // Codex's internal SQLite/transcript formats for a store fallback.
+    sessionStore: null,
+    hooks: null,
+  },
   opencode: {
     kind: 'opencode',
     label: 'opencode',
     glyph: '⬡',
     colorClass: 'text-treeline-magenta',
     colorClassDim: 'text-treeline-magenta/70',
-    order: 1,
+    order: 2,
     processBasenames: ['opencode'],
     worktreeDetect: null,
     // Verified against the installed opencode CLI (2026-07): `--session <id>`
@@ -138,7 +157,7 @@ export const AGENTS: Record<AgentKind, AgentDefinition> = {
     glyph: '◆',
     colorClass: 'text-treeline-magenta',
     colorClassDim: 'text-treeline-magenta/70',
-    order: 2,
+    order: 3,
     processBasenames: ['aider'],
     worktreeDetect: null,
     // aider has no session ids: chat history is a cwd-keyed file

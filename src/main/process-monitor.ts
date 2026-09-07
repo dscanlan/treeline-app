@@ -1,5 +1,5 @@
 // Ported from /Users/dominicscanlan/code/treeline/src/dashboard.rs:103-148,
-// 295-307, 389-411. Tracks `claude` / `opencode` / `aider` processes across
+// 295-307, 389-411. Tracks `claude` / `codex` / `opencode` / `aider` processes across
 // the whole machine, attributes them to known worktrees via longest-prefix
 // match, and flags them as idle when CPU time hasn't moved for ≥10s.
 

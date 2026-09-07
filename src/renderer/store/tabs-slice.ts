@@ -46,6 +46,8 @@ export interface TabsSlice {
   removeTab: (id: string) => string | null;
   /** Switch active tab and bump MRU. */
   setActive: (id: string) => void;
+  /** Replace a tab's display title. Blank/whitespace-only titles are ignored. */
+  renameTab: (id: string, title: string) => void;
   /**
    * Move the tab with `id` to position `toIndex` in the visible strip. Only
    * reorders the `tabs` array — leaves `tabsByCwd` (MRU focus order) untouched.
@@ -195,6 +197,17 @@ export const createTabsSlice: StateCreator<TabsSlice, [], [], TabsSlice> = (set,
         activeTabId: id,
         tabsByCwd: { ...s.tabsByCwd, [tab.cwd]: reordered },
         unreadByPtyId,
+      };
+    }),
+
+  renameTab: (id, title) =>
+    set((s) => {
+      const normalized = title.trim();
+      if (!normalized) return s;
+      const tab = s.tabs.find((t) => t.id === id);
+      if (!tab || tab.title === normalized) return s;
+      return {
+        tabs: s.tabs.map((t) => (t.id === id ? { ...t, title: normalized } : t)),
       };
     }),
 

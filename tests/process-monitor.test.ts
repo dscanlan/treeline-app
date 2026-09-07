@@ -47,6 +47,7 @@ describe('parsePsProcesses', () => {
 describe('commandToKind', () => {
   it('matches by basename of the first whitespace token', () => {
     expect(commandToKind('/usr/local/bin/claude --foo')).toBe('claude');
+    expect(commandToKind('/opt/homebrew/bin/codex --search')).toBe('codex');
     expect(commandToKind('opencode')).toBe('opencode');
     expect(commandToKind('  /opt/bin/aider --model x')).toBe('aider');
   });

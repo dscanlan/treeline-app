@@ -1,10 +1,10 @@
-import { ipcMain } from 'electron';
+import { ipcMain, webContents } from 'electron';
 import { AGENTS } from '@shared/agents';
 import { Channels } from '@shared/ipc-channels';
 import { resolveParentRepoPath } from '../git';
 import { sessionStoreFor } from '../agent-sessions';
 import { validateAbsPath } from '../util/safe-path';
-import type { PtyManager } from '../pty-manager';
+import type { AgentSessionChangedEvent, PtyManager } from '../pty-manager';
 
 /** Renderer input is untrusted — reject anything that isn't a known kind. */
 function validateKind(raw: unknown): string {
@@ -29,6 +29,13 @@ function validateKind(raw: unknown): string {
  * and runs that command.
  */
 export function registerAgentSessionIpc(ptyManager: PtyManager): () => void {
+  const onChanged = (event: AgentSessionChangedEvent): void => {
+    for (const wc of webContents.getAllWebContents()) {
+      if (!wc.isDestroyed()) wc.send(Channels.AgentSessionChanged, event);
+    }
+  };
+  ptyManager.on('agent-session-changed', onChanged);
+
   ipcMain.handle(
     Channels.AgentSessionPrepareResume,
     async (_e, rawPath: unknown, rawKind: unknown) => {
@@ -71,6 +78,7 @@ export function registerAgentSessionIpc(ptyManager: PtyManager): () => void {
   ipcMain.handle(Channels.AgentSessionIdsByPane, () => ptyManager.agentSessionIds());
 
   return () => {
+    ptyManager.off('agent-session-changed', onChanged);
     ipcMain.removeHandler(Channels.AgentSessionPrepareResume);
     ipcMain.removeHandler(Channels.AgentSessionLatestForCwd);
     ipcMain.removeHandler(Channels.AgentSessionIdsByPane);

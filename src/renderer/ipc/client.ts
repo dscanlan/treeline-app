@@ -436,13 +436,20 @@ export function attachIpc(): () => void {
       toPersistedSession(s.tabs, s.activeTabId, sessionIdByCwd, scratchPtyIds, sessionIdByPane),
     );
   };
+  const scheduleSave = (): void => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => void flushSave(), 750);
+  };
   unsubs.push(
     useStore.subscribe((state, prev) => {
       if (state.tabs === prev.tabs && state.activeTabId === prev.activeTabId) return;
-      if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => void flushSave(), 750);
+      scheduleSave();
     }),
   );
+  // SessionStart can change the active id on resume, clear, or compaction
+  // without changing the tab layout. Persist those reports explicitly instead
+  // of waiting for an unrelated renderer-state update.
+  unsubs.push(api.agentSession.onChanged(scheduleSave));
   unsubs.push(() => {
     if (saveTimer) clearTimeout(saveTimer);
   });

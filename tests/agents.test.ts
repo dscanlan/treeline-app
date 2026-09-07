@@ -31,6 +31,7 @@ describe('agent registry invariants', () => {
   it('derives KIND_BY_BASENAME from processBasenames', () => {
     expect(KIND_BY_BASENAME).toEqual({
       claude: 'claude',
+      codex: 'codex',
       opencode: 'opencode',
       aider: 'aider',
     } satisfies Record<string, AgentKind>);

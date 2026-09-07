@@ -199,14 +199,14 @@ by an adapter; the support matrix:
 | Agent | Notifications | Session pinning | Mechanism |
 |---|---|---|---|
 | `claude` (default) | ✅ | ✅ | `settings.json` hook entries (below) |
-| `codex` | ✅ | — (no session-start hook; resume relies on the session store) | top-level `notify` key in `config.toml` (honours `CODEX_HOME`) |
+| `codex` | ✅ | ✅ | `Stop`, `PermissionRequest`, and `SessionStart` in `hooks.json` (honours `CODEX_HOME`) |
 | `opencode` | manual | manual | no adapter yet — its plugin API is unverified; a plugin can call `treeline notify` / `treeline agent-session --agent opencode` |
 | `aider` | OSC fallback | — | no hook system; anything that emits OSC 9/99/777 in the pane still lights it |
 
 `--all` wires every agent whose config directory is detected. `hooks remove
 [--agent <kind>|--all]` strips exactly what the adapter added — a foreign
-`notify` key in codex's `config.toml` is never overwritten (setup fails with
-instructions instead).
+`notify` key or lifecycle hook in Codex's config is never overwritten or
+removed.
 
 ### Claude Code (the `claude` adapter)
 
@@ -255,12 +255,36 @@ For Claude Code, `hooks setup` does the following:
 `settings.json` location honours **`CLAUDE_CONFIG_DIR`** (falling back to
 `~/.claude`), matching the app.
 
+### Codex (the `codex` adapter)
+
+`treeline hooks setup --agent codex` adds three command hooks to
+`$CODEX_HOME/hooks.json` (normally `~/.codex/hooks.json`):
+
+- `Stop` reports completed turns, when Codex is waiting for the next user
+  response.
+- `PermissionRequest` reports mid-turn approval prompts before Codex pauses.
+- `SessionStart` receives `session_id` on `startup`, `resume`, `clear`, and
+  `compact`; the hook combines it with the inherited `TREELINE_PANE_ID` and
+  reports the exact pane-to-session mapping to the app.
+
+Lifecycle hook groups are additive, so this works even when another tool owns
+Codex's single top-level `notify` command in `config.toml`; Treeline leaves that
+foreign command untouched. Re-running setup migrates away a legacy
+Treeline-owned `notify` line to avoid duplicate completed-turn notifications.
+
+The saved pane then restarts with `codex resume <session-id>`. If no exact pin
+was captured (for example, the lifecycle hook has not been trusted yet),
+Treeline falls back to `codex resume --last`, which is scoped by Codex to the
+pane's restored cwd. Run `/hooks` in Codex after setup to review and trust the
+new lifecycle hooks.
+
 ### Removing hooks vs. removing the CLI
 
 These are **separate**:
 
 - `treeline hooks remove` strips only the hook entries this tool added (it
   matches the `notify-hook` / `claude-session-hook` tags; for codex, the
+  `codex-notify-hook` / `codex-session-hook` lifecycle entries and any legacy
   `notify` line containing `notify-hook`). It does **not** touch any symlink.
 - To uninstall the global CLI, delete the symlink: `rm /usr/local/bin/treeline`
   (menu install) or `rm ~/.local/bin/treeline` (`hooks setup` / manual). The

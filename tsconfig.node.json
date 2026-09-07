@@ -28,7 +28,9 @@
     "src/shared/**/*.ts",
     "src/renderer/store/browser-slice.ts",
     "src/renderer/store/editor-slice.ts",
+    "src/renderer/store/tabs-slice.ts",
     "src/renderer/store/vault-slice.ts",
+    "src/renderer/util/path.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts"
   ]

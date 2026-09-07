@@ -23,7 +23,7 @@ export interface SpawnOpts {
   shell?: string;
   /**
    * The PTY id, exported into the shell as `TREELINE_PANE_ID`. Child processes
-   * (an agent, and the Claude Code hooks it spawns) inherit it, so a hook can
+   * (an agent and the lifecycle hooks it spawns) inherit it, so a hook can
    * report *exactly which pane* it ran in instead of just its cwd — two tabs in
    * the same directory are otherwise indistinguishable by cwd alone.
    */
@@ -118,6 +118,12 @@ export interface PtyNotificationEvent {
   id: string;
   /** Human-readable notification text the agent raised. */
   text: string;
+}
+
+export interface AgentSessionChangedEvent {
+  paneId: string;
+  kind: AgentKind;
+  sessionId: string;
 }
 
 /**
@@ -334,7 +340,13 @@ export class PtyManager extends EventEmitter {
   setAgentSession(id: string, kind: AgentKind, sessionId: string): boolean {
     const entry = this.ptys.get(id);
     if (!entry) return false;
+    if (entry.agentSession?.kind === kind && entry.agentSession.sessionId === sessionId) return true;
     entry.agentSession = { kind, sessionId };
+    this.emit('agent-session-changed', {
+      paneId: id,
+      kind,
+      sessionId,
+    } satisfies AgentSessionChangedEvent);
     return true;
   }
 
@@ -678,7 +690,7 @@ export function sanitizeEnv(
   }
   out['TERM'] = 'xterm-256color';
   out['COLORTERM'] = 'truecolor';
-  // Tag the shell with its pane id so the Claude Code notify hook (which has no
+  // Tag the shell with its pane id so agent hooks (which may have no
   // tty and only knows its cwd) can report the exact pane it ran in. Inherited
   // by every child process of the shell.
   if (paneId) out['TREELINE_PANE_ID'] = paneId;

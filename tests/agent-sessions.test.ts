@@ -16,7 +16,7 @@ describe('session-store registry (dispatcher)', () => {
 
   it('resolves null for kinds with no store (nothing to resume, not an error)', () => {
     expect(sessionStoreFor('opencode')).toBeNull();
-    expect(sessionStoreFor('codex')).toBeNull(); // not even a registered kind
+    expect(sessionStoreFor('codex')).toBeNull(); // uses lifecycle pin + `resume --last`
     expect(sessionStoreFor('definitely-not-an-agent')).toBeNull();
   });
 

@@ -423,21 +423,97 @@ describe('treeline notify-hook', () => {
   });
 });
 
+describe('treeline codex-session-hook', () => {
+  it('reports the Codex session id under the exact Treeline pane', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['codex-session-hook'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-codex' },
+      stdin: JSON.stringify({
+        hook_event_name: 'SessionStart',
+        source: 'startup',
+        session_id: '550e8400-e29b-41d4-a716-446655440000',
+        cwd: '/repo',
+      }),
+    });
+    expect(res.code).toBe(0);
+    expect(await received).toEqual({
+      verb: 'agent-session',
+      args: {
+        paneId: 'pane-codex',
+        sessionId: '550e8400-e29b-41d4-a716-446655440000',
+        agent: 'codex',
+      },
+    });
+  });
+});
+
+describe('treeline codex-notify-hook', () => {
+  it('reports a completed Codex turn under the exact Treeline pane', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['codex-notify-hook'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-codex' },
+      stdin: JSON.stringify({
+        hook_event_name: 'Stop',
+        cwd: '/code/my-app',
+      }),
+    });
+    expect(res.code).toBe(0);
+    expect((await received).args).toEqual({
+      text: 'Codex finished responding — my-app',
+      cwd: '/code/my-app',
+      paneId: 'pane-codex',
+    });
+  });
+
+  it('reports a Codex approval prompt with its human-readable reason', async () => {
+    const sock = join(tmp(), 's.sock');
+    const { received } = stubServer(sock);
+    const res = await run(['codex-notify-hook'], {
+      env: { TREELINE_SOCK: sock, TREELINE_PANE_ID: 'pane-codex' },
+      stdin: JSON.stringify({
+        hook_event_name: 'PermissionRequest',
+        cwd: '/repo',
+        tool_name: 'Bash',
+        tool_input: { command: 'npm publish', description: 'Publish the package?' },
+      }),
+    });
+    expect(res.code).toBe(0);
+    expect((await received).args).toEqual({
+      text: 'Codex needs approval: Publish the package? — repo',
+      cwd: '/repo',
+      paneId: 'pane-codex',
+    });
+  });
+});
+
 describe('treeline hooks setup --agent codex', () => {
-  it('prepends a notify line into codex config.toml (CODEX_HOME honoured)', async () => {
+  it('wires Stop, PermissionRequest, and SessionStart lifecycle hooks', async () => {
     const codexHome = tmp();
     const bin = tmp();
     const res = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], {
       env: { CODEX_HOME: codexHome },
     });
     expect(res.code).toBe(0);
-    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
-    expect(toml).toContain('notify = [');
-    expect(toml).toContain('notify-hook');
-    expect(toml).toContain(BIN);
+    expect(existsSync(join(codexHome, 'config.toml'))).toBe(false);
+    const hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks.hooks.Stop).toHaveLength(1);
+    expect(hooks.hooks.Stop[0].hooks[0].command).toContain('codex-notify-hook');
+    expect(hooks.hooks.Stop[0].hooks[0].command).toContain(BIN);
+    expect(hooks.hooks.PermissionRequest).toHaveLength(1);
+    expect(hooks.hooks.PermissionRequest[0].hooks[0].command).toContain(
+      'codex-notify-hook',
+    );
+    expect(hooks.hooks.SessionStart).toHaveLength(1);
+    expect(hooks.hooks.SessionStart[0]).toMatchObject({
+      matcher: 'startup|resume|clear|compact',
+    });
+    expect(hooks.hooks.SessionStart[0].hooks[0].command).toContain('codex-session-hook');
+    expect(hooks.hooks.SessionStart[0].hooks[0].command).toContain(BIN);
   });
 
-  it('is idempotent (setup twice → one notify line)', async () => {
+  it('is idempotent (setup twice → one hook for each lifecycle event)', async () => {
     const codexHome = tmp();
     const bin = tmp();
     const env = { CODEX_HOME: codexHome };
@@ -445,54 +521,106 @@ describe('treeline hooks setup --agent codex', () => {
     const second = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
     expect(second.code).toBe(0);
     expect(second.stdout).toContain('already present');
-    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
-    expect(toml.match(/notify = \[/g)).toHaveLength(1);
+    const hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks.hooks.Stop).toHaveLength(1);
+    expect(hooks.hooks.PermissionRequest).toHaveLength(1);
+    expect(hooks.hooks.SessionStart).toHaveLength(1);
   });
 
-  it('preserves existing top-level keys and tables (additive prepend)', async () => {
+  it('leaves existing config.toml keys and tables unchanged', async () => {
     const codexHome = tmp();
     const bin = tmp();
-    writeFileSync(
-      join(codexHome, 'config.toml'),
-      'model = "o3"\n\n[shell_environment_policy]\ninherit = "all"\n',
-    );
+    const original = 'model = "o3"\n\n[shell_environment_policy]\ninherit = "all"\n';
+    writeFileSync(join(codexHome, 'config.toml'), original);
     await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], {
       env: { CODEX_HOME: codexHome },
     });
-    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
-    // Our line comes first (top-level keys must precede any [table]) and
-    // everything the user had is untouched.
-    expect(toml.startsWith('notify = [')).toBe(true);
-    expect(toml).toContain('model = "o3"');
-    expect(toml).toContain('[shell_environment_policy]');
+    expect(readFileSync(join(codexHome, 'config.toml'), 'utf8')).toBe(original);
   });
 
-  it("refuses to overwrite a foreign notify key (fail, don't clobber)", async () => {
+  it('preserves a foreign notify key while still adding attention hooks', async () => {
     const codexHome = tmp();
     const bin = tmp();
     writeFileSync(join(codexHome, 'config.toml'), 'notify = ["notify-send", "Codex"]\n');
     const res = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], {
       env: { CODEX_HOME: codexHome },
     });
-    expect(res.code).toBe(2);
-    expect(res.stderr).toContain('already sets');
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain('preserving existing notify');
     // The user's wiring is untouched.
     expect(readFileSync(join(codexHome, 'config.toml'), 'utf8')).toBe(
       'notify = ["notify-send", "Codex"]\n',
     );
+    const hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks.hooks.Stop[0].hooks[0].command).toContain('codex-notify-hook');
+    expect(hooks.hooks.PermissionRequest[0].hooks[0].command).toContain(
+      'codex-notify-hook',
+    );
+    expect(hooks.hooks.SessionStart[0].hooks[0].command).toContain('codex-session-hook');
   });
 
-  it('hooks remove --agent codex strips only our line', async () => {
+  it('migrates its legacy scalar notify wiring to lifecycle hooks', async () => {
     const codexHome = tmp();
     const bin = tmp();
-    writeFileSync(join(codexHome, 'config.toml'), 'model = "o3"\n');
+    writeFileSync(
+      join(codexHome, 'config.toml'),
+      `notify = [${JSON.stringify(BIN)}, "notify-hook"]\nmodel = "o3"\n`,
+    );
+    const env = { CODEX_HOME: codexHome };
+    const res = await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain('removed legacy notify wiring');
+    const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
+    expect(toml).toBe('model = "o3"\n');
+    const hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks.hooks.Stop[0].hooks[0].command).toContain('codex-notify-hook');
+    expect(hooks.hooks.PermissionRequest[0].hooks[0].command).toContain(
+      'codex-notify-hook',
+    );
+  });
+
+  it('hooks remove --agent codex strips only Treeline lifecycle and legacy entries', async () => {
+    const codexHome = tmp();
+    const bin = tmp();
     const env = { CODEX_HOME: codexHome };
     await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
+    writeFileSync(
+      join(codexHome, 'config.toml'),
+      `notify = [${JSON.stringify(BIN)}, "notify-hook"]\nmodel = "o3"\n`,
+    );
     const res = await run(['hooks', 'remove', '--agent', 'codex'], { env });
     expect(res.code).toBe(0);
     const toml = readFileSync(join(codexHome, 'config.toml'), 'utf8');
     expect(toml).not.toContain('notify-hook');
     expect(toml).toContain('model = "o3"');
+    const hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks.hooks).toBeUndefined();
+  });
+
+  it('preserves foreign Codex lifecycle hooks during setup and removal', async () => {
+    const codexHome = tmp();
+    const bin = tmp();
+    const foreign = {
+      hooks: {
+        SessionStart: [
+          { matcher: 'startup', hooks: [{ type: 'command', command: 'echo foreign' }] },
+        ],
+        Stop: [{ hooks: [{ type: 'command', command: 'echo stopped' }] }],
+        PermissionRequest: [
+          { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo approval' }] },
+        ],
+      },
+    };
+    writeFileSync(join(codexHome, 'hooks.json'), JSON.stringify(foreign));
+    const env = { CODEX_HOME: codexHome };
+    await run(['hooks', 'setup', '--agent', 'codex', '--bin-dir', bin], { env });
+    let hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks.hooks.SessionStart).toHaveLength(2);
+    expect(hooks.hooks.Stop).toHaveLength(2);
+    expect(hooks.hooks.PermissionRequest).toHaveLength(2);
+    await run(['hooks', 'remove', '--agent', 'codex'], { env });
+    hooks = JSON.parse(readFileSync(join(codexHome, 'hooks.json'), 'utf8'));
+    expect(hooks).toEqual(foreign);
   });
 });
 
@@ -575,7 +703,7 @@ describe('treeline notify-hook (codex argv-payload style)', () => {
     );
     expect(res.code).toBe(0);
     expect((await received).args).toEqual({
-      text: 'codex finished responding',
+      text: 'Codex finished responding',
       paneId: 'pane-cx',
     });
   });

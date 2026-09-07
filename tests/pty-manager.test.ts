@@ -225,6 +225,8 @@ describe('PtyManager', () => {
   it('setAgentSession records a kind-tagged id echoed by agentSessionIds; unknown panes are dropped', () => {
     const mgr = new PtyManager(() => new FakePty(), undefined, 0);
     const { id } = mgr.spawn({ cwd: '/tmp', cols: 80, rows: 24 });
+    const changed: unknown[] = [];
+    mgr.on('agent-session-changed', (event) => changed.push(event));
 
     expect(mgr.agentSessionIds()).toEqual({});
     expect(mgr.setAgentSession('no-such-pane', 'claude', 'sess-x')).toBe(false);
@@ -232,11 +234,19 @@ describe('PtyManager', () => {
 
     expect(mgr.setAgentSession(id, 'claude', 'sess-1')).toBe(true);
     expect(mgr.agentSessionIds()).toEqual({ [id]: { kind: 'claude', sessionId: 'sess-1' } });
+    expect(changed).toEqual([
+      { paneId: id, kind: 'claude', sessionId: 'sess-1' },
+    ]);
+
+    // Duplicate hook reports are common around startup; don't churn session.json.
+    expect(mgr.setAgentSession(id, 'claude', 'sess-1')).toBe(true);
+    expect(changed).toHaveLength(1);
 
     // A re-report (new session / --resume / /clear in the same pane) overwrites —
     // including one from a different agent taking over the pane.
     expect(mgr.setAgentSession(id, 'opencode', 'sess-2')).toBe(true);
     expect(mgr.agentSessionIds()).toEqual({ [id]: { kind: 'opencode', sessionId: 'sess-2' } });
+    expect(changed.at(-1)).toEqual({ paneId: id, kind: 'opencode', sessionId: 'sess-2' });
   });
 
   it('agentSessionIds drops an entry once its PTY exits', () => {

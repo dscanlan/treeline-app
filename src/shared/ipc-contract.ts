@@ -97,7 +97,7 @@ export interface ScreenshotHydratePayload {
   reattachNotice?: { count: number; at: number } | null;
   /** Seed the cold-start "Restore previous session?" prompt (RestorePrompt). */
   pendingRestore?: PersistedSession | null;
-  /** Replace processesByWorktreePath wholesale — drives the magenta `claude`/`opencode`/`aider` badges in WorktreeRow. */
+  /** Replace processesByWorktreePath wholesale — drives agent badges in WorktreeRow. */
   processesByWorktreePath?: Record<string, DetectedProcess[]>;
   /** Replace portsByWorktreePath wholesale — drives the listening-port chips in WorktreeRow. */
   portsByWorktreePath?: Record<string, number[]>;
@@ -363,6 +363,13 @@ export interface TreelineApi {
      * apart. Panes with no reported session are absent.
      */
     idsByPane(): Promise<Record<string, { kind: AgentKind; sessionId: string }>>;
+    /**
+     * Subscribe to exact pane-session mappings reported by lifecycle hooks.
+     * Used to persist a changed id even when no tab structure changed.
+     */
+    onChanged(
+      cb: (event: { paneId: string; kind: AgentKind; sessionId: string }) => void,
+    ): () => void;
   };
 
   /**

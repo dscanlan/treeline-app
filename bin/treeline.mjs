@@ -259,10 +259,22 @@ function codexConfigPath() {
   return join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'config.toml');
 }
 
+/** Where codex keeps user-level lifecycle hooks (honours CODEX_HOME). */
+function codexHooksPath() {
+  return join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'hooks.json');
+}
+
 // Tags double as the hook subcommand AND the substring used to detect/remove
 // our own entries in agent config files.
 const HOOK_TAG = 'notify-hook';
 const SESSION_HOOK_TAG = 'claude-session-hook';
+const CODEX_NOTIFICATION_HOOK_TAG = 'codex-notify-hook';
+const CODEX_SESSION_HOOK_TAG = 'codex-session-hook';
+
+/** Quote one argv token for the shell command strings used by lifecycle hooks. */
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+}
 
 /**
  * Every Claude Code hook we wire: Claude finishing + Claude asking for input
@@ -277,6 +289,22 @@ const HOOK_WIRING = [
   { event: 'SessionStart', tag: SESSION_HOOK_TAG },
 ];
 const HOOK_EVENTS = [...new Set(HOOK_WIRING.map((w) => w.event))];
+
+/**
+ * Codex lifecycle hooks are additive, unlike config.toml's scalar `notify`
+ * command. Stop covers a completed turn, PermissionRequest covers the
+ * mid-turn approval prompt, and SessionStart pins the conversation to its
+ * exact treeline pane.
+ */
+const CODEX_HOOK_WIRING = [
+  { event: 'Stop', tag: CODEX_NOTIFICATION_HOOK_TAG },
+  { event: 'PermissionRequest', tag: CODEX_NOTIFICATION_HOOK_TAG },
+  {
+    event: 'SessionStart',
+    tag: CODEX_SESSION_HOOK_TAG,
+    matcher: 'startup|resume|clear|compact',
+  },
+];
 
 function readSettings(settingsPath) {
   if (!existsSync(settingsPath)) return {};
@@ -328,7 +356,7 @@ const HOOK_ADAPTERS = {
           (g.hooks || []).some((h) => typeof h.command === 'string' && h.command.includes(tag)),
         );
         if (already) continue;
-        groups.push({ hooks: [{ type: 'command', command: `${ENTRY} ${tag}` }] });
+        groups.push({ hooks: [{ type: 'command', command: `${shellQuote(ENTRY)} ${tag}` }] });
         added++;
       }
       writeSettings(settingsPath, settings);
@@ -367,46 +395,104 @@ const HOOK_ADAPTERS = {
   codex: {
     detect: () => existsSync(dirname(codexConfigPath())),
     setup() {
-      // codex's documented notification wiring is the top-level `notify` key
-      // in config.toml: an argv array codex invokes with a JSON payload as the
-      // final argument (currently fired on agent-turn-complete). codex has no
-      // session-start hook, so there is no per-pane id pinning for it — resume
-      // relies on the session-store side instead.
+      // Older treeline installs used config.toml's scalar `notify` command,
+      // which only receives agent-turn-complete and collides with any notifier
+      // the user already has. Migrate only our own legacy line; foreign notify
+      // commands remain byte-for-byte untouched.
       const configPath = codexConfigPath();
       const current = existsSync(configPath) ? readFileSync(configPath, 'utf8') : '';
-      if (current.includes(HOOK_TAG)) {
-        console.log(`codex: already present in ${configPath}`);
-        return false;
+      const withoutLegacyNotify = current
+        .split('\n')
+        .filter((line) => !(/^\s*notify\s*=/.test(line) && line.includes(HOOK_TAG)))
+        .join('\n');
+      const migratedLegacyNotify = withoutLegacyNotify !== current;
+      if (migratedLegacyNotify) {
+        writeAtomic(configPath, withoutLegacyNotify);
+        console.log(`codex: removed legacy notify wiring from ${configPath}`);
+      } else if (/^\s*notify\s*=/m.test(current)) {
+        console.log(`codex: preserving existing notify key in ${configPath}`);
       }
-      if (/^\s*notify\s*=/m.test(current)) {
-        fail(
-          `codex: ${configPath} already sets \`notify\` — merge \`${ENTRY} ${HOOK_TAG}\` into it manually, then retry`,
+
+      // Lifecycle hooks are independent groups, so they compose with hooks
+      // installed by the user, Codex plugins, and other tools.
+      const hooksPath = codexHooksPath();
+      const settings = readSettings(hooksPath);
+      settings.hooks ??= {};
+      let added = 0;
+      for (const { event, tag, matcher } of CODEX_HOOK_WIRING) {
+        const groups = (settings.hooks[event] ??= []);
+        const already = groups.some((group) =>
+          (group.hooks || []).some(
+            (hook) => typeof hook.command === 'string' && hook.command.includes(tag),
+          ),
         );
+        if (already) continue;
+        groups.push({
+          ...(matcher ? { matcher } : {}),
+          hooks: [
+            {
+              type: 'command',
+              command: `${shellQuote(ENTRY)} ${tag}`,
+              timeout: 3,
+            },
+          ],
+        });
+        added++;
       }
-      // Top-level keys must precede any [table] section, so prepend.
-      const line = `notify = [${JSON.stringify(ENTRY)}, ${JSON.stringify(HOOK_TAG)}]\n`;
-      writeAtomic(configPath, line + current);
-      console.log(`codex: added notify → ${ENTRY} ${HOOK_TAG} in ${configPath}`);
-      return true;
+      if (added > 0) {
+        writeSettings(hooksPath, settings);
+        console.log(`codex: added ${added} lifecycle hook(s) in ${hooksPath}`);
+        for (const { event, tag } of CODEX_HOOK_WIRING) {
+          console.log(`  ${event}: ${ENTRY} ${tag}`);
+        }
+        console.log('  Run /hooks in Codex to review and trust the new lifecycle hooks.');
+      } else {
+        console.log(`codex: lifecycle hooks already present in ${hooksPath}`);
+      }
+      return migratedLegacyNotify || added > 0;
     },
     remove() {
       const configPath = codexConfigPath();
-      if (!existsSync(configPath)) {
-        console.log('codex: nothing to remove');
-        return false;
+      let removed = false;
+      if (existsSync(configPath)) {
+        const current = readFileSync(configPath, 'utf8');
+        const kept = current
+          .split('\n')
+          .filter((l) => !(/^\s*notify\s*=/.test(l) && l.includes(HOOK_TAG)))
+          .join('\n');
+        if (kept !== current) {
+          writeAtomic(configPath, kept);
+          console.log(`codex: removed notify wiring from ${configPath}`);
+          removed = true;
+        }
       }
-      const current = readFileSync(configPath, 'utf8');
-      const kept = current
-        .split('\n')
-        .filter((l) => !(/^\s*notify\s*=/.test(l) && l.includes(HOOK_TAG)))
-        .join('\n');
-      if (kept === current) {
-        console.log('codex: nothing to remove');
-        return false;
+
+      const hooksPath = codexHooksPath();
+      if (existsSync(hooksPath)) {
+        const settings = readSettings(hooksPath);
+        let removedHooks = 0;
+        for (const { event, tag } of CODEX_HOOK_WIRING) {
+          const groups = settings.hooks?.[event];
+          if (!Array.isArray(groups)) continue;
+          const kept = groups.filter((group) => {
+            const ours = (group.hooks || []).some(
+              (hook) => typeof hook.command === 'string' && hook.command.includes(tag),
+            );
+            if (ours) removedHooks++;
+            return !ours;
+          });
+          if (kept.length > 0) settings.hooks[event] = kept;
+          else delete settings.hooks[event];
+        }
+        if (removedHooks > 0) {
+          if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+          writeSettings(hooksPath, settings);
+          console.log(`codex: removed ${removedHooks} lifecycle hook(s) from ${hooksPath}`);
+          removed = true;
+        }
       }
-      writeAtomic(configPath, kept);
-      console.log(`codex: removed notify wiring from ${configPath}`);
-      return true;
+      if (!removed) console.log('codex: nothing to remove');
+      return removed;
     },
   },
 
@@ -496,9 +582,10 @@ function hooksCmd(argv) {
 }
 
 /**
- * Internal verb wired into Claude Code settings.json. Reads the hook's JSON
- * payload from stdin, derives a message + the agent's cwd, and reports it to the
- * running app over the socket as a `notify` with `cwd`.
+ * Internal verb wired into Claude Code settings.json and Codex hooks.json.
+ * Reads the hook's JSON payload from stdin (or the legacy Codex notifier's argv),
+ * derives a message + the agent's cwd, and reports it to the running app over
+ * the socket as a `notify` with `cwd`.
  *
  * Why the socket and not an OSC escape: Claude Code runs hooks *without a
  * controlling terminal* (opening `/dev/tty` fails with ENXIO), so we can't
@@ -509,9 +596,9 @@ function hooksCmd(argv) {
  * PtyManager's output scanner and is what non-Claude agents can use.
  *
  * CRITICAL: this must NEVER fail the hook — it always exits 0, even if the app
- * is down, so it can't disrupt Claude Code.
+ * is down, so it can't disrupt the agent.
  */
-function notifyHook(argvPayload) {
+function notifyHook(argvPayload, agent) {
   let done = false;
   const exit0 = () => {
     if (!done) {
@@ -529,9 +616,16 @@ function notifyHook(argvPayload) {
       const e = JSON.parse(input || '{}');
       if (typeof e.cwd === 'string' && e.cwd) cwd = e.cwd;
       if (typeof e.message === 'string' && e.message) text = e.message;
-      else if (e.hook_event_name === 'Stop') text = 'Claude finished responding';
+      else if (agent === 'codex' && e.hook_event_name === 'Stop') {
+        text = 'Codex finished responding';
+      } else if (e.hook_event_name === 'Stop') text = 'Claude finished responding';
       else if (e.hook_event_name === 'Notification') text = 'Claude needs your attention';
-      else if (e.type === 'agent-turn-complete') text = 'codex finished responding';
+      else if (e.hook_event_name === 'PermissionRequest') {
+        const description = e.tool_input?.description;
+        text = typeof description === 'string' && description
+          ? `Codex needs approval: ${description}`
+          : 'Codex needs your approval';
+      } else if (e.type === 'agent-turn-complete') text = 'Codex finished responding';
       if (cwd) text += ` — ${basename(cwd)}`;
     } catch {
       /* fall back to the default text */
@@ -577,7 +671,7 @@ function notifyHook(argvPayload) {
 }
 
 /**
- * Internal verb wired as a Claude Code SessionStart hook. Reads the hook's
+ * Internal verb wired as an agent SessionStart hook. Reads the hook's
  * JSON payload from stdin and reports {paneId → session_id} to the running app
  * over the socket, so treeline knows which conversation each pane is actually
  * running — session-restore then pins the exact id per pane instead of
@@ -586,12 +680,12 @@ function notifyHook(argvPayload) {
  *
  * SessionStart fires on startup, --resume, /clear, and compaction bridges, so
  * every id change re-reports itself — including right after a restore, which
- * makes the mapping self-healing across restarts. No-op (exit 0) when Claude
+ * makes the mapping self-healing across restarts. No-op (exit 0) when the agent
  * isn't running inside a treeline pane (no TREELINE_PANE_ID), when the payload
  * has no session id, or when the app is down: like notifyHook, this must NEVER
- * fail the hook or hang a Claude Code turn.
+ * fail the hook or hang an agent turn.
  */
-function claudeSessionHook() {
+function agentSessionHook(agent) {
   let done = false;
   const exit0 = () => {
     if (!done) {
@@ -619,7 +713,16 @@ function claudeSessionHook() {
     try {
       const sock = connect(socketPath());
       sock.on('connect', () =>
-        sock.end(JSON.stringify({ verb: 'claude-session', args: { paneId, sessionId } }) + '\n'),
+        sock.end(
+          JSON.stringify({
+            verb: agent === 'claude' ? 'claude-session' : 'agent-session',
+            args: {
+              paneId,
+              sessionId,
+              ...(agent === 'claude' ? {} : { agent }),
+            },
+          }) + '\n',
+        ),
       );
       sock.on('data', exit0);
       sock.on('close', exit0);
@@ -640,5 +743,7 @@ if (!cmd || cmd === '-h' || cmd === '--help') {
 }
 if (cmd === 'hooks') hooksCmd(args.slice(1));
 else if (cmd === HOOK_TAG) notifyHook(args[1]);
-else if (cmd === SESSION_HOOK_TAG) claudeSessionHook();
+else if (cmd === CODEX_NOTIFICATION_HOOK_TAG) notifyHook(undefined, 'codex');
+else if (cmd === SESSION_HOOK_TAG) agentSessionHook('claude');
+else if (cmd === CODEX_SESSION_HOOK_TAG) agentSessionHook('codex');
 else send(buildRequest(args));

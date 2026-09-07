@@ -1,6 +1,7 @@
 import type { Tab } from '@shared/types';
 import type { TabStatus } from '@shared/types';
 import { leaves } from '@shared/pane-tree';
+import { useState } from 'react';
 import { useStore } from '../store';
 import { closeTab, openDriftedWorktree } from '../actions/tabs';
 import { TabStatusDot } from './TabStatusDot';
@@ -25,8 +26,11 @@ interface Props {
 }
 
 export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
+  const [renaming, setRenaming] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(tab.title);
   const isActive = useStore((s) => s.activeTabId === tab.id);
   const setActive = useStore((s) => s.setActive);
+  const renameTab = useStore((s) => s.renameTab);
   const setSelected = useStore((s) => s.setSelected);
   const setSelectedScratch = useStore((s) => s.setSelectedScratch);
   // A scratch tab's id matches a Scratch.id (both are the ptyId). When the
@@ -48,6 +52,16 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
   const driftBasename = drift
     ? (drift.toWorktree.split('/').filter(Boolean).pop() ?? drift.toWorktree)
     : null;
+
+  const beginRename = () => {
+    setDraftTitle(tab.title);
+    setRenaming(true);
+  };
+
+  const commitRename = () => {
+    renameTab(tab.id, draftTitle);
+    setRenaming(false);
+  };
 
   return (
     <div
@@ -71,7 +85,11 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
               ? 'border-treeline-border bg-treeline-surface text-treeline-text shadow-sm'
               : 'border-transparent text-treeline-dim hover:text-treeline-text'
       }`}
-      title={unread ? 'An agent here is waiting for you' : tab.cwd}
+      title={
+        unread
+          ? 'An agent here is waiting for you'
+          : `${tab.cwd}\nDouble-click the tab name to rename it`
+      }
     >
       {unread ? (
         <span
@@ -81,7 +99,39 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
       ) : (
         <TabStatusDot status={aggregateStatus(tab)} />
       )}
-      <span className={`max-w-[160px] truncate ${unread ? 'font-semibold' : ''}`}>{tab.title}</span>
+      {renaming ? (
+        <input
+          autoFocus
+          value={draftTitle}
+          maxLength={120}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setDraftTitle(e.currentTarget.value)}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') commitRename();
+            else if (e.key === 'Escape') {
+              setDraftTitle(tab.title);
+              setRenaming(false);
+            }
+          }}
+          aria-label="Tab name"
+          className="h-5 w-[160px] rounded border border-treeline-cyan bg-treeline-panel px-1 text-xs text-treeline-text outline-none"
+        />
+      ) : (
+        <span
+          className={`max-w-[160px] truncate ${unread ? 'font-semibold' : ''}`}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            beginRename();
+          }}
+        >
+          {tab.title}
+        </span>
+      )}
       {drift && (
         <button
           type="button"
@@ -94,6 +144,21 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
           className="max-w-[120px] truncate rounded bg-treeline-cyan/15 px-1 text-treeline-cyan hover:bg-treeline-cyan/25"
         >
           ↗ {driftBasename}
+        </button>
+      )}
+      {!renaming && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            beginRename();
+          }}
+          className="-mr-1 rounded px-1 text-treeline-dim opacity-0 hover:bg-treeline-highlight hover:text-treeline-text focus:opacity-100 group-hover:opacity-100"
+          aria-label={`Rename ${tab.title} tab`}
+          title="Rename tab"
+        >
+          ✎
         </button>
       )}
       <button
