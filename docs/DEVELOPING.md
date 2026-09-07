@@ -110,6 +110,13 @@ on a developer's machine. To produce a signed `.dmg` locally, set
 environment before running. The release workflow (next section) signs
 and notarizes on every tag.
 
+The packaging script currently applies a guarded backport of
+[electron-builder PR #10172](https://github.com/electron-userland/electron-builder/pull/10172)
+before building. It fixes `set-key-partition-list` authentication on newer
+macOS runners. Remove `scripts/patch-electron-builder-keychain.mjs` and its
+`package:mac` invocation once a stable electron-builder release includes the
+upstream patch.
+
 ## Releasing
 
 ### Bump the version first
@@ -136,8 +143,8 @@ universal `.dmg` + `.zip`, then creates a GitHub Release with them
 auto-generated release notes.
 
 ```bash
-git tag v0.34.0
-git push origin v0.34.0
+git tag v0.34.1
+git push origin v0.34.1
 ```
 
 **Manual dispatch.** Open the workflow on GitHub Actions and click
