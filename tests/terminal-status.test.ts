@@ -27,9 +27,7 @@ describe('parsePsOutput', () => {
     ]);
   });
   it('skips blanks and malformed rows', () => {
-    expect(parsePsOutput('\n\nbad\n  1  0 init\n')).toEqual([
-      { pid: 1, ppid: 0, comm: 'init' },
-    ]);
+    expect(parsePsOutput('\n\nbad\n  1  0 init\n')).toEqual([{ pid: 1, ppid: 0, comm: 'init' }]);
   });
 });
 
@@ -48,6 +46,25 @@ describe('computeStatus', () => {
       { pid: 250, ppid: 100, comm: 'sleep' },
     ]);
     expect(computeStatus(100, m)).toEqual({ status: 'running', foregroundCmd: 'sleep' });
+  });
+
+  it('recognises Codex beneath its npm node launcher', () => {
+    const m = buckets([
+      { pid: 100, ppid: 1, comm: 'zsh' },
+      { pid: 200, ppid: 100, comm: 'node' },
+      { pid: 201, ppid: 200, comm: 'codex' },
+      { pid: 202, ppid: 201, comm: 'codex-code-mode-host' },
+    ]);
+    expect(computeStatus(100, m)).toEqual({ status: 'running', foregroundCmd: 'codex' });
+  });
+
+  it('keeps the direct foreground command for a non-agent subtree', () => {
+    const m = buckets([
+      { pid: 100, ppid: 1, comm: 'zsh' },
+      { pid: 200, ppid: 100, comm: 'node' },
+      { pid: 201, ppid: 200, comm: 'vite' },
+    ]);
+    expect(computeStatus(100, m)).toEqual({ status: 'running', foregroundCmd: 'node' });
   });
 
   it('reports exited when neither the shell nor any of its children appear', () => {

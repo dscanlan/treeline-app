@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { basename } from 'node:path';
+import { KIND_BY_BASENAME } from '@shared/agents';
 import type { TabStatus, TerminalStatusUpdate } from '@shared/types';
 import { run } from './util/exec';
 
@@ -81,10 +82,7 @@ export class TerminalStatusMonitor extends EventEmitter {
     const updates: TerminalStatusUpdate[] = [];
     for (const [ptyId, entry] of this.entries) {
       const next = computeStatus(entry.shellPid, childrenByPpid);
-      if (
-        next.status !== entry.lastStatus ||
-        next.foregroundCmd !== entry.lastForegroundCmd
-      ) {
+      if (next.status !== entry.lastStatus || next.foregroundCmd !== entry.lastForegroundCmd) {
         entry.lastStatus = next.status;
         entry.lastForegroundCmd = next.foregroundCmd;
         updates.push({
@@ -122,9 +120,30 @@ export function computeStatus(
     return { status: 'idle', foregroundCmd: null };
   }
   // Pick the highest PID — that's the most recent fork, which is almost
-  // always the foreground process under the shell.
+  // always the foreground process under the shell. Agent CLIs may be launched
+  // through a runtime wrapper (the npm Codex CLI is `zsh -> node -> codex`),
+  // so prefer a known agent found beneath that child. Without this, session
+  // persistence sees `node` and restores the pane as a plain shell.
   const newest = children.reduce((a, b) => (a.pid > b.pid ? a : b));
-  return { status: 'running', foregroundCmd: newest.comm || null };
+  const agent = findAgentInSubtree(newest, childrenByPpid);
+  return { status: 'running', foregroundCmd: agent ?? (newest.comm || null) };
+}
+
+/** Find the nearest registered agent in one foreground process subtree. */
+function findAgentInSubtree(
+  root: ProcEntry,
+  childrenByPpid: Map<number, ProcEntry[]>,
+): string | null {
+  const queue = [root];
+  const visited = new Set<number>();
+  while (queue.length > 0) {
+    const proc = queue.shift();
+    if (!proc || visited.has(proc.pid)) continue;
+    visited.add(proc.pid);
+    if (proc.comm in KIND_BY_BASENAME) return proc.comm;
+    queue.push(...(childrenByPpid.get(proc.pid) ?? []));
+  }
+  return null;
 }
 
 function anyMatchesPid(map: Map<number, ProcEntry[]>, pid: number): boolean {
