@@ -11,6 +11,7 @@ interface RepoEntry {
   cache: string; // Stable JSON snapshot of the last-known worktree set.
   refreshing: boolean;
   refreshQueued: boolean;
+  snapshotVersion: number;
 }
 
 /**
@@ -48,6 +49,7 @@ export class WorktreeWatcher extends EventEmitter {
       cache: '',
       refreshing: false,
       refreshQueued: false,
+      snapshotVersion: 0,
     };
     this.repos.set(repoPath, entry);
 
@@ -95,6 +97,18 @@ export class WorktreeWatcher extends EventEmitter {
     for (const repoPath of [...this.repos.keys()]) this.remove(repoPath);
   }
 
+  /** Keep explicit UI refreshes and background polling on the same snapshot. */
+  setSnapshot(repoPath: string, worktrees: Worktree[]): void {
+    const entry = this.repos.get(repoPath);
+    if (!entry) return;
+    // A listing already in flight must not overwrite this newer observation.
+    entry.snapshotVersion += 1;
+    const next = JSON.stringify(worktrees);
+    if (next === entry.cache) return;
+    entry.cache = next;
+    this.emit('change', { repoPath, worktrees });
+  }
+
   /** Force a refresh now (debounced via scheduleRefresh; this skips the wait). */
   async refresh(repoPath: string): Promise<void> {
     const entry = this.repos.get(repoPath);
@@ -108,6 +122,7 @@ export class WorktreeWatcher extends EventEmitter {
       return;
     }
     entry.refreshing = true;
+    const snapshotVersion = entry.snapshotVersion;
     // null = the listing failed transiently, so we have nothing trustworthy to
     // report (distinct from a real, empty [] for a repo that's gone).
     let worktrees: Worktree[] | null;
@@ -130,11 +145,9 @@ export class WorktreeWatcher extends EventEmitter {
       entry.refreshQueued = false;
       void this.refresh(repoPath);
     }
-    if (worktrees === null) return;
-    const next = JSON.stringify(worktrees);
-    if (next === entry.cache) return;
-    entry.cache = next;
-    this.emit('change', { repoPath, worktrees });
+    if (worktrees === null || this.repos.get(repoPath) !== entry) return;
+    if (entry.snapshotVersion !== snapshotVersion) return;
+    this.setSnapshot(repoPath, worktrees);
   }
 
   private scheduleRefresh(repoPath: string): void {

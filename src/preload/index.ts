@@ -18,6 +18,7 @@ import type {
   Repo,
   TerminalStatusUpdate,
   Worktree,
+  WorktreeMaintenance,
 } from '@shared/types';
 
 /**
@@ -75,9 +76,15 @@ const api: TreelineApi = {
         branch,
         path,
       ) as Promise<void>,
-    remove: (path) =>
-      ipcRenderer.invoke(Channels.WorktreesRemove, path) as Promise<void>,
-    onChange: (cb) => listen<string>(Channels.WorktreesOnChange, cb),
+    remove: (path, repoPath) =>
+      ipcRenderer.invoke(Channels.WorktreesRemove, path, repoPath) as Promise<void>,
+    inspect: (repoPath) =>
+      ipcRenderer.invoke(Channels.WorktreesInspect, repoPath) as Promise<WorktreeMaintenance>,
+    repair: (repoPath, movedPath) =>
+      ipcRenderer.invoke(Channels.WorktreesRepair, repoPath, movedPath) as Promise<void>,
+    prune: (repoPath, expectedPreview) =>
+      ipcRenderer.invoke(Channels.WorktreesPrune, repoPath, expectedPreview) as Promise<void>,
+    onChange: (cb) => listen<{ repoPath: string; worktrees: Worktree[] }>(Channels.WorktreesOnChange, cb),
     onDrift: (cb) =>
       listen<{ ptyId: string; toWorktree: string }>(Channels.WorktreesDrift, cb),
     onCreated: (cb) => listen<string>(Channels.WorktreesCreated, cb),

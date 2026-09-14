@@ -50,6 +50,7 @@ overview see the [README](../README.md); for the scriptable CLI see
 | [Pin a file](#pinning-files-you-keep-coming-back-to) for quick access | **`☆`** on hover over a file in the tree |
 | Remove a repo from the sidebar | **`×`** icon on hover (data on disk untouched) |
 | Delete a worktree | **`×`** icon on hover (next to the worktree row) |
+| Refresh, repair, or prune worktree registrations | **`↻`** icon on hover next to the repo name |
 | Collapse/expand the sidebar | **`‹` / `›`** in the title bar, or **⌘B** |
 
 **Working and Library.** Working is derived from open tabs, detected running
@@ -131,6 +132,28 @@ Tabs and panes stay mounted when hidden, so output keeps flowing and switching
 back is instant.
 
 ---
+
+## Repairing and cleaning up worktrees
+
+Hover over a repository and click **↻** to open **Worktree maintenance**. Opening
+the dialog refreshes the sidebar and checks the registered paths. Each entry
+shows its branch (or detached status), commit hash, path, and any detected issue.
+Existing folders with missing or broken Git links also get a **repair** button
+in the sidebar. A failed deletion offers **Check and repair worktrees…**.
+
+- **Repair links** runs Git's worktree repair from the parent checkout. It can
+  reconnect broken links and recreate a missing `.git` link while preserving
+  files and commits.
+- **Locate moved worktree…** lets you select a worktree's new folder so Git can
+  reconnect it. Use this before pruning if a worktree was moved manually.
+- **Prune stale entries…** previews Git's stale registrations and asks you to
+  confirm before removing them. Remaining folders and files are kept. Locked
+  worktrees are protected, and healthy detached worktrees are left alone.
+
+Detached means a checkout at a particular commit rather than a named branch;
+it does not mean abandoned or broken. Maintenance runs when you choose it,
+not automatically on each background refresh. Repair and pruning refresh the
+sidebar without reloading the window or closing terminals.
 
 ## Your sessions survive a window reload
 

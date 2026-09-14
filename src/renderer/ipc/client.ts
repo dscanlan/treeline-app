@@ -14,20 +14,19 @@ export function attachIpc(): () => void {
   const api = window.treeline;
   const unsubs: Array<() => void> = [];
 
-  // Worktree changes from the main process — reload that repo's worktrees, and
-  // refresh the changed-file list for any of them currently shown in Changed
+  // Apply the watcher's successful snapshot directly. Relisting here could
+  // fail after the watcher cached the change, leaving the UI stale indefinitely.
+  // Also refresh the changed-file list for any of them currently shown in Changed
   // view so the Source-Control list stays live as files change.
   unsubs.push(
-    api.worktrees.onChange((repoPath) => {
-      void api.worktrees.list(repoPath).then((wts) => {
-        const s = useStore.getState();
-        s.setWorktrees(repoPath, wts);
-        for (const wt of wts) {
-          if (s.expandedDirs[wt.path] && s.worktreeFileView[wt.path] === 'changed') {
-            void refreshChangedFiles(wt.path);
-          }
+    api.worktrees.onChange(({ repoPath, worktrees: wts }) => {
+      const s = useStore.getState();
+      s.setWorktrees(repoPath, wts);
+      for (const wt of wts) {
+        if (s.expandedDirs[wt.path] && s.worktreeFileView[wt.path] === 'changed') {
+          void refreshChangedFiles(wt.path);
         }
-      });
+      }
     }),
   );
 

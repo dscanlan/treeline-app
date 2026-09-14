@@ -10,6 +10,7 @@ export type DiscardThen =
 
 export type Modal =
   | { kind: 'create-worktree'; repoPath: string }
+  | { kind: 'maintain-worktrees'; repoPath: string }
   | { kind: 'delete-worktree'; repoPath: string; worktreePath: string; branch: string }
   | { kind: 'create-repo' }
   | { kind: 'confirm-discard'; filename: string; then: DiscardThen }

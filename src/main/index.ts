@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Channels } from '@shared/ipc-channels';
 import type { CliRendererCommand } from '@shared/cli-protocol';
+import type { Worktree } from '@shared/types';
 import {
   defaultSpawn,
   PtyManager,
@@ -266,8 +267,8 @@ app.whenReady().then(() => {
   const newWorktrees = new NewWorktreeTracker();
   worktreeWatcher.on(
     'change',
-    ({ repoPath, worktrees }: { repoPath: string; worktrees: { path: string }[] }) => {
-      broadcastWorktreesChanged(repoPath);
+    ({ repoPath, worktrees }: { repoPath: string; worktrees: Worktree[] }) => {
+      broadcastWorktreesChanged(repoPath, worktrees);
       const wtPaths = worktreeWatcher?.allWorktreePaths() ?? [];
       processMonitor?.setWorktreePaths(wtPaths);
       // Keep cwd-drift detection's target set current so a just-created
@@ -344,7 +345,7 @@ app.whenReady().then(() => {
       repoDiscovery?.setDismissedRepos(reposStore?.get().dismissedRepos ?? []);
     },
   });
-  registerWorktreesIpc();
+  registerWorktreesIpc((repoPath, worktrees) => worktreeWatcher?.setSnapshot(repoPath, worktrees));
   registerPtyIpc(ptyManager);
   registerProcessesIpc();
   registerPrIpc();

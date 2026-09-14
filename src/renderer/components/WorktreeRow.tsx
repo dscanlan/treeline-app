@@ -46,7 +46,7 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
       <div
         className={`flex flex-col gap-0.5 rounded px-2 py-1 ${
           selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'
-        } ${merged ? 'opacity-50' : ''}`}
+        } ${merged && !worktree.issue ? 'opacity-50' : ''}`}
       >
         {/* Top line: folder toggle, branch name (gets the full width), and the
          * hover-only delete affordance. */}
@@ -103,6 +103,17 @@ export function WorktreeRow({ worktree, repoPath }: Props) {
               />
             )}
           </button>
+          {worktree.issue && (
+            <button
+              type="button"
+              title={`${worktree.issue} — check and repair worktrees`}
+              aria-label="Worktree needs attention"
+              onClick={() => openModal({ kind: 'maintain-worktrees', repoPath })}
+              className="shrink-0 rounded px-1 text-xs text-treeline-yellow hover:bg-treeline-surface"
+            >
+              repair
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>

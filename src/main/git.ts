@@ -1,8 +1,8 @@
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import type { ChangedFile, ChangedFileStatus, DiffLine, FileDiff, Worktree } from '@shared/types';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import type { ChangedFile, ChangedFileStatus, DiffLine, FileDiff, Worktree, WorktreeMaintenance } from '@shared/types';
 import { detectClaudeWorktree } from '@shared/claude-detect';
-import { parseWorktreePorcelain } from './git-porcelain';
+import { parseWorktreePorcelain, type PorcelainWorktree } from './git-porcelain';
 import { readFileGuarded } from './files-io';
 import { ProcessError, run, type RunOptions, type RunResult } from './util/exec';
 
@@ -367,21 +367,77 @@ async function isAncestor(
   }
 }
 
-/**
- * List worktrees in the repo at `repoPath`. Stale entries (where the on-disk
- * path is gone) are filtered out, matching Treeline's `build_worktree`
- * behaviour at git.rs:148-170.
- */
-export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
-  const { stdout } = await git(['worktree', 'list', '--porcelain'], {
+/** Read every registration, including missing paths and Git's health markers. */
+async function worktreeRecords(repoPath: string): Promise<PorcelainWorktree[]> {
+  const { stdout } = await git(['worktree', 'list', '--porcelain', '-z'], {
     cwd: repoPath,
   });
+  return parseWorktreePorcelain(stdout);
+}
 
-  const records = parseWorktreePorcelain(stdout);
+/** Cheap link checks; do not run status or infer health from detached HEAD. */
+function worktreeIssue(record: PorcelainWorktree): string | undefined {
+  if (record.prunable !== undefined) return record.prunable || 'Stale worktree registration';
+  if (record.isBare) return undefined;
+  if (!existsSync(record.path)) return 'Worktree directory is missing';
+  const link = join(record.path, '.git');
+  try {
+    if (statSync(link).isDirectory()) return undefined;
+    const contents = readFileSync(link, 'utf8').trim();
+    if (!contents.startsWith('gitdir: ')) return 'Worktree Git link is invalid';
+    const target = resolve(record.path, contents.slice('gitdir: '.length));
+    if (!existsSync(join(target, 'HEAD'))) return 'Worktree Git link points to missing metadata';
+  } catch {
+    return 'Worktree Git link is missing or unreadable';
+  }
+  return undefined;
+}
+
+async function prunePreview(repoPath: string): Promise<string> {
+  const { stdout, stderr } = await git(['worktree', 'prune', '--dry-run', '--verbose'], { cwd: repoPath });
+  return (stdout + stderr).trim();
+}
+
+/** Includes missing paths, which the normal sidebar listing omits. */
+export async function inspectWorktrees(repoPath: string): Promise<WorktreeMaintenance> {
+  const [records, preview] = await Promise.all([worktreeRecords(repoPath), prunePreview(repoPath)]);
+  return {
+    worktrees: records.map((record) => ({
+      path: record.path,
+      branch: record.branch,
+      commit: record.commit,
+      pathExists: existsSync(record.path),
+      locked: record.locked,
+      prunable: record.prunable,
+      issue: worktreeIssue(record),
+    })),
+    prunePreview: preview,
+  };
+}
+
+/** Git repairs links only; it does not reset files, move branches, or prune. */
+export async function repairWorktrees(repoPath: string, movedPath?: string): Promise<void> {
+  await git(['worktree', 'repair', ...(movedPath ? [movedPath] : [])], { cwd: repoPath });
+}
+
+/** Recheck the preview so a later click cannot silently clean a different set. */
+export async function pruneWorktrees(repoPath: string, expectedPreview: string): Promise<void> {
+  const current = await prunePreview(repoPath);
+  if (current !== expectedPreview) {
+    throw new Error('Worktrees changed since the preview. Refresh the check before pruning.');
+  }
+  if (!current) return;
+  await git(['worktree', 'prune', '--verbose'], { cwd: repoPath });
+}
+
+/** Sidebar listing: omit missing directories, flag broken links on existing ones. */
+export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
+  const records = await worktreeRecords(repoPath);
 
   // Filter out stale entries (non-bare with no on-disk path) before the dirty
   // check so we don't waste a subprocess on each.
   const live = records.filter((r) => r.isBare || existsSync(r.path));
+  const issues = live.map(worktreeIssue);
 
   // Resolve the default branch once per refresh. Fall back to the first real
   // branch (the main checkout `git worktree list` prints first) so single-repo
@@ -404,7 +460,7 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
 
   // Run dirty checks and merged-detection in parallel across all worktrees.
   const [dirtyResults, mergedResults] = await Promise.all([
-    Promise.all(live.map((r) => (r.isBare ? Promise.resolve(false) : isDirty(r.path)))),
+    Promise.all(live.map((r, i) => (r.isBare || issues[i] ? Promise.resolve(false) : isDirty(r.path)))),
     Promise.all(
       live.map(async (r) => {
         if (!defaultBranch) return false;
@@ -434,6 +490,7 @@ export async function listWorktreesIn(repoPath: string): Promise<Worktree[]> {
     commit: r.commit,
     isBare: r.isBare,
     isDirty: dirtyResults[i] ?? false,
+    ...(issues[i] ? { issue: issues[i] } : {}),
     isCurrent: false,
     isClaude: detectClaudeWorktree(r.path, r.branch),
     merged: mergedResults[i] ?? false,
@@ -463,11 +520,9 @@ export async function createWorktree(
 }
 
 /** Force-remove a worktree. */
-export async function removeWorktree(path: string): Promise<void> {
-  // `git worktree remove` resolves the repo from the cwd, not from the argument.
-  // Run from inside the worktree itself — it still exists on disk at this
-  // point, and from there git can locate the parent gitdir.
-  await git(['worktree', 'remove', '--force', path], { cwd: path });
+export async function removeWorktree(path: string, repoPath: string): Promise<void> {
+  // Resolve Git from the parent checkout, even when the target's link is broken.
+  await git(['worktree', 'remove', '--force', path], { cwd: repoPath });
 }
 
 /**

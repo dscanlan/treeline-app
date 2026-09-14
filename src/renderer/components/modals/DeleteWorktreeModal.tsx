@@ -25,7 +25,7 @@ export function DeleteWorktreeModal({ repoPath, worktreePath, branch }: Props) {
         // eslint-disable-next-line no-await-in-loop
         await closeTab(id);
       }
-      await window.treeline.worktrees.remove(worktreePath);
+      await window.treeline.worktrees.remove(worktreePath, repoPath);
       // Force a refresh so the sidebar updates immediately even if fs.watch
       // misses the event.
       const wts = await window.treeline.worktrees.list(repoPath);
@@ -52,7 +52,18 @@ export function DeleteWorktreeModal({ repoPath, worktreePath, branch }: Props) {
             </span>
           </div>
         )}
-        {error && <div className="text-xs text-treeline-red">{error}</div>}
+        {error && (
+          <div className="flex flex-col gap-2 text-xs">
+            <div role="alert" className="break-words text-treeline-red">{error}</div>
+            <button
+              type="button"
+              onClick={() => useStore.getState().openModal({ kind: 'maintain-worktrees', repoPath })}
+              className="text-left text-treeline-cyan hover:underline"
+            >
+              Check and repair worktrees…
+            </button>
+          </div>
+        )}
         <div className="mt-1 flex items-center justify-end gap-2">
           <button
             type="button"

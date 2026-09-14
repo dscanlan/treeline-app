@@ -5,10 +5,14 @@ import { DeleteWorktreeModal } from './DeleteWorktreeModal';
 import { ConfirmDiscardModal } from './ConfirmDiscardModal';
 import { SettingsModal } from './SettingsModal';
 import { QuickOpenModal } from './QuickOpenModal';
+import { WorktreeMaintenanceModal } from './WorktreeMaintenanceModal';
 
 export function Modals() {
   const modal = useStore((s) => s.modal);
   if (!modal) return null;
+  if (modal.kind === 'maintain-worktrees') {
+    return <WorktreeMaintenanceModal repoPath={modal.repoPath} />;
+  }
   if (modal.kind === 'create-worktree') {
     return <CreateWorktreeModal repoPath={modal.repoPath} />;
   }

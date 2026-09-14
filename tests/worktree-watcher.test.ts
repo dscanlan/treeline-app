@@ -60,6 +60,28 @@ describe('WorktreeWatcher', () => {
     expect(changes).toHaveLength(1);
   });
 
+  it('keeps polling in sync after an explicit UI refresh', async () => {
+    const { w, changes } = makeWatcher(async () => [wt('/repo'), wt('/repo/linked')]);
+    w.add('/repo');
+    await flush();
+    // The UI observed a removal between polls. Recreating the same worktree
+    // must emit again, even though it matches the poll's original snapshot.
+    w.setSnapshot('/repo', [wt('/repo')]);
+    await w.refresh('/repo');
+    expect(changes.map((c) => c.worktrees.length)).toEqual([2, 1, 2]);
+  });
+
+  it('discards an in-flight poll when an explicit refresh supersedes it', async () => {
+    let finish!: (worktrees: Worktree[]) => void;
+    const { w, changes } = makeWatcher(() => new Promise((resolve) => { finish = resolve; }));
+    w.add('/repo');
+    w.setSnapshot('/repo', [wt('/repo')]);
+    finish([wt('/repo'), wt('/repo/deleted')]);
+    await flush();
+    expect(changes).toHaveLength(1);
+    expect(w.allWorktreePaths()).toEqual(['/repo']);
+  });
+
   it('keeps the last snapshot when a listing fails for a repo still on disk', async () => {
     let fail = false;
     const { w, changes } = makeWatcher(async () => {

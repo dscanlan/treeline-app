@@ -43,6 +43,8 @@ export interface Worktree {
   commit: string;
   isBare: boolean;
   isDirty: boolean;
+  /** A missing or broken Git link; detached HEAD alone is not an issue. */
+  issue?: string;
   /**
    * Treeline parity field. The Rust app uses this to mark the worktree the user
    * launched from; in Electron we have no shell-cwd to compare against, so this
@@ -60,6 +62,22 @@ export interface Worktree {
    * questions); ancestor semantics are the cheap, correct-for-most-cases v1.
    */
   merged: boolean;
+}
+
+export interface WorktreeHealth {
+  path: string;
+  branch: string;
+  commit: string;
+  pathExists: boolean;
+  locked?: string;
+  prunable?: string;
+  issue?: string;
+}
+
+export interface WorktreeMaintenance {
+  worktrees: WorktreeHealth[];
+  /** Exact Git dry-run output, shown before pruning and rechecked on apply. */
+  prunePreview: string;
 }
 
 /** The union itself lives on the agent registry (`shared/agents.ts`). */

@@ -10,6 +10,8 @@ export interface PorcelainWorktree {
   /** Up-to-7-char short SHA. */
   commit: string;
   isBare: boolean;
+  locked?: string;
+  prunable?: string;
 }
 
 /** Parse the full porcelain output into one record per worktree. */
@@ -20,20 +22,31 @@ export function parseWorktreePorcelain(text: string): PorcelainWorktree[] {
   let branch = '';
   let commit = '';
   let isBare = false;
+  let locked: string | undefined;
+  let prunable: string | undefined;
 
   const flush = () => {
     if (path !== null) {
-      out.push({ path, branch, commit, isBare });
+      out.push({
+        path,
+        branch,
+        commit,
+        isBare,
+        ...(locked !== undefined ? { locked } : {}),
+        ...(prunable !== undefined ? { prunable } : {}),
+      });
     }
     path = null;
     branch = '';
     commit = '';
     isBare = false;
+    locked = undefined;
+    prunable = undefined;
   };
 
   // text.split('\n') handles both `\n` and trailing-newline-or-not. We don't
   // accept `\r\n` because `git` emits LF on macOS.
-  for (const line of text.split('\n')) {
+  for (const line of text.split(text.includes('\0') ? '\0' : '\n')) {
     if (line.startsWith('worktree ')) {
       // A new record begins. If the previous record never saw a blank line
       // (last entry, no trailing newline), flush it now.
@@ -50,10 +63,14 @@ export function parseWorktreePorcelain(text: string): PorcelainWorktree[] {
       branch = '(bare)';
     } else if (line === 'detached') {
       branch = '(detached)';
+    } else if (line === 'locked' || line.startsWith('locked ')) {
+      locked = line.slice('locked'.length).trim();
+    } else if (line === 'prunable' || line.startsWith('prunable ')) {
+      prunable = line.slice('prunable'.length).trim();
     } else if (line === '') {
       flush();
     }
-    // Any other lines (`locked`, `prunable`, future fields) are ignored.
+    // Future fields are ignored.
   }
 
   // Final entry without a trailing blank line.

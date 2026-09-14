@@ -75,7 +75,7 @@ describe('parseWorktreePorcelain', () => {
     expect(parseWorktreePorcelain(text)[0]?.commit).toBe('abc');
   });
 
-  it('ignores unknown porcelain keys (locked, prunable, etc.)', () => {
+  it('preserves locked and prunable reasons', () => {
     const text = [
       'worktree /code/foo',
       'HEAD abcdef01234',
@@ -88,6 +88,20 @@ describe('parseWorktreePorcelain', () => {
     const result = parseWorktreePorcelain(text);
     expect(result).toHaveLength(1);
     expect(result[0]?.branch).toBe('main');
+    expect(result[0]?.locked).toBe('');
+    expect(result[0]?.prunable).toBe('gitdir file points to non-existent location');
+  });
+
+  it('parses NUL-delimited paths containing newlines and resets health fields', () => {
+    const result = parseWorktreePorcelain([
+      'worktree /code/a\nname', 'HEAD abcdef01234', 'detached',
+      'locked external disk', 'prunable missing', '',
+      'worktree /code/healthy', 'HEAD 1234567abcd', 'detached', '',
+    ].join('\0'));
+    expect(result[0]?.path).toBe('/code/a\nname');
+    expect(result[0]?.locked).toBe('external disk');
+    expect(result[1]?.locked).toBeUndefined();
+    expect(result[1]?.prunable).toBeUndefined();
   });
 
   it('parses Claude-style branches (worktree-*) without special-casing them', () => {

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, unlinkSync, renameSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -11,6 +11,9 @@ import {
   isDirty,
   isGitRepo,
   listWorktreesIn,
+  inspectWorktrees,
+  pruneWorktrees,
+  repairWorktrees,
   parseUnifiedDiff,
   removeWorktree,
   repoRootAt,
@@ -104,15 +107,111 @@ describe('git module', () => {
     let wts = await listWorktreesIn(repo);
     expect(wts.find((w) => w.branch === 'roundtrip')).toBeTruthy();
 
-    await removeWorktree(wt);
+    await removeWorktree(wt, repo);
     wts = await listWorktreesIn(repo);
     expect(wts.find((w) => w.branch === 'roundtrip')).toBeUndefined();
+  });
+
+  it('reports a missing Git link and repairs it without changing worktree files', async () => {
+    const wt = join(repo, 'repair-me');
+    addWorktreeRaw(repo, wt, 'repair-me');
+    writeFileSync(join(wt, 'file.txt'), 'uncommitted work');
+    unlinkSync(join(wt, '.git'));
+
+    const before = await inspectWorktrees(repo);
+    expect(before.worktrees.find((w) => w.branch === 'repair-me')?.issue).toBeTruthy();
+    expect((await listWorktreesIn(repo)).find((w) => w.branch === 'repair-me')?.issue).toBeTruthy();
+
+    await repairWorktrees(repo);
+    expect(readFileSync(join(wt, 'file.txt'), 'utf8')).toBe('uncommitted work');
+    const after = await inspectWorktrees(repo);
+    expect(after.worktrees.find((w) => w.branch === 'repair-me')?.issue).toBeUndefined();
+    expect(after.prunePreview).toBe('');
+    expect((await listWorktreesIn(repo)).find((w) => w.branch === 'repair-me')?.isDirty).toBe(true);
+  });
+
+  it('repairs links after the main checkout is moved', async () => {
+    const wt = join(repo, 'linked');
+    addWorktreeRaw(repo, wt, 'linked');
+    const oldRepo = repo;
+    repo = `${repo}-moved`;
+    renameSync(oldRepo, repo);
+    const movedWt = join(repo, 'linked');
+    await repairWorktrees(repo, movedWt);
+    expect(await isGitRepo(movedWt)).toBe(true);
+    const check = await inspectWorktrees(repo);
+    expect(check.worktrees.find((w) => w.branch === 'linked')?.issue).toBeUndefined();
+    expect(check.prunePreview).toBe('');
+  });
+
+  it('reconnects a worktree at its new folder after a manual move', async () => {
+    const wt = join(repo, 'old-location');
+    const moved = join(repo, 'new-location');
+    addWorktreeRaw(repo, wt, 'moved');
+    renameSync(wt, moved);
+    expect((await inspectWorktrees(repo)).prunePreview).not.toBe('');
+    await repairWorktrees(repo, moved);
+    const check = await inspectWorktrees(repo);
+    expect(check.worktrees.find((w) => w.branch === 'moved')?.path).toBe(realpathSync(moved));
+    expect(check.prunePreview).toBe('');
+  });
+
+  it('prunes stale registrations while preserving files, healthy detached trees, and locks', async () => {
+    const stale = join(repo, 'stale');
+    const missing = join(repo, 'missing');
+    const detached = join(repo, 'detached');
+    const locked = join(repo, 'locked');
+    addWorktreeRaw(repo, stale, 'stale');
+    addWorktreeRaw(repo, missing, 'missing');
+    addWorktreeRaw(repo, locked, 'locked');
+    execFileSync('git', ['worktree', 'add', '--detach', detached], { cwd: repo, env: ISOLATED_ENV });
+    execFileSync('git', ['worktree', 'lock', '--reason', 'external drive', locked], { cwd: repo, env: ISOLATED_ENV });
+    unlinkSync(join(stale, '.git'));
+    rmSync(missing, { recursive: true });
+    rmSync(locked, { recursive: true });
+
+    const check = await inspectWorktrees(repo);
+    expect(check.worktrees.find((w) => w.branch === '(detached)')?.issue).toBeUndefined();
+    expect(check.worktrees.find((w) => w.branch === 'locked')?.locked).toBe('external drive');
+    expect(check.prunePreview).toContain('stale');
+    expect(check.prunePreview).toContain('missing');
+    expect(check.prunePreview).not.toContain('locked');
+    await pruneWorktrees(repo, check.prunePreview);
+
+    const after = await inspectWorktrees(repo);
+    expect(after.worktrees.map((w) => w.branch).sort()).toEqual(['(detached)', 'locked', 'main']);
+    expect(readFileSync(join(stale, 'file.txt'), 'utf8')).toBe('hello');
+    expect(existsSync(join(detached, '.git'))).toBe(true);
+  });
+
+  it('refuses a stale prune preview and keeps newly missing registrations', async () => {
+    const first = join(repo, 'first');
+    const second = join(repo, 'second');
+    addWorktreeRaw(repo, first, 'first');
+    addWorktreeRaw(repo, second, 'second');
+    unlinkSync(join(first, '.git'));
+    const check = await inspectWorktrees(repo);
+    unlinkSync(join(second, '.git'));
+    await expect(pruneWorktrees(repo, check.prunePreview)).rejects.toThrow('Worktrees changed');
+    expect((await inspectWorktrees(repo)).worktrees).toHaveLength(3);
+  });
+
+  it('keeps Git validation on delete and permits removal after repairing a broken link', async () => {
+    const wt = join(repo, 'broken-link');
+    addWorktreeRaw(repo, wt, 'broken-link');
+    writeFileSync(join(wt, '.git'), 'gitdir: /nonexistent/treeline-test-gitdir\n');
+    await expect(removeWorktree(wt, repo)).rejects.toThrow('validation failed');
+    expect(existsSync(wt)).toBe(true);
+    await repairWorktrees(repo);
+    await removeWorktree(wt, repo);
+    expect(existsSync(wt)).toBe(false);
+    expect((await inspectWorktrees(repo)).worktrees).toHaveLength(1);
   });
 
   it('createWorktree reuses an existing branch after the worktree dir is removed (Rust git.rs:341-357)', async () => {
     const wt = join(repo, 'recreate');
     await createWorktree(repo, wt, 'recreate');
-    await removeWorktree(wt);
+    await removeWorktree(wt, repo);
 
     // Branch still exists; second create with `-b` should fail and trigger the
     // fallback in createWorktree.

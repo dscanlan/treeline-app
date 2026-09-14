@@ -22,6 +22,7 @@ import type {
   TabStatus,
   TerminalStatusUpdate,
   Worktree,
+  WorktreeMaintenance,
 } from './types';
 
 /**
@@ -215,9 +216,12 @@ export interface TreelineApi {
   worktrees: {
     list(repoPath: string): Promise<Worktree[]>;
     create(repoPath: string, branch: string, path: string): Promise<void>;
-    remove(path: string): Promise<void>;
+    remove(path: string, repoPath: string): Promise<void>;
+    inspect(repoPath: string): Promise<WorktreeMaintenance>;
+    repair(repoPath: string, movedPath?: string): Promise<void>;
+    prune(repoPath: string, expectedPreview: string): Promise<void>;
     /** Subscribe to worktree-changed events. Returns an unsubscribe fn. */
-    onChange(cb: (repoPath: string) => void): () => void;
+    onChange(cb: (snapshot: { repoPath: string; worktrees: Worktree[] }) => void): () => void;
     /**
      * Subscribe to "a terminal's cwd drifted into a different worktree" events
      * (e.g. `git worktree add` + `cd`). The handler is invoked per PTY when its

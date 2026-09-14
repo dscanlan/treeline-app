@@ -105,6 +105,15 @@ export function RepoNode({
         </button>
         <button
           type="button"
+          onClick={() => openModal({ kind: 'maintain-worktrees', repoPath: repo.path })}
+          title="Refresh and repair worktrees"
+          aria-label="Refresh and repair worktrees"
+          className="rounded px-1 text-treeline-dim opacity-0 hover:bg-treeline-surface hover:text-treeline-cyan group-hover/repo:opacity-100"
+        >
+          ↻
+        </button>
+        <button
+          type="button"
           onClick={() => openModal({ kind: 'create-worktree', repoPath: repo.path })}
           title="New worktree"
           aria-label="New worktree"
