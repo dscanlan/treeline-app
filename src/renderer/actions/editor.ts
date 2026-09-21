@@ -6,6 +6,7 @@ import type { DiscardThen } from '../store/modal-slice';
 import type { NoteHistoryBehavior } from '../store/vault-slice';
 import { useStore } from '../store';
 import { basename, isMarkdownPath } from '../util/path';
+import { buildFilePinRoots, containingFilePinRoot, pathIsInside } from '@shared/file-pins';
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -114,6 +115,7 @@ async function doOpenFile(
     ? existing.editing && existing.draft !== null && existing.draft !== existing.fileText
     : false;
   useStore.getState().openInPanel(path, mode, paneId);
+  void revealFileInTree(path);
   // A direct open doubles as refresh for a clean tab, which matters when an
   // agent changed the file on disk. Never replace a dirty in-memory draft.
   if (!dirty) await loadFileContent(path);
@@ -225,6 +227,7 @@ export async function openFileAtLine(path: string, line: number): Promise<void> 
   useStore.getState().clearNoteHistory(paneId);
   const dirty = hasUnsavedEdits(path);
   useStore.getState().openInPanel(path, 'file', paneId);
+  void revealFileInTree(path, useStore.getState().searchRoot);
   if (!dirty) await loadFileContent(path);
   useStore.getState().setRevealLine(path, line);
 }
@@ -240,6 +243,12 @@ export function activateOpenFile(path: string): void {
   const paneId = s.viewerPanes.find((pane) => pane.path === path)?.id ?? s.focusedViewerPaneId;
   s.clearNoteHistory(paneId);
   s.activateOpenFile(path);
+  if (
+    useStore.getState().activeFilePath === path &&
+    s.openFilesByPath[path]?.panelMode !== 'diff'
+  ) {
+    void revealFileInTree(path);
+  }
 }
 
 /** Display an existing file tab in the other viewer, creating the split when needed. */
@@ -340,6 +349,36 @@ export async function toggleDir(path: string): Promise<void> {
   const willExpand = !s.expandedDirs[path];
   s.setDirExpanded(path, willExpand);
   if (!willExpand) return;
+  await refreshDir(path);
+}
+
+/** Reveal an opened file without waiting for directory reads before loading its text. */
+async function revealFileInTree(path: string, preferredRoot: string | null = null): Promise<void> {
+  const s = useStore.getState();
+  const root =
+    [preferredRoot, s.sidebarFileRoot].find(
+      (candidate) => candidate && pathIsInside(path, candidate),
+    ) ??
+    containingFilePinRoot(path, buildFilePinRoots(s.repos, s.folders, s.worktreesByRepo))?.path;
+  if (!root) return;
+
+  s.setSidebarFileRoot(root);
+  s.setWorktreeFileView(root, 'all');
+  const directories = [root];
+  const relativePath = path.slice(root.replace(/\/+$/, '').length + 1);
+  let parent = root.replace(/\/+$/, '');
+  for (const part of relativePath.split('/').slice(0, -1)) {
+    parent += `/${part}`;
+    directories.push(parent);
+  }
+  // Expand synchronously: late IPC responses may populate caches but must never
+  // move selection back after the user has opened a different file/root.
+  for (const directory of directories) s.setDirExpanded(directory, true);
+  // Refresh even cached ancestors: a search can find a newly-created file.
+  await Promise.all(directories.map(refreshDir));
+}
+
+async function refreshDir(path: string): Promise<void> {
   try {
     const entries = await window.treeline.files.readDir(path);
     useStore.getState().setDirChildren(path, entries);

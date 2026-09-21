@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import type { DirEntry } from '@shared/types';
 import { useStore } from '../store';
@@ -10,8 +11,8 @@ const BASE_PAD = 8;
 
 /**
  * Lazily-rendered file tree for one directory. Children come from the editor
- * slice's `dirChildren` cache (populated by `toggleDir`/`openFileInPanel`'s
- * sibling action). Rendered under a worktree row once it's expanded.
+ * slice's `dirChildren` cache (populated on expansion and when revealing an
+ * opened file). Rendered in the sidebar's file view.
  */
 export function FileTree({ dirPath, depth }: { dirPath: string; depth: number }) {
   const children = useStore((s) => s.dirChildren[dirPath]);
@@ -40,6 +41,10 @@ function FileTreeNode({ entry, depth }: { entry: DirEntry; depth: number }) {
     })),
   );
   const padLeft = BASE_PAD + depth * INDENT;
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected) rowRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [selected]);
 
   if (entry.type === 'dir') {
     return (
@@ -63,6 +68,7 @@ function FileTreeNode({ entry, depth }: { entry: DirEntry; depth: number }) {
 
   return (
     <div
+      ref={rowRef}
       className={`group/file flex w-full items-center rounded ${
         selected ? 'bg-treeline-highlight' : 'hover:bg-treeline-highlight/60'
       }`}
@@ -70,6 +76,7 @@ function FileTreeNode({ entry, depth }: { entry: DirEntry; depth: number }) {
       <button
         type="button"
         onClick={() => void openFileInPanel(entry.path)}
+        aria-current={selected ? 'true' : undefined}
         title={entry.path}
         style={{ paddingLeft: padLeft }}
         className={`flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left ${
