@@ -43,6 +43,7 @@ export function TabItem({ tab, onDragStart, isDragging, didDrag }: Props) {
   // A drift exists when one of this tab's panes cd'd into a different worktree.
   // Show a chip linking to that worktree (the first one, if several panes drift).
   const drift = useStore((s) => {
+    if (!s.settings.worktreeTerminalSuggestions) return null;
     const paneIds = new Set(leaves(tab.root).map((l) => l.ptyId));
     for (const d of Object.values(s.driftByWorktree)) {
       if (d.ptyId && paneIds.has(d.ptyId)) return d;

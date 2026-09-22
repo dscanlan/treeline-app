@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: SettingsConfig = {
   fontSize: DEFAULT_TERMINAL_FONT_SIZE,
   keybindings: {},
   vaultPath: null,
+  worktreeTerminalSuggestions: false,
 };
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -198,6 +199,9 @@ export class ReposStore {
           if (typeof v === 'string') kb[k] = v;
         }
         base.settings.keybindings = kb;
+      }
+      if (typeof s.worktreeTerminalSuggestions === 'boolean') {
+        base.settings.worktreeTerminalSuggestions = s.worktreeTerminalSuggestions;
       }
       // vaultPath — added after schemaVersion 4; absent/invalid lands on null.
       if (typeof s.vaultPath === 'string' && s.vaultPath.trim().length > 0) {

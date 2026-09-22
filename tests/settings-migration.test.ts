@@ -40,6 +40,7 @@ describe('settings migration (schemaVersion 3)', () => {
       fontSize: 13,
       keybindings: {},
       vaultPath: null,
+      worktreeTerminalSuggestions: false,
     });
   });
 
@@ -73,6 +74,7 @@ describe('settings migration (schemaVersion 3)', () => {
         settings: {
           terminalTheme: 42, // wrong type → default
           fontFamily: '', // empty → default
+          worktreeTerminalSuggestions: 'true', // wrong type → disabled
           fontSize: 'big', // wrong type → default
           keybindings: { toggleSidebar: 'CmdOrCtrl+B', bogus: 99 },
         },
@@ -83,6 +85,7 @@ describe('settings migration (schemaVersion 3)', () => {
     expect(cfg.settings.terminalTheme).toBe('graphite');
     expect(cfg.settings.fontFamily).toContain('ui-monospace');
     expect(cfg.settings.fontSize).toBe(13);
+    expect(cfg.settings.worktreeTerminalSuggestions).toBe(false);
     // Only the string-valued override survives.
     expect(cfg.settings.keybindings).toEqual({ toggleSidebar: 'CmdOrCtrl+B' });
   });

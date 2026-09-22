@@ -29,6 +29,7 @@ export const DEFAULT_RENDERER_SETTINGS: SettingsConfig = {
   fontSize: DEFAULT_TERMINAL_FONT_SIZE,
   keybindings: {},
   vaultPath: null,
+  worktreeTerminalSuggestions: false,
 };
 
 export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSlice> = (

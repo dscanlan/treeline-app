@@ -260,6 +260,8 @@ export interface SettingsConfig {
    * pinned folder/worktree/repo. Added post-v4; default-filled to null.
    */
   vaultPath: string | null;
+  /** Offer terminal shortcuts and handoff prompts for new or changed worktrees. */
+  worktreeTerminalSuggestions: boolean;
 }
 
 export interface AppConfig {

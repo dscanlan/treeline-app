@@ -118,6 +118,7 @@ describe('ReposStore', () => {
       fontSize: 16,
       keybindings: { toggleSidebar: 'CmdOrCtrl+Shift+B' },
       vaultPath: '/Users/example/notes',
+      worktreeTerminalSuggestions: true,
     });
     const b = new ReposStore(configPath);
     const cfg = b.load();
@@ -126,6 +127,7 @@ describe('ReposStore', () => {
     expect(cfg.settings.fontSize).toBe(16);
     expect(cfg.settings.keybindings).toEqual({ toggleSidebar: 'CmdOrCtrl+Shift+B' });
     expect(cfg.settings.vaultPath).toBe('/Users/example/notes');
+    expect(cfg.settings.worktreeTerminalSuggestions).toBe(true);
   });
 
   it('default-fills vaultPath to null on a config that predates it', () => {

@@ -13,8 +13,10 @@ import { ScreenshotForceTooltip } from './components/ScreenshotForceTooltip';
 import { attachIpc, loadInitialState } from './ipc/client';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { useAppTheme } from './hooks/useAppTheme';
+import { useStore } from './store';
 
 export function App() {
+  const worktreeTerminalSuggestions = useStore((s) => s.settings.worktreeTerminalSuggestions);
   useGlobalShortcuts();
   useAppTheme();
 
@@ -42,7 +44,7 @@ export function App() {
       </div>
       <Modals />
       <DiscoveredRepoToast />
-      <WorktreeDriftToast />
+      {worktreeTerminalSuggestions && <WorktreeDriftToast />}
       <ReattachToast />
       <RestoreToast />
       <RestorePrompt />

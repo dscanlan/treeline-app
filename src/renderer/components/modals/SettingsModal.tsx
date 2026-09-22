@@ -127,6 +127,23 @@ export function SettingsModal() {
             />
           </label>
 
+          <label className="flex items-center gap-2 text-xs text-treeline-text">
+            <input
+              type="checkbox"
+              checked={draft.worktreeTerminalSuggestions}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, worktreeTerminalSuggestions: e.target.checked }))
+              }
+              aria-describedby="worktree-terminal-suggestions-description"
+              className="accent-treeline-cyan"
+            />
+            Suggest switching to a worktree terminal
+          </label>
+          <p id="worktree-terminal-suggestions-description" className="text-[11px] text-treeline-dim">
+            Show a prompt and tab shortcut when a worktree is created or a terminal moves
+            into another worktree, including available agent handoffs.
+          </p>
+
           {/* Stubbed external-config import hook — v1 does not parse these. */}
           <div className="text-[11px] text-treeline-dim">
             Import from{' '}

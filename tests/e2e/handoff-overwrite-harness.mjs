@@ -137,6 +137,7 @@ async function main() {
     join(userDataDir, 'config.json'),
     JSON.stringify({
       schemaVersion: 4,
+      settings: { worktreeTerminalSuggestions: true },
       codeRoot: null,
       sidebarCollapsed: false,
       repos: [{ path: repo, name: 'api', addedAt: Date.now() }],

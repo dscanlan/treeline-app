@@ -256,6 +256,7 @@ function settingsCfg(overrides: Partial<SettingsConfig> = {}): SettingsConfig {
     fontSize: DEFAULT_TERMINAL_FONT_SIZE,
     keybindings: {},
     vaultPath: null,
+    worktreeTerminalSuggestions: false,
     ...overrides,
   };
 }
@@ -547,6 +548,7 @@ const SCENARIOS: Record<string, Scenario> = {
     // the work were still happening in the original worktree.
     sendHydrate(win, {
       reset: true,
+      settings: settingsCfg({ worktreeTerminalSuggestions: true }),
       repos: [REPO_TREELINE_APP],
       worktreesByRepo: { [REPO_TREELINE_APP.path]: WORKTREES_TREELINE_APP },
       driftByWorktree: {

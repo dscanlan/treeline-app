@@ -654,6 +654,10 @@ disappears so xterm doesn't keep talking to a vanished cwd.
 
 ### Worktree handoff prompt
 
+Enable **Settings → Terminal → Suggest switching to a worktree terminal** to
+show handoff prompts and worktree shortcuts on terminal tabs. This is off by
+default.
+
 ![Bottom-right toast reading "Continue Claude in feat-auth? A new worktree was created." with "Continue Claude in new tab" and Dismiss buttons, beside the sidebar where the feat-auth worktree has just appeared](docs/img/35-worktree-open-toast.png)
 
 When a new worktree appears — typically because an agent ran
