@@ -34,11 +34,11 @@ const git = (cwd, ...args) =>
 
 // A token that occurs in exactly one file, so a content search is unambiguous.
 const TOKEN = 'ZZUNIQUESEARCHTOKEN';
-const HIT_FILE = 'src/widget.ts';
+const HIT_FILE = 'src/components/widget.ts';
 
 function buildRepo(codeRoot) {
   const repo = join(codeRoot, 'proj');
-  mkdirSync(join(repo, 'src'), { recursive: true });
+  mkdirSync(join(repo, 'src', 'components'), { recursive: true });
   git(repo, 'init', '--quiet', '--initial-branch', 'main');
   git(repo, 'config', 'user.name', 'Test User');
   git(repo, 'config', 'user.email', 'test@example.com');
@@ -89,6 +89,12 @@ async function main() {
 
   const results = {};
   try {
+    // Library search exposes matching repos/worktrees regardless of their
+    // initial disclosure state or the default Working filter.
+    await page.getByRole('button', { name: /^Library/ }).click();
+    await page
+      .getByRole('searchbox', { name: 'Find repository, worktree, or folder' })
+      .fill('proj');
     // Open a terminal in the repo's main worktree — openTabAt sets
     // selectedSidebarPath = the worktree, which is the search root.
     await page.waitForSelector('[data-ss="worktree-row"]', { timeout: 15000 });
@@ -102,15 +108,13 @@ async function main() {
     await page.getByLabel('Search query').fill(TOKEN);
 
     // Results are debounced (250ms) + async rg; wait for a match row.
-    await page
-      .waitForSelector('[data-ss="search-match"]', { timeout: 10000 })
-      .catch(async () => {
-        const summary = await page.evaluate(
-          () => document.querySelector('[data-ss="search-panel"]')?.innerText ?? '<no panel>',
-        );
-        log('  DIAG search-panel text:', JSON.stringify(summary));
-        throw new Error('no search-match appeared');
-      });
+    await page.waitForSelector('[data-ss="search-match"]', { timeout: 10000 }).catch(async () => {
+      const summary = await page.evaluate(
+        () => document.querySelector('[data-ss="search-panel"]')?.innerText ?? '<no panel>',
+      );
+      log('  DIAG search-panel text:', JSON.stringify(summary));
+      throw new Error('no search-match appeared');
+    });
     const files = await page.evaluate(() =>
       [...document.querySelectorAll('[data-ss="search-file"]')].map((el) => el.dataset.ssFile),
     );
@@ -128,6 +132,21 @@ async function main() {
       { timeout: 10000 },
     );
     results.openedFromSearch = (await codePanelText(page)).includes(TOKEN);
+
+    const tree = page.locator('[data-ss="sidebar-files"]');
+    const selectedFile = tree.locator(`button[title="${repo}/${HIT_FILE}"][aria-current="true"]`);
+    await selectedFile.waitFor({ state: 'visible', timeout: 10000 });
+    results.revealedSearchFile = await selectedFile.isVisible();
+
+    // Collapse an ancestor, then reopen the same hit (selection is unchanged).
+    await tree.locator(`button[title="${repo}/src"]`).click();
+    results.collapsedAncestor = (await selectedFile.count()) === 0;
+    await page.locator('[data-ss="search-match"]').first().click();
+    await selectedFile.waitFor({ state: 'visible', timeout: 10000 });
+    results.revealedRepeatedHit = await selectedFile.isVisible();
+
+    // Quick-open must also reveal a file hidden by a collapsed ancestor.
+    await tree.locator(`button[title="${repo}/src"]`).click();
 
     // ── ⌘P quick-open ───────────────────────────────────────────────────────
     await sendMenu(app, 'search:quickOpen');
@@ -148,6 +167,8 @@ async function main() {
       { timeout: 10000 },
     );
     results.openedFromQuickOpen = (await codePanelText(page)).includes('export const a');
+    await selectedFile.waitFor({ state: 'visible', timeout: 10000 });
+    results.revealedQuickOpenFile = await selectedFile.isVisible();
   } catch (err) {
     results.error = err instanceof Error ? err.message : String(err);
   }
@@ -157,6 +178,10 @@ async function main() {
     ['content search found the hit file', results.foundHitFile],
     ['gitignored copy excluded (negative control)', results.excludedIgnored],
     ['clicking a hit opened the file in the code panel', results.openedFromSearch],
+    ['search expands ancestors and highlights the file', results.revealedSearchFile],
+    ['ancestor can still be collapsed manually', results.collapsedAncestor],
+    ['reopening the same hit reveals it again', results.revealedRepeatedHit],
+    ['quick-open reveals its file in the tree', results.revealedQuickOpenFile],
     ['quick-open listed the file by fuzzy name', results.quickOpenListed],
     ['quick-open Enter opened the file', results.openedFromQuickOpen],
   ];
