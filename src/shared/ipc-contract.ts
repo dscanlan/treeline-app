@@ -235,6 +235,13 @@ export interface TreelineApi {
      * worktree path during the session. Returns an unsubscribe fn.
      */
     onCreated(cb: (path: string) => void): () => void;
+    /**
+     * Report which repos have an active worktree (open tab, running agent, or
+     * pin — the sidebar's Working set). Main polls only these at full cadence;
+     * the rest are refreshed slowly, so their dirty dots may lag until opened.
+     * Fire-and-forget; send whenever the set changes.
+     */
+    setActiveRepos(repoPaths: string[]): void;
   };
 
   pty: {

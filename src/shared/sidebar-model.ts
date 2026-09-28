@@ -46,6 +46,39 @@ function worktreeNeedsAttention(
   return wt.isDirty || wt.merged || unreadCwds.has(wt.path) || pr?.checks === 'failing';
 }
 
+export type ActivityInput = Pick<
+  BuildSidebarModelInput,
+  'tabsByCwd' | 'processesByWorktreePath' | 'pinnedPaths'
+>;
+
+/**
+ * A worktree (or folder) is *active* — belongs in the sidebar's Working set —
+ * when it has an open tab, a running agent process, or a pin. This is the one
+ * definition of "in use"; the main process throttles its background git
+ * polling by the same rule (see {@link activeRepoPaths}).
+ */
+export function isActivePath(path: string, input: ActivityInput): boolean {
+  return (
+    (input.tabsByCwd[path]?.length ?? 0) > 0 ||
+    (input.processesByWorktreePath[path]?.length ?? 0) > 0 ||
+    input.pinnedPaths.has(path)
+  );
+}
+
+/**
+ * Repo paths with at least one active worktree, sorted for stable comparison.
+ * Shipped to main so the worktree watcher polls only these at full cadence.
+ */
+export function activeRepoPaths(
+  worktreesByRepo: Record<string, Worktree[]>,
+  input: ActivityInput,
+): string[] {
+  return Object.entries(worktreesByRepo)
+    .filter(([, worktrees]) => worktrees.some((wt) => isActivePath(wt.path, input)))
+    .map(([repoPath]) => repoPath)
+    .sort();
+}
+
 /**
  * Pure sidebar projection. The catalog remains complete in store; this function
  * derives the small operational list without introducing a second source of truth.
@@ -56,10 +89,7 @@ export function buildSidebarModel(input: BuildSidebarModelInput): SidebarModel {
   // Search is global: an inactive target remains discoverable from Working.
   const effectiveMode = searching ? 'library' : input.mode;
   const order = new Map(input.tabOrder.map((cwd, i) => [cwd, i]));
-  const isActive = (path: string) =>
-    (input.tabsByCwd[path]?.length ?? 0) > 0 ||
-    (input.processesByWorktreePath[path]?.length ?? 0) > 0 ||
-    input.pinnedPaths.has(path);
+  const isActive = (path: string) => isActivePath(path, input);
 
   const catalogPaths = new Set([
     ...input.folders.map((folder) => folder.path),

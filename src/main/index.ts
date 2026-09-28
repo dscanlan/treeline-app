@@ -130,7 +130,21 @@ function createMainWindow(backgroundColor = '#0e0f12'): BrowserWindow {
   win.once('ready-to-show', () => win.show());
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
+    // No window: nobody can see the sidebar, so the poll can rest (macOS keeps
+    // the app running after the last window closes).
+    worktreeWatcher?.setVisible(false);
   });
+
+  // Pause background `git status` polling while nobody can see the sidebar
+  // (minimised, hidden with ⌘H, or closed) and catch up on the way back.
+  const syncVisibility = () => {
+    if (win.isDestroyed()) return;
+    worktreeWatcher?.setVisible(win.isVisible() && !win.isMinimized());
+  };
+  win.on('show', syncVisibility);
+  win.on('hide', syncVisibility);
+  win.on('minimize', syncVisibility);
+  win.on('restore', syncVisibility);
 
   // Links clicked in the renderer (notably xterm's WebLinksAddon, which turns
   // arbitrary terminal output into clickable links) arrive here. Terminal
@@ -345,7 +359,10 @@ app.whenReady().then(() => {
       repoDiscovery?.setDismissedRepos(reposStore?.get().dismissedRepos ?? []);
     },
   });
-  registerWorktreesIpc((repoPath, worktrees) => worktreeWatcher?.setSnapshot(repoPath, worktrees));
+  registerWorktreesIpc(
+    (repoPath, worktrees) => worktreeWatcher?.setSnapshot(repoPath, worktrees),
+    (repoPaths) => worktreeWatcher?.setActiveRepos(repoPaths),
+  );
   registerPtyIpc(ptyManager);
   registerProcessesIpc();
   registerPrIpc();

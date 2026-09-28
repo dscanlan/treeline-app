@@ -88,6 +88,7 @@ const api: TreelineApi = {
     onDrift: (cb) =>
       listen<{ ptyId: string; toWorktree: string }>(Channels.WorktreesDrift, cb),
     onCreated: (cb) => listen<string>(Channels.WorktreesCreated, cb),
+    setActiveRepos: (repoPaths) => ipcRenderer.send(Channels.WorktreesSetActiveRepos, repoPaths),
   },
 
   pty: {

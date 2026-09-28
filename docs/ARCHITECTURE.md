@@ -117,8 +117,9 @@ The `All | Changed` toggle (`<WorktreeFiles>`) swaps the tree for
 `<ChangedFilesList>`, fed by `window.treeline.files.changed(path)` →
 `git.ts:changedFiles()` (parses `git status --porcelain`). The list
 re-fetches whenever `worktrees:onChange` fires for that repo — i.e. on the
-same `.git` watcher + ~5 s poll that drives the dirty dot, so commits and
-git ops refresh promptly while a bare working-tree save isn't instant.
+same `.git` watcher + activity-throttled poll that drives the dirty dot
+(5 s for a repo with an open tab; see *Live worktree updates*), so commits
+and git ops refresh promptly while a bare working-tree save isn't instant.
 
 Clicking a changed file opens its **diff** instead of the full file:
 `files.diff(path)` → `git.ts:fileDiff()` runs `git diff HEAD` (untracked
@@ -392,7 +393,18 @@ rebind takes effect without a restart.
 
 1. `WorktreeWatcher` registers an `fs.watch` on each `<repo>/.git`
    directory (non-recursive — that's where the `worktrees/` subdir
-   appears or disappears) plus a 5 s polling fallback.
+   appears or disappears) plus a polling fallback. The poll is what
+   catches plain working-tree edits (which never touch `.git`), so it is
+   also what keeps the dirty dot live — but each pass costs a
+   `git status` per worktree, so it is **throttled by activity**: the
+   renderer reports which repos are in use (open tab, running agent, or
+   pin — the sidebar's Working set, `activeRepoPaths()` in
+   `shared/sidebar-model.ts`) over `worktrees:setActiveRepos`, and only
+   those poll every 5 s. Library repos poll once a minute, staggered so
+   they don't all sweep on one tick, and the poll pauses entirely while
+   the window is hidden or minimised (catching up on show). `fs.watch`
+   keeps firing throughout, so git operations in a library repo still
+   surface immediately.
 2. When `git worktree add ...` runs *inside one of the open terminals*,
    git creates `<repo>/.git/worktrees/<name>/`, which fires the watcher.
 3. Watcher debounces 200 ms, runs `listWorktreesIn(repoPath)`, JSON-

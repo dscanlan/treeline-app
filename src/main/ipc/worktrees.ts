@@ -13,12 +13,20 @@ import { validateAbsPath, validateBranchName } from '../util/safe-path';
 
 export function registerWorktreesIpc(
   onListed: (repoPath: string, worktrees: Worktree[]) => void,
+  onActiveRepos: (repoPaths: string[]) => void,
 ): () => void {
   ipcMain.handle(Channels.WorktreesList, async (_e, repoPath: unknown) => {
     const path = validateAbsPath(repoPath);
     const worktrees = await listWorktreesIn(path);
     onListed(path, worktrees);
     return worktrees;
+  });
+
+  // The renderer's view of which repos are in use. Only ever used as set keys
+  // for the watcher's throttle, so a malformed entry is dropped, not fatal.
+  ipcMain.on(Channels.WorktreesSetActiveRepos, (_e, repoPaths: unknown) => {
+    if (!Array.isArray(repoPaths)) return;
+    onActiveRepos(repoPaths.filter((p): p is string => typeof p === 'string'));
   });
 
   ipcMain.handle(
@@ -57,6 +65,7 @@ export function registerWorktreesIpc(
     ipcMain.removeHandler(Channels.WorktreesInspect);
     ipcMain.removeHandler(Channels.WorktreesRepair);
     ipcMain.removeHandler(Channels.WorktreesPrune);
+    ipcMain.removeAllListeners(Channels.WorktreesSetActiveRepos);
   };
 }
 

@@ -893,7 +893,7 @@ src/
 │   ├── pty-manager.ts    # node-pty + chunk coalescing + SIGHUP→KILL
 │   ├── process-monitor.ts        # 2 s ps + lsof scan; AI CLI detection
 │   ├── terminal-status.ts        # 1 s tick; per-PTY foreground state
-│   ├── worktree-watcher.ts       # fs.watch + 5 s poll fallback
+│   ├── worktree-watcher.ts       # fs.watch + activity-throttled poll (5 s Working / 60 s Library)
 │   ├── repo-discovery.ts         # untracked-repo detection from PTY cwds
 │   ├── repos-store.ts            # atomic JSON config in app userData
 │   ├── repos-create.ts           # `git init` flow: validation + register

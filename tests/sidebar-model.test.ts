@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Folder, Repo, Worktree } from '../src/shared/types';
-import { buildSidebarModel, type BuildSidebarModelInput } from '../src/shared/sidebar-model';
+import {
+  activeRepoPaths,
+  buildSidebarModel,
+  type BuildSidebarModelInput,
+} from '../src/shared/sidebar-model';
 
 const repos: Repo[] = [
   { path: '/code/api', name: 'api', addedAt: 1 },
@@ -99,5 +103,51 @@ describe('buildSidebarModel', () => {
   it('keeps empty repositories visible in Library while worktrees load', () => {
     const model = buildSidebarModel(input({ mode: 'library', worktreesByRepo: {} }));
     expect(model.repos.map((entry) => entry.repo.name)).toEqual(['api', 'web']);
+  });
+});
+
+describe('activeRepoPaths', () => {
+  const activity = (over: Partial<Parameters<typeof activeRepoPaths>[1]> = {}) => ({
+    tabsByCwd: {},
+    processesByWorktreePath: {},
+    pinnedPaths: new Set<string>(),
+    ...over,
+  });
+
+  it('is empty when nothing is in use', () => {
+    expect(activeRepoPaths(worktreesByRepo, activity())).toEqual([]);
+  });
+
+  it('names a repo when any of its worktrees has a tab, a process, or a pin', () => {
+    expect(
+      activeRepoPaths(worktreesByRepo, activity({ tabsByCwd: { '/code/api-auth': ['t1'] } })),
+    ).toEqual(['/code/api']);
+    expect(
+      activeRepoPaths(
+        worktreesByRepo,
+        activity({ processesByWorktreePath: { '/code/web-ui': [{}] } }),
+      ),
+    ).toEqual(['/code/web']);
+    expect(
+      activeRepoPaths(worktreesByRepo, activity({ pinnedPaths: new Set(['/code/web']) })),
+    ).toEqual(['/code/web']);
+  });
+
+  it('returns a sorted, deduplicated list so callers can diff it cheaply', () => {
+    const out = activeRepoPaths(
+      worktreesByRepo,
+      activity({
+        tabsByCwd: { '/code/web': ['t1'], '/code/api': ['t2'], '/code/api-auth': ['t3'] },
+      }),
+    );
+    expect(out).toEqual(['/code/api', '/code/web']);
+  });
+
+  it('matches the Working view: the same paths count as active in both', () => {
+    const tabsByCwd = { '/code/api-auth': ['t1'] };
+    const model = buildSidebarModel(input({ tabsByCwd }));
+    expect(model.repos.map((r) => r.repo.path)).toEqual(
+      activeRepoPaths(worktreesByRepo, activity({ tabsByCwd })),
+    );
   });
 });

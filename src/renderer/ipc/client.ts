@@ -8,6 +8,8 @@ import { registerScratchCleanup } from '../actions/scratch';
 import { findLeaf, leaves } from '@shared/pane-tree';
 import { DEFAULT_RENDERER_SETTINGS } from '../store/settings-slice';
 import { agentPaneCwds, toPersistedSession } from '@shared/session-serialize';
+import { activeRepoPaths } from '@shared/sidebar-model';
+import { createActiveReposReporter } from '@shared/active-repos-reporter';
 import { createOpenFileState } from '../store/editor-slice';
 
 export function attachIpc(): () => void {
@@ -486,6 +488,34 @@ export function attachIpc(): () => void {
     if (scratchTimer) clearTimeout(scratchTimer);
     window.removeEventListener('beforeunload', onBeforeUnload);
   });
+
+  // Tell main which repos are in use (the sidebar's Working set) so its
+  // background `git status` polling can skip the Library. Sent once now and
+  // whenever the derived set changes — never per store update.
+  const reportActiveRepos = createActiveReposReporter(api.worktrees.setActiveRepos);
+  const pushActiveRepos = (s: ReturnType<typeof useStore.getState>) => {
+    reportActiveRepos(
+      activeRepoPaths(s.worktreesByRepo, {
+        tabsByCwd: s.tabsByCwd,
+        processesByWorktreePath: s.processesByWorktreePath,
+        pinnedPaths: new Set(s.sidebarPins),
+      }),
+    );
+  };
+  pushActiveRepos(useStore.getState());
+  unsubs.push(
+    useStore.subscribe((state, prev) => {
+      if (
+        state.worktreesByRepo === prev.worktreesByRepo &&
+        state.tabsByCwd === prev.tabsByCwd &&
+        state.processesByWorktreePath === prev.processesByWorktreePath &&
+        state.sidebarPins === prev.sidebarPins
+      ) {
+        return;
+      }
+      pushActiveRepos(state);
+    }),
+  );
 
   return () => unsubs.forEach((fn) => fn());
 }

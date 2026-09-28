@@ -24,6 +24,7 @@ export const Channels = {
   WorktreesOnChange: 'worktrees:onChange',
   WorktreesDrift: 'worktrees:drift',
   WorktreesCreated: 'worktrees:created',
+  WorktreesSetActiveRepos: 'worktrees:setActiveRepos',
 
   // pty
   PtySpawn: 'pty:spawn',
