@@ -12,9 +12,13 @@ interface RepoEntry {
   refreshing: boolean;
   refreshQueued: boolean;
   snapshotVersion: number;
-  /** Epoch ms when the last listing started; the idle poll's clock. */
-  lastListedAt: number;
-  /** Per-repo offset added to idlePollMs so library repos don't sweep in lockstep. */
+  /** Epoch ms before which the idle poll leaves this repo alone. */
+  idleDueAt: number;
+  /**
+   * Per-repo phase offset (a whole number of poll ticks) so library repos don't
+   * sweep in lockstep. It shifts *when* a repo's idle period starts, never how
+   * long it is: every library repo lists once per idlePollMs.
+   */
   idleSkewMs: number;
 }
 
@@ -78,12 +82,23 @@ export class WorktreeWatcher extends EventEmitter {
     }
   }
 
-  /** Window visibility: the poll pauses while hidden and catches up on show. */
+  /**
+   * Window visibility: the poll pauses while hidden. On show, active repos are
+   * listed at once (their dirty dots are what the user is looking at), while
+   * the library — every one of whose idle periods has usually lapsed by now —
+   * is *not* refreshed in one go: with dozens of repos that would be the same
+   * `git status` burst the throttle exists to prevent, on every un-minimise.
+   * Instead each library repo is re-phased to its skew slot, so the catch-up
+   * sweep is spread over the following idle period like a normal one.
+   */
   setVisible(visible: boolean): void {
     const wasVisible = this.visible;
     this.visible = visible;
-    if (visible && !wasVisible) {
-      for (const repoPath of this.repos.keys()) void this.refresh(repoPath);
+    if (!visible || wasVisible) return;
+    const now = this.now();
+    for (const [repoPath, entry] of this.repos) {
+      if (this.isActive(repoPath)) void this.refresh(repoPath);
+      else entry.idleDueAt = now + entry.idleSkewMs;
     }
   }
 
@@ -95,15 +110,23 @@ export class WorktreeWatcher extends EventEmitter {
   private pollTick(repoPath: string): void {
     const entry = this.repos.get(repoPath);
     if (!entry || !this.visible) return;
-    if (!this.isActive(repoPath)) {
-      // Every repo was primed in the same instant at startup, so without a
-      // per-repo skew the whole library would come due on the same tick and
-      // re-create the very burst the throttle exists to prevent. Spread the
-      // idle sweep across the ticks of one idle period instead.
-      const due = this.idlePollMs + entry.idleSkewMs;
-      if (this.now() - entry.lastListedAt < due) return;
-    }
+    if (!this.isActive(repoPath) && this.now() < entry.idleDueAt) return;
     void this.refresh(repoPath);
+  }
+
+  /**
+   * Pick the least-populated skew slot among the poll ticks of one idle
+   * period, so N library repos spread over idlePollMs/pollMs ticks instead
+   * of landing together — and a repo added after others were removed reuses
+   * the gap they left rather than piling onto an occupied tick.
+   */
+  private nextIdleSkewMs(): number {
+    const slots = Math.max(1, Math.floor(this.idlePollMs / this.pollMs));
+    const load = new Array<number>(slots).fill(0);
+    for (const entry of this.repos.values()) load[entry.idleSkewMs / this.pollMs] += 1;
+    let slot = 0;
+    for (let i = 1; i < slots; i++) if (load[i] < load[slot]) slot = i;
+    return slot * this.pollMs;
   }
 
   add(repoPath: string): void {
@@ -116,11 +139,8 @@ export class WorktreeWatcher extends EventEmitter {
       refreshing: false,
       refreshQueued: false,
       snapshotVersion: 0,
-      lastListedAt: 0,
-      // Deterministic round-robin over the poll ticks in one idle period:
-      // the k-th repo added waits k extra ticks (mod the period), so N repos
-      // spread over idlePollMs/pollMs ticks instead of landing together.
-      idleSkewMs: (this.repos.size % Math.max(1, Math.floor(this.idlePollMs / this.pollMs))) * this.pollMs,
+      idleDueAt: 0,
+      idleSkewMs: this.nextIdleSkewMs(),
     };
     this.repos.set(repoPath, entry);
 
@@ -137,8 +157,11 @@ export class WorktreeWatcher extends EventEmitter {
       }
     }
 
-    // Prime the cache.
+    // Prime the cache. Every repo is primed in the same instant at startup, so
+    // shift this one's first idle period by its skew slot; from then on the
+    // period is exactly idlePollMs, measured from each listing.
     void this.refresh(repoPath);
+    entry.idleDueAt += entry.idleSkewMs;
   }
 
   remove(repoPath: string): void {
@@ -193,7 +216,8 @@ export class WorktreeWatcher extends EventEmitter {
       return;
     }
     entry.refreshing = true;
-    entry.lastListedAt = this.now();
+    // The idle clock runs from each listing, whoever triggered it.
+    entry.idleDueAt = this.now() + this.idlePollMs;
     const snapshotVersion = entry.snapshotVersion;
     // null = the listing failed transiently, so we have nothing trustworthy to
     // report (distinct from a real, empty [] for a repo that's gone).

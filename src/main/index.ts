@@ -136,7 +136,8 @@ function createMainWindow(backgroundColor = '#0e0f12'): BrowserWindow {
   });
 
   // Pause background `git status` polling while nobody can see the sidebar
-  // (minimised, hidden with ⌘H, or closed) and catch up on the way back.
+  // (minimised, hidden with ⌘H, or closed); on the way back active repos catch
+  // up at once and the library resumes its staggered sweep.
   const syncVisibility = () => {
     if (win.isDestroyed()) return;
     worktreeWatcher?.setVisible(win.isVisible() && !win.isMinimized());

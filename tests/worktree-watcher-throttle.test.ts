@@ -74,6 +74,29 @@ describe('WorktreeWatcher poll throttling', () => {
     expect(h.listed['/b']).toBe(2);
     await vi.advanceTimersByTimeAsync(POLL_MS * 3);
     expect(h.listed['/b']).toBe(2);
+
+    // The skew only shifts the phase: the next sweep is exactly idlePollMs
+    // after the last listing, not idlePollMs plus the skew again.
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS - POLL_MS * 4);
+    expect(h.listed['/b']).toBe(2);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(h.listed['/b']).toBe(3);
+  });
+
+  it('reuses the skew slot a removed repo vacated', async () => {
+    const h = makeWatcher();
+    w = h.w;
+    await prime(w, '/a', '/b', '/c'); // slots 0, 1, 2
+    w.remove('/b');
+    w.add('/d'); // must take slot 1 (vacated), not 3
+    await vi.advanceTimersByTimeAsync(0);
+    w.setActiveRepos([]);
+
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS + POLL_MS);
+    expect(h.listed['/d']).toBe(2);
+    expect(h.listed['/c']).toBe(1);
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(h.listed['/c']).toBe(2);
   });
 
   it('staggers the idle sweep so library repos do not all list on one tick', async () => {
@@ -127,9 +150,40 @@ describe('WorktreeWatcher poll throttling', () => {
 
     w.setVisible(true);
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.listed).toEqual({ '/a': 2, '/b': 2 }); // one catch-up each
+    expect(h.listed).toEqual({ '/a': 2, '/b': 1 }); // active catches up at once
+    // The library repo is re-phased to its skew slot (one tick for '/b')
+    // rather than listed in the same instant.
     await vi.advanceTimersByTimeAsync(POLL_MS);
-    expect(h.listed).toEqual({ '/a': 3, '/b': 2 }); // then only the active one
+    expect(h.listed).toEqual({ '/a': 3, '/b': 2 });
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    expect(h.listed).toEqual({ '/a': 4, '/b': 2 }); // then only the active one
+  });
+
+  it('staggers the library catch-up on show instead of bursting', async () => {
+    const h = makeWatcher();
+    w = h.w;
+    const repos = Array.from({ length: 12 }, (_, i) => `/r${i}`);
+    await prime(w, ...repos);
+    w.setActiveRepos([]);
+    w.setVisible(false);
+    await vi.advanceTimersByTimeAsync(IDLE_POLL_MS * 3); // every idle period lapsed
+    for (const r of repos) expect(h.listed[r]).toBe(1);
+
+    // Un-minimising must not fire one `git status` sweep per repo at once:
+    // nothing lists in the show instant, and the catch-up is spread over the
+    // ticks of one idle period with every repo listed exactly once.
+    w.setVisible(true);
+    await vi.advanceTimersByTimeAsync(0);
+    for (const r of repos) expect(h.listed[r]).toBe(1);
+    const ticksPerPeriod = IDLE_POLL_MS / POLL_MS;
+    const perTick: number[] = [];
+    for (let t = 0; t < ticksPerPeriod; t++) {
+      const before = Object.values(h.listed).reduce((a, b) => a + b, 0);
+      await vi.advanceTimersByTimeAsync(POLL_MS);
+      perTick.push(Object.values(h.listed).reduce((a, b) => a + b, 0) - before);
+    }
+    expect(Math.max(...perTick)).toBeLessThan(repos.length);
+    for (const r of repos) expect(h.listed[r]).toBe(2);
   });
 
   it('still refreshes on an explicit request while hidden or inactive', async () => {

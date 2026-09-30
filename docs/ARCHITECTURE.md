@@ -402,9 +402,11 @@ rebind takes effect without a restart.
    `shared/sidebar-model.ts`) over `worktrees:setActiveRepos`, and only
    those poll every 5 s. Library repos poll once a minute, staggered so
    they don't all sweep on one tick, and the poll pauses entirely while
-   the window is hidden or minimised (catching up on show). `fs.watch`
-   keeps firing throughout, so git operations in a library repo still
-   surface immediately.
+   the window is hidden or minimised. On show, active repos are listed at
+   once; the library is re-staggered rather than swept in one burst, so
+   its next sweep spreads over the following minute. `fs.watch` keeps
+   firing throughout, so git operations in a library repo still surface
+   immediately.
 2. When `git worktree add ...` runs *inside one of the open terminals*,
    git creates `<repo>/.git/worktrees/<name>/`, which fires the watcher.
 3. Watcher debounces 200 ms, runs `listWorktreesIn(repoPath)`, JSON-
