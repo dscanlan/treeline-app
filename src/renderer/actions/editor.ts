@@ -378,6 +378,24 @@ async function revealFileInTree(path: string, preferredRoot: string | null = nul
   await Promise.all(directories.map(refreshDir));
 }
 
+/**
+ * Manually re-read a sidebar file tree: the root plus every directory under it
+ * that is currently expanded. The tree has no fs watcher and the root is only
+ * read on its first open, so a file created from a terminal after that never
+ * appears until the user asks. Collapsed directories are left alone — they
+ * re-read on their next expand anyway.
+ */
+export async function refreshFileTree(root: string): Promise<void> {
+  const s = useStore.getState();
+  const directories = [
+    root,
+    ...Object.keys(s.expandedDirs).filter(
+      (dir) => dir !== root && s.expandedDirs[dir] && pathIsInside(dir, root),
+    ),
+  ];
+  await Promise.all(directories.map(refreshDir));
+}
+
 async function refreshDir(path: string): Promise<void> {
   try {
     const entries = await window.treeline.files.readDir(path);
