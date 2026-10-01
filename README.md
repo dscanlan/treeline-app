@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.35.3 — feature-complete for v1: macOS only, repos managed manually.
+v0.36.0 — feature-complete for v1: macOS only, repos managed manually.
 The sidebar scales to a large catalog: a **Working** view derived from
 open tabs, running processes, and pins, with the full **Library** a click
 away and search global across both. Open tabs are saved and offered back
@@ -306,7 +306,10 @@ viewer does that without leaving treeline or breaking your terminal flow.
 - **Click the folder icon** at the left of a worktree row to expand its
   **file tree**. Directories load lazily (one level per expand) and `.git`
   is hidden; the icon is a folder, not a chevron, so it reads distinctly
-  from the repo's expand/collapse triangle one level up.
+  from the repo's expand/collapse triangle one level up. The tree isn't
+  watched, so a file you create from a terminal shows up on the next open
+  or expand, or on demand via the **refresh** button in the file view's
+  header.
 - **`All | Changed` toggle** at the top of the expanded area. **Changed**
   swaps the tree for a flat list of the worktree's working-tree changes
   (`git status`), each tagged with a colored status letter:
@@ -401,6 +404,9 @@ pick any directory and, if it isn't a git repo, treeline pins it as a plain
 - **Persists across restarts**, alongside your repos. The **`×`** on the folder
   row unpins it (the files on disk are untouched); **`>_`** opens a terminal
   there.
+- **Refresh on demand.** Files created outside treeline (say, `touch` in a
+  terminal) appear when you re-open the folder, or immediately via the
+  **refresh** button next to the back arrow in the file view.
 
 Editing existing files only — creating brand-new files from the tree isn't
 supported yet. (A directory that sits *inside* a git repo is detected as that
