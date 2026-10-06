@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type IBufferRange, type ILink } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
@@ -10,6 +10,8 @@ import {
 } from '@shared/terminal-theme';
 import { isPaneNavigableUrl } from '@shared/browser-url';
 import { useStore } from '../store';
+import { openFileInPanel } from '../actions/editor';
+import { findMarkdownPaths, resolveCandidates } from '../util/terminal-file-links';
 
 /**
  * Clicking a link in terminal output opens it in treeline's own browser pane —
@@ -32,6 +34,57 @@ function openTerminalLink(uri: string): void {
   } else {
     window.open(uri);
   }
+}
+
+async function firstExisting(paths: string[]): Promise<string | null> {
+  for (const p of paths) {
+    if (await window.treeline.system.pathExists(p).catch(() => false)) return p;
+  }
+  return null;
+}
+
+/**
+ * Markdown paths printed in output (`see docs/plan.md`) become clickable and
+ * open in the file viewer, like URLs open in the browser pane. Only paths that
+ * exist on disk are underlined. Rows soft-wrapped by the terminal are joined so
+ * a long path split across lines is still one link.
+ */
+function registerMarkdownPathLinks(term: Terminal, cwd: string) {
+  return term.registerLinkProvider({
+    provideLinks(y, callback) {
+      const buf = term.buffer.active;
+      let first = y - 1;
+      while (first > 0 && buf.getLine(first)?.isWrapped) first--;
+      let last = y - 1;
+      while (buf.getLine(last + 1)?.isWrapped) last++;
+      const cols = term.cols;
+      let text = '';
+      for (let i = first; i <= last; i++) {
+        text += buf.getLine(i)?.translateToString(i === last) ?? '';
+      }
+      const matches = findMarkdownPaths(text);
+      if (!matches.length) return callback(undefined);
+      const at = (offset: number) => ({ x: (offset % cols) + 1, y: first + 1 + Math.floor(offset / cols) });
+      const home = window.treeline.system.homeDir;
+      void Promise.all(
+        matches.map(async (m): Promise<ILink | null> => {
+          const target = await firstExisting(resolveCandidates(m.text, cwd, home));
+          if (!target) return null;
+          const range: IBufferRange = { start: at(m.start), end: at(m.start + m.text.length - 1) };
+          if (range.start.y > y || range.end.y < y) return null;
+          return {
+            range,
+            text: m.text,
+            decorations: { underline: true, pointerCursor: true },
+            activate: () => void openFileInPanel(target),
+          };
+        }),
+      ).then((links) => {
+        const found = links.filter((l): l is ILink => l !== null);
+        callback(found.length ? found : undefined);
+      });
+    },
+  });
 }
 
 export interface XtermHandle {
@@ -102,6 +155,7 @@ export function useXterm(
     // Plain URLs in output, found by regex. OSC 8 links take `linkHandler`
     // above instead; both land in `openTerminalLink`.
     term.loadAddon(new WebLinksAddon((_event, uri) => openTerminalLink(uri)));
+    const mdLinks = registerMarkdownPathLinks(term, opts.cwd);
 
     let disposed = false;
     let opened = false; // term.open() has been called
@@ -229,6 +283,7 @@ export function useXterm(
       offData();
       offExit();
       dataDispose.dispose();
+      mdLinks.dispose();
       term.dispose();
     };
     // Mount effect is keyed only on ptyId so changing theme/font does NOT

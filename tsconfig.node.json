@@ -32,6 +32,7 @@
     "src/renderer/store/tabs-slice.ts",
     "src/renderer/store/vault-slice.ts",
     "src/renderer/util/path.ts",
+    "src/renderer/util/terminal-file-links.ts",
     "tests/**/*.ts",
     "electron.vite.config.ts"
   ]
