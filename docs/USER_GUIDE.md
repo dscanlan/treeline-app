@@ -118,6 +118,11 @@ Terminals are real PTYs (`node-pty` + `xterm.js`).
   browser pane, whether it's a plain URL or an OSC 8 hyperlink (the kind `gh`
   and AI CLIs emit). `mailto:` and other schemes go to the OS; `file://` links
   in terminal output are ignored.
+- **Click a markdown path in terminal output** → a `.md`, `.markdown` or `.mdx`
+  path (say, the report an agent just wrote) opens in the file viewer.
+  Absolute, `~/` and relative paths all work; a relative path is tried against
+  the terminal's starting folder, then your home folder. Only files that exist
+  are underlined.
 
 **Splits.** A tab is a *tree* of panes:
 

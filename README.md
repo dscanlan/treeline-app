@@ -45,7 +45,7 @@ worktree dance is optional.
 
 ## Status
 
-v0.36.0 — feature-complete for v1: macOS only, repos managed manually.
+v0.37.0 — feature-complete for v1: macOS only, repos managed manually.
 The sidebar scales to a large catalog: a **Working** view derived from
 open tabs, running processes, and pins, with the full **Library** a click
 away and search global across both. Open tabs are saved and offered back
@@ -214,6 +214,12 @@ rendered with `xterm.js` (WebGL renderer, FitAddon, WebLinks, Search).
   the [embedded browser](#browser) pane, so you stay in the app. Both plain
   URLs and OSC 8 hyperlinks are clickable. `mailto:` and other schemes go to
   the OS; `file://` links in terminal output are ignored.
+- **Click a markdown path in terminal output** → a `.md` / `.markdown` /
+  `.mdx` path an agent or command printed opens in the
+  [file viewer](#code-viewer). Absolute, `~/`, and relative paths all work;
+  a relative path is tried against the terminal's starting folder, then your
+  home folder. Only paths that exist on disk are underlined, and a path the
+  terminal soft-wrapped across lines is still one link.
 
 Terminals stay mounted (consuming PTY data into their scrollback) when
 not visible, so switching back is instant — no replay flicker.
